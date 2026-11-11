@@ -16,6 +16,10 @@ review-only Interview action hands the candidate ID back to the page's existing
 interview workflow.
 [Minor Character adapter](../../zet/web/static/minor_characters.js)
 
+Completed image durations use AI_Proxy's worker execution time, excluding queue
+and dashboard polling delays. Older or imported images without worker timing
+retain the local elapsed-time value.
+
 ## Supply the model
 
 - `scope` has a stable `key`, `title`, and optional `view`. Include universe

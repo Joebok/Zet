@@ -1,4 +1,4 @@
-import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261110-settings-actions";
+import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261110-deselect-action";
 
 (() => {
   const $ = (id) => document.getElementById(`character-container-${id}`);
@@ -302,7 +302,7 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
       if(item.status==="FAILED")add("retry");
       const waiting=active ? "Wait for the render to finish." : "";
       const ready=waiting || (!item.image_path ? "Wait for a completed image." : "");
-      add("select",ready || held || (selected ? "Already selected." : ""));
+      if(!item.locked) add(selected?"unselect":"select",selected?(waiting||held):(ready||held));
       add(item.locked?"unlock":"lock",ready || held);
       if(item.render_mode!=="final"&&item.image_path)add("upscale",waiting || (item.locked ? "Unlock this image first." : ""));
       add("clear",waiting || (item.locked ? "Unlock this image before clearing its slot." : ""));

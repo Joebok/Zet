@@ -3,7 +3,7 @@
   const paths = {
     review: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
     select: '<circle cx="12" cy="12" r="9"/><path d="m7 12 3 3 7-7"/>',
-    unselect: '<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>',
+    unselect: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="m9 9 6 6m0-6-6 6"/>',
     regenerate: '<path d="M20 7v5h-5M4 17v-5h5M6 6a8 8 0 0 1 13 2M18 18a8 8 0 0 1-13-2"/>',
     retry: '<path d="M3 4v6h6M4 9a8 8 0 1 1 0 7"/>',
     clear: '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/>',
@@ -40,7 +40,7 @@
   ].join(',');
   function actionFor(label) {
     const value = label.toLowerCase();
-    if (/unselect/.test(value)) return 'unselect';
+    if (/deselect|unselect/.test(value)) return 'unselect';
     if (/selected|select|use this image/.test(value)) return 'select';
     if (/unlock/.test(value)) return 'unlock';
     if (/lock/.test(value)) return 'lock';

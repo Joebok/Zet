@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 import shutil
 from typing import Any
@@ -227,7 +228,25 @@ class ImageProductionService:
         updates = {"ask_id": ask_id, "output_path": output, "status": state, "error": error}
         if state == "COMPLETE":
             updates["image_path"] = output
+            duration = (self.app.ai_proxy_service.ai_proxy_path_service.jobs.repository.get(ask_id)
+                        .get("render_duration_seconds"))
+            if isinstance(duration, (int, float)) and not isinstance(duration, bool) and duration >= 0:
+                updates["render_duration_seconds"] = round(duration, 2)
         return updates
+
+    def render_duration_seconds(self, ask_id: str) -> float | None:
+        """Read AI_Proxy's worker duration from a verified, ready answer."""
+        paths = self.app.ai_proxy_service.ai_proxy_path_service
+        answer = paths.jobs.ready_answer(ask_id)
+        if not answer:
+            duration = (paths.jobs.repository.get(ask_id) or {}).get("render_duration_seconds")
+            return duration if isinstance(duration, (int, float)) and not isinstance(duration, bool) else None
+        try:
+            outcome = json.loads((answer / "proxy_result.json").read_text(encoding="utf-8"))
+            duration = float(outcome.get("duration_seconds"))
+            return duration if math.isfinite(duration) and duration >= 0 else None
+        except (OSError, TypeError, ValueError):
+            return None
 
     def collect(self, ask_id: str, owner: dict[str, Any], output: Path) -> tuple[str, str]:
         paths = self.app.ai_proxy_service.ai_proxy_path_service
@@ -248,6 +267,9 @@ class ImageProductionService:
         if state == "COMPLETE":
             import hashlib
             try:
+                duration = self.render_duration_seconds(ask_id)
+                if duration is not None:
+                    paths.jobs.repository.update(ask_id, render_duration_seconds=duration)
                 self.place(output, result)
                 paths.jobs.finish(ask_id, applied_artifact={"path": str(output.resolve()),
                     "sha256": hashlib.sha256(result).hexdigest(), "image": True})

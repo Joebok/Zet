@@ -124,7 +124,11 @@ class NarrativeProxyService:
                     "candidate_id": job["candidate_id"], "attempt_id": job["id"]}
             if "slot" in job:
                 expected["image_production"]["slot"] = job["slot"]
-            return self.image_production.collect_bytes(job["id"], expected, allow_legacy_owner="slot" not in job)
+            state, result = self.image_production.collect_bytes(
+                job["id"], expected, allow_legacy_owner="slot" not in job)
+            if state == "COMPLETE":
+                job["proxy_duration_seconds"] = self.image_production.render_duration_seconds(job["id"])
+            return state, result
         if job.get("codex_attempt"):
             legacy = self.app.narrative_scene_service.repository.folder(story, scene, target) / "text-jobs" / job["id"] / (job["codex_attempt"] + ".json")
             imported = json.loads(legacy.read_text(encoding="utf-8")) if legacy.is_file() else {}

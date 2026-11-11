@@ -1,4 +1,4 @@
-import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261110-settings-actions";
+import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261110-deselect-action";
 import {renderProposalComparison} from "./interview_proposals.js";
 
 const $ = id => document.getElementById(id);
@@ -296,7 +296,7 @@ function boardModel(current) {
     slot.renderActive = Boolean(active);
     const otherLocked = locked && locked !== item ? "Unlock the current image first." : "";
     const ready = active || (!item.image ? "Wait for a completed image." : "");
-    action("select", ready || otherLocked || (selected ? "Already selected." : ""));
+    if (!item.locked) action(selected ? "unselect" : "select", selected ? active || otherLocked : ready || otherLocked);
     action(item.locked ? "unlock" : "lock", ready || otherLocked);
     if (item.image && item.render_mode === "draft") action("upscale", active || (item.locked ? "Unlock this image first." : ""));
     if (item.status === "FAILED") action("retry", item.render_request ? "" : "The original render request is unavailable.");

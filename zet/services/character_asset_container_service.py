@@ -17,7 +17,12 @@ _LUNA_REVIEW_ACTIVE_LOCK = threading.Lock()
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.local_image_pipeline_policy import local_image_pipeline_config
 from zet.services.workflow_storage import file_lock
-from zet.services.image_candidate_board_service import select as select_candidate, lock as lock_candidate, unlock as unlock_candidate
+from zet.services.image_candidate_board_service import (
+    lock as lock_candidate,
+    select as select_candidate,
+    unselect as unselect_candidate,
+    unlock as unlock_candidate,
+)
 from zet.services.image_candidate_board_service import allocate as allocate_candidates, cleanup, remove, retry_request
 from zet.services.image_candidate_board_service import record_render_start, record_render_completion
 from zet.services.image_production_service import ImageProductionService
@@ -705,7 +710,7 @@ class CharacterAssetContainerService:
                     or any(candidate.get(key) != item for key, item in updates.items())):
                 candidate.update(updates)
                 if candidate.get("status") == "COMPLETE":
-                    record_render_completion(candidate)
+                    record_render_completion(candidate, duration_seconds=updates.get("render_duration_seconds"))
                     if candidate.get("image_path") != previous_image_path and board.get("luna_review", {}).get("status") in {"COMPLETE", "RUNNING"}:
                         board["luna_review"]["status"] = "OBSOLETE"
                         board["luna_review"]["active_id"] = ""
@@ -1030,6 +1035,11 @@ class CharacterAssetContainerService:
                 select_candidate(board, candidate_id)
             except ValueError as exc:
                 raise CharacterAssetContainerError(str(exc)) from exc
+        elif action == "unselect":
+            try:
+                unselect_candidate(board, candidate_id)
+            except ValueError as exc:
+                raise CharacterAssetContainerError(str(exc)) from exc
         elif action == "lock":
             if not candidate.get("image_path") or not Path(candidate["image_path"]).is_file():
                 raise CharacterAssetContainerError("The candidate image is unavailable.")
@@ -1070,7 +1080,7 @@ class CharacterAssetContainerService:
             self._unbind_board(previous, value, view, expected_revision)
             return self.detail(character, phase, pipeline, costume)
         else:
-            raise CharacterAssetContainerError("Choose select, lock, or unlock.")
+            raise CharacterAssetContainerError("Choose select, unselect, lock, or unlock.")
         board["revision"] += 1
         return self.save(character, phase, pipeline, costume, value,
                          expected_revision=expected_revision)

@@ -486,7 +486,7 @@ class MinorCharacterService(QuickCharacterWizardService):
                     item["completed_upscale_request"] = item.pop("upscale_request")
                     item["render_mode"] = "final"
                 updates["image"] = True
-                board_policy.record_render_completion(item)
+                board_policy.record_render_completion(item, duration_seconds=updates.get("render_duration_seconds"))
                 self._obsolete_review(board)
             elif updates["status"] == "FAILED":
                 self._failed(item, updates["error"])
@@ -548,6 +548,8 @@ class MinorCharacterService(QuickCharacterWizardService):
                     raise ValueError("Choose a completed candidate.")
             if action == "select":
                 board_policy.select(board, cid)
+            elif action == "unselect":
+                board_policy.unselect(board, cid)
             elif action in {"lock", "unlock"}:
                 if action == "lock":
                     if view == "STYLE" and not item["locked"]:

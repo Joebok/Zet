@@ -5,7 +5,7 @@ const qualities = ['draft', 'final'];
 let nextBoardId = 0;
 const actionOrder = ['select', 'unselect', 'lock', 'unlock', 'retry', 'upscale', 'regen-draft', 'regen-final', 'download', 'clear'];
 const glyphs = {'regen-draft':'regenerate', 'regen-final':'regenerate'};
-const slotLabels = {select:'Select', lock:'Lock', unlock:'Unlock', retry:'Retry', upscale:'Upscale Draft', clear:'Clear slot'};
+const slotLabels = {select:'Select', unselect:'Deselect', lock:'Lock', unlock:'Unlock', retry:'Retry', upscale:'Upscale Draft', clear:'Clear slot'};
 const bulkLabels = {'delete-drafts':'Delete Drafts', 'delete-non-selected':'Delete Non-Selected'};
 const selectedKey = 'selected';
 
@@ -262,7 +262,8 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
     const status = String(candidate.status || '').toLowerCase();
     return [`<span class="narrative-render-mode-pill ${quality.toLowerCase()}">${quality}</span>`,
       status !== 'complete' ? escape(status) : '',
-      Number.isInteger(candidate.elapsedSeconds) ? `${candidate.elapsedSeconds}s` : '',
+      typeof candidate.elapsedSeconds === 'number' && Number.isFinite(candidate.elapsedSeconds)
+        ? `${Number.isInteger(candidate.elapsedSeconds) ? candidate.elapsedSeconds : candidate.elapsedSeconds.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')}s` : '',
       candidate.id === model.selectedId ? 'Selected' : '',
       candidate.locked ? `<span class="zcb-lock" title="Locked">${window.ZetImageCardUI.iconMarkup('lock')}<span class="zcb-visually-hidden">Locked</span></span>` : '',
       rank ? `Luna ${model.lunaReview.status === 'OBSOLETE' ? 'previous ' : ''}#${escape(rank)}` : '',

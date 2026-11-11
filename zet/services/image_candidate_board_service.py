@@ -1,6 +1,7 @@
 """Mode-independent, eight-position working image board rules."""
 
 from datetime import datetime, timezone
+import math
 
 SLOT_COUNT = 8
 
@@ -11,8 +12,17 @@ def record_render_start(candidate, started_at=None):
     candidate.pop("render_duration_seconds", None)
 
 
-def record_render_completion(candidate, completed_at=None):
-    """Persist whole elapsed seconds when a candidate render completes."""
+def record_render_completion(candidate, completed_at=None, duration_seconds=None):
+    """Persist worker duration when available, otherwise local elapsed seconds."""
+    try:
+        if duration_seconds is not None:
+            duration = float(duration_seconds)
+            if math.isfinite(duration) and duration >= 0:
+                candidate["render_duration_seconds"] = round(duration, 2)
+                candidate.pop("render_started_at", None)
+                return
+    except (TypeError, ValueError, OverflowError):
+        pass
     started_at = candidate.get("render_started_at")
     if not started_at:
         return
@@ -23,7 +33,7 @@ def record_render_completion(candidate, completed_at=None):
             started = started.replace(tzinfo=timezone.utc)
         if completed.tzinfo is None:
             completed = completed.replace(tzinfo=timezone.utc)
-        candidate["render_duration_seconds"] = max(0, int((completed - started).total_seconds()))
+        candidate["render_duration_seconds"] = round(max(0, (completed - started).total_seconds()), 2)
         candidate.pop("render_started_at", None)
     except (TypeError, ValueError):
         return
@@ -65,6 +75,16 @@ def select(record, candidate_id):
     if locked_id and locked_id != candidate_id:
         raise ValueError("Unlock the current image before selecting another candidate.")
     record["selected_id"] = candidate_id
+    return candidate
+
+
+def unselect(record, candidate_id):
+    candidate = validate_membership(record["slots"], record["candidates"], candidate_id)
+    if candidate.get("locked"):
+        raise ValueError("Unlock the current image before deselecting it.")
+    if record.get("selected_id") != candidate_id:
+        raise ValueError("Only the selected image can be deselected.")
+    record["selected_id"] = None
     return candidate
 
 

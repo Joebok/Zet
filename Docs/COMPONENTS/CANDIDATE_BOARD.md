@@ -74,6 +74,8 @@ path as the **Review** eye glyph.
   dialog. Distinguish **Retry** of a failed request, **Regen Draft/Final** with
   current inputs, and **Upscale Draft** using the completed Draft. Preserve
   policy-specific reasons when actions are disabled. Omit unsupported actions.
+  Character and Minor Character boards show **Deselect** for the selected,
+  unlocked image. A locked image offers **Unlock** and cannot be deselected.
 - Keep prompt, ordered inputs, and long assessments in review. Card feedback
   names the action and remains near the initiating control. Use an accessible
   name and hover/focus label for glyphs, a visible keyboard focus indicator, and

@@ -491,7 +491,7 @@ class NarrativeGenerationService:
                                 finish=(lambda contents: self.assembly.finish(story, scene, target, snapshot, contents))
                                 if snapshot else None)
                             candidate["image"] = relative
-                            record_render_completion(candidate)
+                            record_render_completion(candidate, duration_seconds=job.get("proxy_duration_seconds"))
                             self._invalidate_luna_for_harvest(record)
                     else:
                         value = json.loads(result.decode("utf-8"))

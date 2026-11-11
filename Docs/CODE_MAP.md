@@ -20,7 +20,10 @@ scope changes. The shared Candidate Board component and stylesheet own cards, re
 `NarrativeGenerationService`.
 `candidate_board.js` also exports `mountCandidateBoard` for workflow migrations.
 `candidate_board_component.js` and `candidate_board.css` own the reusable controls,
-grid, and review modal. Subscribers supply action handlers and pass accepted
+grid, review modal, and duration display. `image_candidate_board_service.py`
+records worker duration when available and falls back to local elapsed time;
+`ImageProductionService` captures AI_Proxy duration for active board workflows.
+Subscribers supply action handlers and pass accepted
 polling results through `update(model)`. The board also owns the shared bulk
 delete controls and confirmation presentation. Workflow services validate and
 commit their previews. [ImageProductionService](../zet/services/image_production_service.py)
