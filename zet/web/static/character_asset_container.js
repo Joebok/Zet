@@ -290,6 +290,7 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
   }
 
   function characterBoardModel(board) {
+    const dressing = state.pipeline === "costume-dressing";
     const slots=board.slots.map((id,index)=>{
       if(!id)return {key:String(index+1)};
       const item=board.candidates[id];
