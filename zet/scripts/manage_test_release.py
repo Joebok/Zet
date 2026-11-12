@@ -100,16 +100,14 @@ def deploy() -> None:
     if (config.runtime_role != "local" or Path(config.base_library_path).resolve() != LIBRARY
             or Path(config.base_ai_queue_path).resolve() != Path(r"D:\Zet\Zet_Test\AI_Queue")):
         raise ValueError("Test config paths differ from the provisioned Test library and queue.")
-    try:
+    if (STATE / "active-release.json").is_file():
         previous, previous_release = read_active()
         with urlopen(f"http://{HOST}:{PORT}/api/health", timeout=3) as response:
             previous_health = json.load(response)
         if (previous_health.get("revision") != previous["revision"]
                 or previous_health.get("instance") != "local:" + str((previous_release / "config.runtime.toml").resolve())):
             raise ValueError("Port 8082 is not running the recorded Test release; no process was stopped.")
-    except FileNotFoundError:
-        previous = previous_release = previous_health = None
-    except OSError:
+    else:
         previous = previous_release = previous_health = None
     STATE.mkdir(parents=True, exist_ok=True)
     request_id = uuid4().hex
@@ -149,8 +147,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("Deploy", "Start", "Stop"), nargs="?", default="Deploy")
     action = parser.parse_args().action
+    print(f"Test release manager action: {action} ({Path(__file__).resolve()})", flush=True)
     try:
         if action == "Deploy":
+            deploy()
+        elif action == "Start" and not (STATE / "active-release.json").is_file():
+            print("No Test release exists yet. Deploying merged origin/main.", flush=True)
             deploy()
         else:
             active, release = read_active()
