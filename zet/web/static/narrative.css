@@ -120,7 +120,18 @@ button.candidate-regen-final { color:var(--success); border-color:var(--success)
 .candidate-review .local-pipeline-review-info { min-height:0; }
 .candidate-review .local-pipeline-review-info.character-review-info { display:block; overflow:auto; }
 .candidate-review .candidate-review-panel pre { white-space:pre-wrap; overflow-wrap:anywhere; }
-.character-container-output img { cursor:pointer; }
+#character-container-outputs {
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(min(220px,100%),1fr));
+  gap:.75rem;
+}
+#character-container-outputs .character-container-output img {
+  display:block;
+  width:100%;
+  height:160px;
+  object-fit:contain;
+  cursor:pointer;
+}
 .candidate-review .local-pipeline-review-info { grid-column:2; }
 .candidate-review-panel { overflow:auto; }
 .candidate-review-panel .local-pipeline-review-actions { display:flex; gap:4px; flex-wrap:wrap; }
