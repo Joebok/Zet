@@ -15,6 +15,7 @@ from zet.models.character_onboarding import (
     CharacterOnboardingStatus,
 )
 from zet.services.path_service import PathService
+from zet.services.species_service import SpeciesCatalog, SpeciesError, set_species, species_value
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_PATH = PROJECT_ROOT / "Scripts"
@@ -52,6 +53,7 @@ class CharacterOnboardingService:
         """Create the onboarding service for a project root."""
         self.path_service = path_service
         self.project_root = project_root
+        self.species = SpeciesCatalog(project_root, path_service.config.base_library_path)
 
     def options_path(self) -> Path:
         """Return the onboarding dropdown options path."""
@@ -60,13 +62,19 @@ class CharacterOnboardingService:
     def options(self) -> CharacterOnboardingOptions:
         """Load data-backed onboarding dropdown options."""
         path = self.options_path()
-        if not path.exists():
-            return CharacterOnboardingOptions()
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        catalog = self.species.load()[0]["species"]
         return CharacterOnboardingOptions(
-            species_ancestry=list(data.get("species_ancestry") or []),
+            species_ancestry=sorted((entry["label"] for entry in catalog.values()), key=str.casefold),
             gender_presentation=list(data.get("gender_presentation") or []),
         )
+
+    def _species_label(self, template):
+        value = species_value(template.read_text(encoding="utf-8"))
+        try:
+            return self.species.resolve(value)[1]["label"]
+        except SpeciesError:
+            return value
 
     def status(self, character: str, phase: str) -> CharacterOnboardingStatus:
         """Return onboarding status for one character phase."""
@@ -127,7 +135,7 @@ class CharacterOnboardingService:
             if template.exists():
                 return {
                     "character": extract_template_field(template, ["Character Name"]) or character,
-                    "species_ancestry": extract_template_field(template, ["Species / Ancestry", "Species", "Ancestry"]),
+                    "species_ancestry": self._species_label(template),
                     "gender_presentation": extract_template_field(template, ["Gender Presentation", "Gender"]),
                     "canonical_art_style": extract_template_field(template, ["Canonical Art Style"]),
                     "standing_barefoot_height": extract_template_field(template, ["Standing Barefoot Height"]),
@@ -160,13 +168,14 @@ class CharacterOnboardingService:
         phase = self._clean_folder_name(payload.get("phase"), "Phase")
         if not character or not phase:
             raise CharacterOnboardingError("Character and phase are required.")
+        markdown = self._render_template(payload, character, phase)
         phase_path = self.path_service.character_path(character, phase)
         phase_path.mkdir(parents=True, exist_ok=True)
         self._ensure_phase_scaffold(character, phase, payload.get("source_phase") or "")
         template_path = self.path_service.character_template_path(character, phase)
         from zet.services.image_usage_service import usage_mutation
         with usage_mutation(self.path_service, template_path):
-            template_path.write_text(self._render_template(payload, character, phase), encoding="utf-8")
+            template_path.write_text(markdown, encoding="utf-8")
         return CharacterOnboardingDraft(character, phase, str(template_path), self.status(character, phase))
 
     def upload_template(self, character: str, phase: str, contents: str, create_only: bool = False) -> CharacterOnboardingStatus:
@@ -220,7 +229,9 @@ class CharacterOnboardingService:
         if not template_path.exists():
             return [f"Template file not found: {template_path}"]
         errors: list[str] = []
-        for label in ["Character Name", "Character Phase", "Species / Ancestry", "Gender Presentation"]:
+        if self._looks_placeholder(species_value(template_path.read_text(encoding="utf-8"))):
+            errors.append("Species must be filled in.")
+        for label in ["Character Name", "Character Phase", "Gender Presentation"]:
             value = extract_template_field(template_path, [label])
             if not value or self._looks_placeholder(value):
                 errors.append(f"{label} must be filled in.")
@@ -332,7 +343,7 @@ class CharacterOnboardingService:
         """Read top-level onboarding metadata from a character template."""
         return {
             "character_name": extract_template_field(template_path, ["Character Name"]),
-            "species_ancestry": extract_template_field(template_path, ["Species / Ancestry", "Species", "Ancestry"]),
+            "species_ancestry": self._species_label(template_path),
             "gender_presentation": extract_template_field(template_path, ["Gender Presentation", "Gender"]),
             "canonical_art_style": extract_template_field(template_path, ["Canonical Art Style"]),
             "standing_barefoot_height": extract_template_field(template_path, ["Standing Barefoot Height"]),
@@ -449,10 +460,14 @@ class CharacterOnboardingService:
         if not shared_path.exists():
             raise CharacterOnboardingError(f"Shared character template not found: {shared_path}")
         text = shared_path.read_text(encoding="utf-8")
+        try:
+            sid, _, _ = self.species.resolve(str(payload.get("species_ancestry") or ""))
+        except SpeciesError as exc:
+            raise CharacterOnboardingError(str(exc)) from exc
+        text = set_species(text, sid)
         replacements = {
             "Character Name": character,
             "Character Phase": phase,
-            "Species / Ancestry": str(payload.get("species_ancestry") or "").strip(),
             "Gender Presentation": str(payload.get("gender_presentation") or "").strip(),
             "Canonical Art Style": str(payload.get("canonical_art_style") or "").strip(),
             "Standing Barefoot Height": str(payload.get("standing_barefoot_height") or "").strip() or "optional",

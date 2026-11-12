@@ -8,6 +8,7 @@ from contextvars import ContextVar
 from functools import wraps
 
 from Scripts.Compile_Character_Template import TemplateCompileError
+from zet.services.species_service import SpeciesCatalog, SpeciesError, species_value
 from Scripts.Library_Paths import character_root, resolve_library_path
 from zet.services.prompt_template_service import PromptTemplateService
 from zet.services.view_service import UnknownViewError, ViewService
@@ -236,10 +237,6 @@ def _race_key(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
 
 
-def extract_character_race(template_path: Path) -> str:
-    return extract_template_field(template_path, ["Character Race", "Race", "Species / Ancestry", "Species", "Ancestry"])
-
-
 def character_gender(template_path: Path) -> str:
     value = extract_template_field(template_path, ["Character Gender", "Gender Presentation", "Gender"])
     key = _race_key(value)
@@ -269,7 +266,6 @@ def template_metadata(template_path: Path) -> dict[str, str]:
 def metadata_source_map(project_root: Path, template_path: Path, view_token: str, task: str, view_role: str) -> dict[str, dict]:
     view_pointer = f"/views/{view_token}/{view_role}_instructions/{task}"
     view_config_path = project_root / "Config" / "Prompt_View_Text.json"
-    race_config_path = project_root / "Config" / "Race_Render_Rules.json"
     return {
         "CHARACTER_NAME": {
             "source_kind": "runtime_generated",
@@ -317,24 +313,6 @@ def metadata_source_map(project_root: Path, template_path: Path, view_token: str
             "metadata_key": "CHARACTER_GENDER",
             "editable": True,
         },
-        "CHARACTER_RACE": {
-            "source_kind": "config_rule",
-            "source_path": str(race_config_path),
-            "source_label": "Race label",
-            "editable": True,
-        },
-        "RACE_BODY_REFERENCE_POSITIVE": {
-            "source_kind": "config_rule",
-            "source_path": str(race_config_path),
-            "source_label": "Race body-reference positive rules",
-            "editable": True,
-        },
-        "RACE_BODY_REFERENCE_NEGATIVE": {
-            "source_kind": "config_rule",
-            "source_path": str(race_config_path),
-            "source_label": "Race body-reference negative rules",
-            "editable": True,
-        },
     }
 
 
@@ -346,51 +324,32 @@ def _format_rule_lines(values: object) -> str:
     return ""
 
 
-def load_race_render_rules(project_root: Path, template_path: Path, view_token: str = "") -> dict[str, str]:
-    data = load_json(project_root / "Config" / "Race_Render_Rules.json")
-    races = data.get("races", {})
-    if not isinstance(races, dict) or not races:
-        raise TemplateCompileError("MISSING_CONFIG", "Race_Render_Rules.json must define at least one race.")
+def body_reference_species(project_root, universe_root, template_path, view_token):
+    from zet.services.template_source_service import read_template_text
 
-    raw_race = extract_character_race(template_path)
-    default_race = str(data.get("default_race", "")).strip()
-    requested_key = _race_key(raw_race or default_race)
-    alias_map: dict[str, str] = {}
-
-    for canonical, config in races.items():
-        canonical_key = _race_key(canonical)
-        alias_map[canonical_key] = canonical
-        if isinstance(config, dict):
-            label = str(config.get("label", "")).strip()
-            if label:
-                alias_map[_race_key(label)] = canonical
-            for alias in config.get("aliases", []):
-                alias_map[_race_key(str(alias))] = canonical
-
-    canonical = alias_map.get(requested_key)
-    if not canonical:
-        source = raw_race or default_race or "(missing)"
-        raise TemplateCompileError("UNKNOWN_RACE", f"Unknown character race/species for render rules: {source}")
-
-    config = races.get(canonical, {})
-    body_reference = config.get("body_reference", {}) if isinstance(config, dict) else {}
-    if not isinstance(body_reference, dict):
-        body_reference = {}
-    view_instructions = body_reference.get("view_instructions", {})
-    if not isinstance(view_instructions, dict):
-        view_instructions = {}
-
-    positive_rules = _format_rule_lines(body_reference.get("positive", []))
-    view_rules = _format_rule_lines(view_instructions.get(view_token, []))
-    if view_rules:
-        positive_rules = "\n".join(value for value in (positive_rules, view_rules) if value)
-
-    label = str(config.get("label", canonical)).strip() if isinstance(config, dict) else canonical
-    return {
-        "CHARACTER_RACE": label,
-        "RACE_BODY_REFERENCE_POSITIVE": positive_rules,
-        "RACE_BODY_REFERENCE_NEGATIVE": _format_rule_lines(body_reference.get("negative", [])),
+    try:
+        sid, entry, source = SpeciesCatalog(project_root, universe_root).resolve(
+            species_value(read_template_text(template_path)), default=True)
+    except SpeciesError as exc:
+        code = "UNKNOWN_SPECIES" if exc.field == "species" else "INVALID_CONFIG"
+        raise TemplateCompileError(code, str(exc)) from exc
+    except (OSError, ValueError) as exc:
+        raise TemplateCompileError("INVALID_CONFIG", f"Cannot read Species catalog: {exc}") from exc
+    rules = entry["body_reference"]
+    view_rules = rules["view_instructions"].get(view_token, [])
+    fields = {
+        "CHARACTER_RACE": (entry["label"].lower(), "label", "Species name"),
+        "RACE_BODY_REFERENCE_POSITIVE": (_format_rule_lines(rules["positive"] + view_rules),
+                                         "body_reference", "Species Body Reference guidance"),
+        "RACE_BODY_REFERENCE_NEGATIVE": (_format_rule_lines(rules["negative"]),
+                                         "body_reference/negative", "Species traits to avoid"),
     }
+    values = {key: item[0] for key, item in fields.items()}
+    sources = {key: {"source_kind": "config_rule", "source_path": str(source),
+                     "source_label": label, "json_pointer": f"/species/{sid}/{pointer}",
+                     "editable": False}
+               for key, (_, pointer, label) in fields.items()}
+    return values, sources
 
 
 def technical_modesty_variant(character_phase: str, gender_presentation: str) -> str:

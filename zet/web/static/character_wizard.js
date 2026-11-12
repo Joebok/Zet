@@ -4,6 +4,7 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted}) {
   const command = (name) => find(`[data-command="${name}"]`);
   const intake = find("[data-intake]");
   const markdown = find("[data-markdown]");
+  const species = find("[data-wizard-species]");
   const status = find("[data-status]");
   const resume = find("[data-resume]");
   const endpoint = "/api/character-wizard";
@@ -38,7 +39,7 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted}) {
 
   function showDraftActions() {
     const changed = session && markdown.value !== session.markdown;
-    command("save").disabled = !changed;
+    command("save").disabled = !changed && !session?.errors.length;
     command("revise").disabled = changed;
     command("accept").disabled = changed || Boolean(session?.errors.length);
   }
@@ -91,6 +92,9 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted}) {
     }
     find("[data-review]").hidden = !draft;
     markdown.value = value.markdown;
+    species.replaceChildren(new Option("Choose Species", ""), ...(value.species || [])
+      .sort((a, b) => a.label.localeCompare(b.label)).map(item => new Option(item.label, item.id)));
+    species.value = value.species_id || "";
     find("[data-direction]").value = "";
     find("[data-errors]").textContent = value.errors.join("\n");
     find("[data-diff-panel]").hidden = value.mode !== "edit";
@@ -107,6 +111,21 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted}) {
     showDraftActions();
     if (running) poll(value.id, generation);
   }
+
+  const speciesField = /^(Species|Species \/ Ancestry|Character Race|Race|Ancestry):[^\r\n]*/gim;
+  species.addEventListener("change", () => {
+    const line = "Species: `" + species.value + "`";
+    let written = false;
+    const end = markdown.value.search(/^\s*<!--\s*ZET:BEGIN\b/im);
+    const header = end < 0 ? markdown.value : markdown.value.slice(0, end);
+    const updated = header.replace(speciesField, () => {
+      if (written) return "";
+      written = true;
+      return line;
+    });
+    markdown.value = (written ? updated : line + "\n" + updated) + markdown.value.slice(header.length);
+    showDraftActions();
+  });
 
   function poll(id, token) {
     clearTimeout(timer);

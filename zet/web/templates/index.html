@@ -199,6 +199,28 @@
         <label>Environmental style (environments and other non-character images)<textarea id="universe-settings-environment-style" name="environmental_art_style" rows="5"></textarea></label>
         <p>Story lettering overrides take precedence. Changes apply when finishing an image; existing finished images stay unchanged.</p><div class="button-row compact"><button type="button" id="open-universe-scene-text-style">Scene text style</button><button class="primary-action" type="submit">Save Settings</button><button id="universe-settings-select" type="button">Select Universe</button></div>
       </form>
+      <section id="species-settings" class="control-panel">
+        <h2>Species</h2>
+        <p data-species-status role="status"></p>
+        <div class="button-row compact">
+          <label>Defined species<select data-species-list></select></label>
+          <button type="button" data-species-edit disabled>Edit</button>
+          <button type="button" data-species-add disabled>Add Species</button>
+          <button type="button" data-species-reload>Reload Species</button>
+        </div>
+        <form data-species-form hidden>
+          <label>Species ID<input name="id" required maxlength="80"><span data-species-error="id"></span></label>
+          <label>Display name<input name="label" required maxlength="80"><span data-species-error="label"></span></label>
+          <label>Alternate names (one per line)<textarea name="aliases" rows="2"></textarea><span data-species-error="aliases"></span></label>
+          <label>Body Reference guidance (one instruction per line)<textarea name="positive" rows="3" required></textarea><span data-species-error="positive"></span></label>
+          <label>Traits to avoid (one per line)<textarea name="negative" rows="2"></textarea><span data-species-error="negative"></span></label>
+          <details><summary>View-specific guidance</summary><div data-species-views></div><p data-species-error="view_instructions"></p></details>
+          <div class="button-row compact">
+            <button class="primary-action" type="submit">Save Species</button>
+            <button type="button" data-species-cancel>Cancel</button>
+          </div>
+        </form>
+      </section>
     </section>
     <section id="onboarding-page" class="page">
       <div class="page-title-row">
@@ -247,6 +269,7 @@
             <div data-history></div>
             <div data-questions></div>
             <section data-review hidden>
+              <label>Species<select data-wizard-species></select></label>
               <label>Character.md<textarea data-markdown rows="15"></textarea></label>
               <pre data-errors></pre>
               <details data-diff-panel open><summary>Review changes</summary><pre data-diff class="character-wizard-diff"></pre></details>
@@ -278,8 +301,8 @@
             <input id="onboarding-phase" type="text">
           </label>
           <label>
-            Species / Ancestry
-            <select id="onboarding-species"></select>
+            Species
+            <select id="onboarding-species" required></select>
           </label>
           <label>
             Gender Presentation
@@ -2297,8 +2320,9 @@ Add prompt language here.
   <script src="/static/ai_queue.js?v=20261017"></script>
   <script src="/static/template_editor.js?v=20261026"></script>
   <script src="/static/character_hub.js?v=20261107-character-overview"></script>
-  <script src="/static/character_wizard.js?v=1"></script>
-  <script src="/static/zet.js?v=20261112-queued-cancel"></script>
+  <script src="/static/species_settings.js?v=1"></script>
+  <script src="/static/character_wizard.js?v=2"></script>
+  <script src="/static/zet.js?v=20261112-species"></script>
   <script type="module" src="/static/minor_characters.js?v=20261112-queued-cancel"></script>
   <script src="/static/local_template_improvement.js?v=20261102-batch-pages"></script>
   <script src="/static/local_asset_pipeline.js?v=20261103-rerun-rejected"></script>

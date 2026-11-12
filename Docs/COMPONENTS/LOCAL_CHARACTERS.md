@@ -1034,6 +1034,11 @@ Interview responses use ZET marker IDs and editable metadata labels from the
 session. An unambiguous template heading or section label also resolves to its
 marker ID. Duplicate edits to the same section are rejected.
 
+The Wizard proposes a Species ID from the universe's catalog and can ask about
+ambiguous evidence. Choose or correct the species in draft review. Both draft
+review and acceptance validate the value. Manual Setup reads the same catalog.
+Manage definitions in Universe Settings under Species.
+
 Approval publishes a staged character and first phase, or saves a reviewed edit
 against the captured master revision. Concurrent master edits require a fresh
 interview. Wizard images serve as interview evidence and have no role in render

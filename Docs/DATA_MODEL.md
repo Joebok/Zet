@@ -139,6 +139,16 @@ inputs. Legacy targets require the dry-run/backup conversion command
 | Producer-local queue state | [AIQueueLifecycleService](../zet/services/ai_queue_lifecycle_service.py), [StoragePathService](../zet/services/storage_path_service.py) | `[Storage].Root/AI_Queue/<queue-hash>/<producer>/`; shared queue transport remains at `BaseAIQueuePath`. Routes, receipts, requests, continuations and model cache are local state, not authored data. See [QUEUES](COMPONENTS/QUEUES.md) and [AI jobs](COMPONENTS/AI_JOBS.md). |
 | Machine-local task workflow and migration reports | [runtime_state_service.py](../zet/services/runtime_state_service.py), [LibraryReferenceMigrationService](../zet/services/library_reference_migration_service.py) | Configured relative children `TaskWorkflow` and `LibraryReferenceUpdates`; explicit Runtime/GitHub state overrides retain precedence. Loading configuration creates no directories. |
 
+## Species catalog
+
+Each universe reads the [bundled Species definitions](../Config/Species_Render_Rules.json)
+until its first edit. A revision-checked atomic save writes a complete catalog to
+the universe's `_state/Species.json`. A definition has an immutable ID, display
+name, and required Body Reference guidance. Alternate names, traits to avoid,
+and per-view instructions are optional. Renaming a species adds its former
+display name as an alternate name. New Character.md files store the stable ID in
+the Species field. See [ADR 0053](DECISIONS/0053-universe-species-catalog.md).
+
 ## Character template revisions
 
 Production template publication receipts use version 1 in

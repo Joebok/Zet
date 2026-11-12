@@ -68,6 +68,14 @@ human acceptance limits belong to [Local Characters](LOCAL_CHARACTERS.md#indepen
 
 Prompt generation spans character templates, structured scenes, and independent Narrative prose. This document owns shared compilation and attachment mechanics; scene workflow details live in [SCENE_BUILDER](SCENE_BUILDER.md) and [NARRATIVE](NARRATIVE.md).
 
+## Species in Body Reference
+
+Body Reference resolves the Character.md Species field against the universe's
+[catalog](../DATA_MODEL.md#species-catalog). Its prompt and source map use the
+same catalog read. Legacy field labels and alternate names still resolve.
+An empty legacy field uses Human. An explicit unknown value requires correction
+before compilation. Prepared renders keep their captured prompt and inputs.
+
 ## Character compilation path
 
 Inputs are character/costume Markdown, job metadata/views/references, [Prompt_Task_Bundles.json](../../Config/Prompt_Task_Bundles.json), [Prompt_Templates](../../Config/Prompt_Templates/), and supporting section/view configuration.

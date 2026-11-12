@@ -29,7 +29,6 @@ from zet.services.pipeline_compiler_support import (
     background_treatment_source_map,
     character_gender,
     expected_output_for_job,
-    extract_character_race,
     extract_template_field,
     job_get,
     load_background_treatment,
@@ -37,7 +36,7 @@ from zet.services.pipeline_compiler_support import (
     load_body_reference_section_data,
     load_bundle,
     load_json,
-    load_race_render_rules,
+    body_reference_species,
     load_view_data,
     metadata_source_map,
     normalize_view,
@@ -240,6 +239,8 @@ def compile_body_reference_job(
         "view_token": view_token,
     }
     universe_style, universe_sources = universe_art_style(universe_root, job=job) if pipeline_mode == "local" else ("", {})
+    species_values, species_sources = body_reference_species(
+        project_root, universe_root, template_path, view_token)
     metadata_values = {
         "BODY_REFERENCE_INPUT_GUIDANCE": (
             "Use Image 1 only as an identity and proportion reference; create the requested target view rather than copying its camera angle, pose or framing. Additional template images govern only their stated reference details."
@@ -255,7 +256,7 @@ def compile_body_reference_job(
         "BACKGROUND_TREATMENT": load_background_treatment(project_root),
         **contract_values,
         **template_metadata(template_path),
-        **load_race_render_rules(project_root, template_path, view_token),
+        **species_values,
     }
     if universe_style:
         metadata_values["CANONICAL_ART_STYLE"] = universe_style
@@ -269,6 +270,7 @@ def compile_body_reference_job(
         metadata_values=metadata_values,
         metadata_sources={
             **metadata_source_map(project_root, template_path, view_token, task, "body"),
+            **species_sources,
             **background_treatment_source_map(project_root),
             **(universe_sources if universe_style else {}),
         },

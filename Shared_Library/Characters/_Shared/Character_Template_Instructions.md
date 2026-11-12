@@ -5,7 +5,7 @@ Use this manual when an existing character design and one or more approved image
 ## Rules for the whole file
 
 - Preserve every `ZET:BEGIN` and `ZET:END` marker exactly. Do not add, remove, rename, or reorder markers.
-- Preserve the metadata field names. Fill Character Name, Character Phase, Species / Ancestry, and Gender Presentation. Leave the style fallback blank unless the universe has no canonical style and the operator supplies a fallback.
+- Preserve the metadata field names. Fill Character Name, Character Phase, Species, and Gender Presentation. Leave the style fallback blank unless the universe has no canonical style and the operator supplies a fallback.
 - Use short, direct visual facts and imperatives. Prefer one observable fact per bullet.
 - Do not write biography, motivation, personality, scene action, atmosphere, or decorative narrative.
 - Separate observation from inference. If a fact is uncertain, state the uncertainty narrowly or leave an optional section empty; never invent a defining feature.

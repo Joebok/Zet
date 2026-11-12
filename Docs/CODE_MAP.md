@@ -504,6 +504,14 @@ for Character, Minor Character, Narrative, and Image Generation.
 workflow state. `/api/recent-renders/events` pushes snapshots to the dashboard
 shell. Board adapters retain their own image admission and placement rules.
 
+## Species catalog
+
+[SpeciesCatalog](../zet/services/species_service.py) owns seed loading,
+resolution, and revision-fenced universe saves. Character Wizard, Manual Setup,
+and the Body Reference compiler consume its definitions. The dashboard's
+[Species editor](../zet/web/static/species_settings.js) calls `/api/species`.
+See the [storage contract](DATA_MODEL.md#species-catalog).
+
 ## Character Wizard
 
 [CharacterWizardService](../zet/services/character_wizard_service.py) owns

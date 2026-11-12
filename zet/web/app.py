@@ -1404,6 +1404,29 @@ def _create_available_app(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    def species_catalog():
+        return _app(app.state.config_path).character_onboarding_service.species
+
+    @app.get("/api/species")
+    def get_species():
+        from zet.services.view_conditioning_service import VIEW_ORDER
+        try:
+            catalog, _, _ = species_catalog().load()
+            return {**catalog, "views": VIEW_ORDER}
+        except (OSError, ValueError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @app.put("/api/species")
+    def save_species(data: dict = Body(...)):
+        from zet.services.species_service import SpeciesConflict, SpeciesError
+        try:
+            return species_catalog().save(data.get("revision"), data.get("id"),
+                                          data.get("entry"), create=data.get("create"))
+        except SpeciesConflict as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except SpeciesError as exc:
+            raise HTTPException(400, {"field": exc.field, "message": str(exc)}) from exc
+
     def wizard_call(method, *args):
         try:
             wizard = _app(app.state.config_path).character_wizard_service

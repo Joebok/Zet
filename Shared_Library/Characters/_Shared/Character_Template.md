@@ -2,7 +2,7 @@
 
 Character Name: `[Character Name]`
 Character Phase: `[Adult / Youth / Variant / Costume Phase]`
-Species / Ancestry: `[Species]`
+Species: `[Species]`
 Gender Presentation: `[Optional, non-sensitive rendering descriptor]`
 Canonical Art Style: `[Optional fallback when the universe has no style; e.g. naturalistic fantasy illustration with restrained painterly treatment.]`
 Standing Barefoot Height: `[optional; e.g. 5 ft 8 in]`

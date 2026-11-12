@@ -2619,11 +2619,21 @@ async function prefillOnboarding(character, sourcePhase = "") {
   onboardingArtStyle.value = prefill.canonical_art_style || onboardingArtStyle.value;
 }
 
+async function refreshOnboardingSpecies() {
+  const catalog = await fetchJson("/api/species");
+  const current = onboardingSpecies.value;
+  const names = Object.values(catalog.species).map(entry => entry.label).sort((a, b) => a.localeCompare(b));
+  setSelectOptions(onboardingSpecies, ["", ...names]);
+  onboardingSpecies.options[0].textContent = "Choose Species";
+  setSelectValueCaseInsensitive(onboardingSpecies, current);
+}
+
 async function startNewPhase() {
   state.workspace = "character";
   state.onboardingMode = "new-phase";
   await activatePage("onboarding", { skipAutosave: true });
   characterSetupDetails.open = true;
+  await refreshOnboardingSpecies();
   onboardingCharacter.value = state.character || "";
   onboardingPhase.value = "";
   onboardingArtStyle.value = "";
@@ -2636,6 +2646,7 @@ async function startNewCharacter() {
   state.onboardingMode = "new-character";
   await activatePage("onboarding", { skipAutosave: true });
   characterSetupDetails.open = true;
+  await refreshOnboardingSpecies();
   onboardingCharacter.value = "";
   onboardingPhase.value = "Adult";
   onboardingArtStyle.value = "";
@@ -12127,6 +12138,8 @@ async function loadUniverseList() {
   if (!state.universes.length) list.textContent = "No universes yet.";
 }
 
+const loadSpeciesSettings = window.mountSpeciesSettings();
+
 async function loadUniverseSettings(universeId) {
   const response = await fetch(`/api/universes/${encodeURIComponent(universeId)}`);
   const payload = await response.json();
@@ -12143,6 +12156,7 @@ async function loadUniverseSettings(universeId) {
   document.querySelector("#universe-settings-title").textContent = `${universe.name} Settings`;
   document.querySelector("#universe-settings-select").hidden = universe.universe_id === state.universeId;
   setUniverseMessage("universe-settings-message", "", "");
+  await loadSpeciesSettings(universe.universe_id);
 }
 
 async function saveUniverseSettings() {

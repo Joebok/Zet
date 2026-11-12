@@ -1,5 +1,7 @@
 # Architectural decision records
 
+[0053 - Universe Species catalog](0053-universe-species-catalog.md) records shared species resolution and universe-owned edits.
+
 [0052 - Image Generation assets and candidate boards](0052-image-generation-assets.md) records library ownership, migration, Inventory publication, and reconstruction prompt review.
 
 [0048 - Character Asset Container workflow](0048-character-asset-container-workflow.md) records the shared mixed-quality board, manual production flow and legacy cutover boundary.

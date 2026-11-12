@@ -1,0 +1,209 @@
+{
+  "schema_version": 1,
+  "species": {
+    "human": {
+      "label": "Human",
+      "aliases": [],
+      "body_reference": {
+        "positive": [
+          "Human ears rendered as neutral mannequin geometry."
+        ],
+        "negative": [
+          "Fantasy-species features."
+        ]
+      }
+    },
+    "elf": {
+      "label": "Elf",
+      "aliases": [
+        "elven"
+      ],
+      "body_reference": {
+        "positive": [
+          "Long pointed elf ears rendered as neutral mannequin geometry."
+        ],
+        "negative": [
+          "Missing, hidden, rounded, or human ears."
+        ],
+        "view_instructions": {
+          "FRONT_LEFT_3_4": [
+            "The anatomical right ear is the far ear. Show at least its pointed tip projecting slightly beyond the far-side skull silhouette."
+          ],
+          "FRONT_RIGHT_3_4": [
+            "The anatomical left ear is the near ear. Show at least its pointed tip projecting slightly beyond the near-side skull silhouette."
+          ]
+        }
+      }
+    },
+    "high-elf": {
+      "label": "High Elf",
+      "aliases": [],
+      "body_reference": {
+        "positive": [
+          "Long pointed elf ears rendered as neutral mannequin geometry."
+        ],
+        "negative": [
+          "Missing, hidden, rounded, or human ears."
+        ],
+        "view_instructions": {
+          "FRONT_LEFT_3_4": [
+            "The anatomical right ear is the far ear. Show at least its pointed tip projecting slightly beyond the far-side skull silhouette."
+          ],
+          "FRONT_RIGHT_3_4": [
+            "The anatomical left ear is the near ear. Show at least its pointed tip projecting slightly beyond the near-side skull silhouette."
+          ]
+        }
+      }
+    },
+    "wood-elf": {
+      "label": "Wood Elf",
+      "aliases": [],
+      "body_reference": {
+        "positive": [
+          "Long pointed elf ears rendered as neutral mannequin geometry."
+        ],
+        "negative": [
+          "Missing, hidden, rounded, or human ears."
+        ],
+        "view_instructions": {
+          "FRONT_LEFT_3_4": [
+            "The anatomical right ear is the far ear. Show at least its pointed tip projecting slightly beyond the far-side skull silhouette."
+          ],
+          "FRONT_RIGHT_3_4": [
+            "The anatomical left ear is the near ear. Show at least its pointed tip projecting slightly beyond the near-side skull silhouette."
+          ]
+        }
+      }
+    },
+    "drow": {
+      "label": "Drow",
+      "aliases": [
+        "dark elf"
+      ],
+      "body_reference": {
+        "positive": [
+          "Long pointed elf ears rendered as neutral mannequin geometry."
+        ],
+        "negative": [
+          "Missing, hidden, rounded, or human ears."
+        ],
+        "view_instructions": {
+          "FRONT_LEFT_3_4": [
+            "The anatomical right ear is the far ear. Show at least its pointed tip projecting slightly beyond the far-side skull silhouette."
+          ],
+          "FRONT_RIGHT_3_4": [
+            "The anatomical left ear is the near ear. Show at least its pointed tip projecting slightly beyond the near-side skull silhouette."
+          ]
+        }
+      }
+    },
+    "dwarf": {
+      "label": "Dwarf",
+      "aliases": [],
+      "body_reference": {
+        "positive": [
+          "Use compact proportions with a broad torso and relatively short, sturdy limbs."
+        ],
+        "negative": [
+          "Avoid elongating the limbs or relying on facial hair to convey the silhouette."
+        ]
+      }
+    },
+    "gnome": {
+      "label": "Gnome",
+      "aliases": [],
+      "body_reference": {
+        "positive": [
+          "Use a small, light humanoid silhouette with slightly pointed ears in neutral mannequin geometry."
+        ],
+        "negative": [
+          "Avoid the very long ear tips of an elf."
+        ]
+      }
+    },
+    "halfling": {
+      "label": "Halfling",
+      "aliases": [],
+      "body_reference": {
+        "positive": [
+          "Use small humanoid proportions and softly rounded ears. Preserve the proportions of the character's stated phase."
+        ],
+        "negative": [
+          "Avoid childlike proportions for an adult and exaggerated fantasy ear shapes."
+        ]
+      }
+    },
+    "half-elf": {
+      "label": "Half-Elf",
+      "aliases": [],
+      "body_reference": {
+        "positive": [
+          "Use lightly tapered ears, with shorter tips than an elf's, in neutral mannequin geometry."
+        ],
+        "negative": [
+          "Avoid exaggerated ear length."
+        ]
+      }
+    },
+    "half-orc": {
+      "label": "Half-Orc",
+      "aliases": [],
+      "body_reference": {
+        "positive": [
+          "Show small projecting lower tusks as simplified geometry on the mannequin jaw."
+        ],
+        "negative": [
+          "Avoid exaggerated tusk length or a fully bestial skull."
+        ]
+      }
+    },
+    "orc": {
+      "label": "Orc",
+      "aliases": [],
+      "body_reference": {
+        "positive": [
+          "Use a broad jaw with clear upward-projecting lower tusks in neutral mannequin geometry."
+        ],
+        "negative": [
+          "Avoid a nonhumanoid muzzle."
+        ]
+      }
+    },
+    "tiefling": {
+      "label": "Tiefling",
+      "aliases": [],
+      "body_reference": {
+        "positive": [
+          "Retain the character's specified horns and tail as clean anatomical silhouettes, using neutral mannequin geometry for the head."
+        ],
+        "negative": [
+          "Avoid adding wings or extra appendages."
+        ]
+      }
+    },
+    "dragonborn": {
+      "label": "Dragonborn",
+      "aliases": [],
+      "body_reference": {
+        "positive": [
+          "Use a simplified draconic head with a projecting muzzle and angular jaw, retaining the character's specified crest geometry."
+        ],
+        "negative": [
+          "Avoid substituting a human head or inventing wings or a tail."
+        ]
+      }
+    },
+    "goliath": {
+      "label": "Goliath",
+      "aliases": [],
+      "body_reference": {
+        "positive": [
+          "Use long-limbed, broad-framed humanoid proportions where consistent with the character's measurements."
+        ],
+        "negative": [
+          "Avoid oversized head geometry or stone surface effects."
+        ]
+      }
+    }
+  }
+}

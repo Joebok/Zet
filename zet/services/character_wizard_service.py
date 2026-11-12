@@ -18,6 +18,7 @@ from zet.services.image_usage_service import usage_mutation
 from zet.services.llm_role_service import resolve_role_model
 from zet.services.local_template_revision_service import template_diff_rows
 from zet.services.source_editor_service import SourceEditorService
+from zet.services.species_service import SpeciesError, set_species, species_key, species_value
 from zet.services.template_manual_service import TemplateManualService
 from zet.services.template_validation_service import TemplateValidationService
 from zet.services.universe_style_service import universe_style
@@ -26,13 +27,13 @@ from zet.services.workflow_storage import file_lock
 
 ROLE = "character_wizard"
 FIXED_METADATA = ("Character Name", "Character Phase", "Canonical Art Style")
-METADATA = ("Species / Ancestry", "Gender Presentation", "Standing Barefoot Height",
+METADATA = ("Gender Presentation", "Standing Barefoot Height",
             "Eye Height", "Shoulder Width", "Body Depth")
 FORMATS = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp", "GIF": ".gif", "BMP": ".bmp"}
 SECTION_HEADING = re.compile(r"(?m)^#{1,6}[ \t]+(.+?)[ \t]*\s*\Z")
 
 
-def turn_schema(names):
+def turn_schema(names, species_ids):
     changes = {"type": "array", "items": {
         "type": "object",
         "properties": {"name": {"type": "string"}, "text": {"type": "string"}},
@@ -45,9 +46,10 @@ def turn_schema(names):
         "type": "object",
         "properties": {
             "questions": {"type": "array", "maxItems": 4, "items": {"type": "string"}},
+            "species_id": {"type": "string", "enum": ["", *species_ids]},
             "changes": changes,
         },
-        "required": ["questions", "changes"], "additionalProperties": False,
+        "required": ["questions", "species_id", "changes"], "additionalProperties": False,
     }
 
 
@@ -85,6 +87,7 @@ class CharacterWizardService:
         self.paths = app.path_service
         self.root = self.paths.state_path("CharacterWizard")
         self.onboarding = app.character_onboarding_service
+        self.species = self.onboarding.species
 
     def _folder(self, sid):
         if not re.fullmatch(r"[a-f0-9]{32}", sid):
@@ -164,7 +167,7 @@ class CharacterWizardService:
         else:
             if self._collision(character):
                 raise ValueError("This character name already exists.")
-            baseline = template
+            baseline = set_species(template, "")
             labels = {"Character Name": character, "Character Phase": phase,
                       "Canonical Art Style": "" if style else str(fields.get("fallback") or "").strip(),
                       **dict.fromkeys(METADATA, "")}
@@ -215,6 +218,11 @@ class CharacterWizardService:
             "id", "mode", "character", "phase", "model", "style", "status", "revision",
             "history", "questions", "markdown", "errors", "error")}
         public["images"] = [{key: item[key] for key in ("slot", "caption")} for item in session["images"]]
+        if session["status"] == "DRAFT":
+            catalog, names, _ = self.species.load()
+            public["species"] = [{"id": sid, "label": entry["label"]}
+                                 for sid, entry in catalog["species"].items()]
+            public["species_id"] = names.get(species_key(species_value(session["markdown"])), "")
         if session["mode"] == "edit" and session["markdown"]:
             public["diff"] = template_diff_rows(session["baseline"], session["markdown"])
         return public
@@ -236,6 +244,13 @@ class CharacterWizardService:
         session.update(status="RUNNING", error="", revision=uuid4().hex)
         self._save(session)
         return self.detail(session["id"])
+
+    def _review(self, session, markdown):
+        try:
+            sid, _, _ = self.species.resolve(species_value(markdown))
+        except SpeciesError as exc:
+            return markdown, [str(exc), *self._validate(session, markdown)]
+        return set_species(markdown, sid), self._validate(session, markdown)
 
     def _validate(self, session, markdown):
         baseline = session["baseline"]
@@ -266,6 +281,8 @@ class CharacterWizardService:
         context = {key: session[key] for key in ("mode", "notes", "history", "style", "section_metadata")}
         context["images"] = [{key: item[key] for key in ("slot", "caption")} for item in session["images"]]
         context["template"] = session["markdown"] or session["baseline"]
+        catalog = self.species.load()[0]["species"]
+        context["species"] = {sid: entry["label"] for sid, entry in catalog.items()}
         context["editable_metadata"] = [
             label for label in METADATA if metadata_line(label).search(context["template"])
         ]
@@ -274,6 +291,9 @@ class CharacterWizardService:
                   "leave those sections empty. For edits, change only what the operator requests. "
                   "Character Name, Character Phase, and Canonical Art Style are already set for this interview. "
                   "Use them as context and omit them from changes, even if the template instructions say to fill them. "
+                  "Return one listed species ID in species_id. If evidence is ambiguous, ask the operator. "
+                  "Use an empty species_id when asking or when leaving an edit's species unchanged. "
+                  "Do not include Species in changes. "
                   "Use only the listed editable metadata labels or the ZET marker IDs from section_metadata "
                   "for changes[].name. Supply complete replacement section bodies, keeping relevant view "
                   "controls inside them. Omit outer markers. Ask only focused questions about essential "
@@ -283,7 +303,7 @@ class CharacterWizardService:
                   + session["manual"] + "\n\nInterview input:\n" + json.dumps(context, ensure_ascii=False))
         return self.app.ai_proxy_service.ai_proxy_path_service.jobs.generate_json(
             session["model"], "You are Zet's Character Wizard. Return the requested structured interview result.",
-            prompt, turn_schema([*context["editable_metadata"], *session["section_metadata"]]),
+            prompt, turn_schema([*context["editable_metadata"], *session["section_metadata"]], catalog),
             paths, task_type=ROLE, role=ROLE)[0]
 
     def _apply_changes(self, session, changes):
@@ -328,7 +348,16 @@ class CharacterWizardService:
                     any(not isinstance(q, str) or not q.strip() for q in questions)):
                 raise ValueError("The model returned invalid interview questions.")
             markdown = session["markdown"] if questions else self._apply_changes(session, result["changes"])
-            errors = [] if questions else self._validate(session, markdown)
+            errors = []
+            if not questions:
+                species_id = result["species_id"]
+                if species_id:
+                    if not isinstance(species_id, str) or species_id not in self.species.load()[0]["species"]:
+                        errors.append("Choose a defined Species. The interview returned an invalid Species ID.")
+                    else:
+                        markdown = set_species(markdown, species_id)
+                markdown, diagnostics = self._review(session, markdown)
+                errors.extend(diagnostics)
             error = ""
         except Exception as exc:
             from zet.services.storage_health_service import storage_health
@@ -377,7 +406,8 @@ class CharacterWizardService:
                 markdown = str(data.get("markdown") or "").replace("\r\n", "\n").replace("\r", "\n")
                 if len(markdown) > 250000:
                     raise ValueError("Character.md must be at most 250,000 characters.")
-                session.update(markdown=markdown, errors=self._validate(session, markdown))
+                markdown, errors = self._review(session, markdown)
+                session.update(markdown=markdown, errors=errors)
             elif action == "accept" and status in {"DRAFT", "APPLYING"}:
                 self._accept(session)
             else:
@@ -387,9 +417,10 @@ class CharacterWizardService:
         return self.detail(sid)
 
     def _accept(self, session):
-        errors = self._validate(session, session["markdown"])
+        markdown, errors = self._review(session, session["markdown"])
         if errors:
             raise ValueError("\n".join(errors))
+        session["markdown"] = markdown
         target = self._target(session["character"], session["phase"])
         if session["mode"] == "create":
             self._publish_new(session, target)
