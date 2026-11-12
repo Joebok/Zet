@@ -25,7 +25,6 @@ from zet.services.local_image_ranking_service import rank_images_with_luna, supp
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.library_reference_service import read_library_json, write_library_json
-from zet.services.atomic_file_service import write_json_atomic
 from zet.services.local_image_pipeline_policy import (
     ACTIVE_RUN_STATUSES, clear_candidate_artifacts, decorate_local_pipeline_detail, pipeline_page_config,
     mutate_local_run_state, resume_cancelled_autogenerate_state, serialize_local_run_state,
@@ -149,7 +148,6 @@ class LocalBodyReferenceService:
         self.runs_root = self.library_root / "PipelineCandidates" / "Character-Pipeline"
         self.asset_store = LocalAssetStoreService(self.library_root)
         self._runner_lock = threading.Lock()
-        self._migrate_legacy_runs()
 
     def _active_key(self, run_id: str) -> str:
         return f"{self.library_root}::{run_id}"
@@ -165,68 +163,6 @@ class LocalBodyReferenceService:
         run_owner = str(run.get("universe_id") or ("Moonsea" if legacy else "")).strip()
         return bool(owner) and owner == configured and run_owner == owner
 
-    def _migrate_legacy_runs(self) -> None:
-        """Upgrade stored run and queued-job identifiers to Local Body-Reference."""
-        marker = self.runs_root / ".local_body_reference_migration_v1"
-        if marker.exists():
-            return
-        identifier_replacements = {
-            "BodyReferenceExperiment_": "LocalBodyReference_",
-            "Character-Pipeline-Experiment": "Local-Body-Reference",
-        }
-        exact_replacements = {
-            "body_reference_qwen_experiment": "local_body_reference",
-            "body_reference_analysis": "local_body_reference_analysis",
-        }
-        key_replacements = {
-            "body_reference_experiment_run_id": "local_body_reference_run_id",
-            "body_reference_run_id": "local_body_reference_run_id",
-        }
-
-        def upgrade(value: Any) -> Any:
-            if isinstance(value, dict):
-                result = {}
-                for key, item in value.items():
-                    new_key = key_replacements.get(key, key) if isinstance(key, str) else key
-                    if isinstance(new_key, str):
-                        for old, new in identifier_replacements.items():
-                            new_key = new_key.replace(old, new)
-                    result[new_key] = upgrade(item)
-                return result
-            if isinstance(value, list):
-                return [upgrade(item) for item in value]
-            if isinstance(value, str):
-                value = exact_replacements.get(value, value)
-                for old, new in identifier_replacements.items():
-                    value = value.replace(old, new)
-            return value
-
-        queue_root = Path(getattr(self.app.config, "base_ai_queue_path", self.library_root / "AI_Queue")).resolve()
-        roots = [(self.runs_root, False), (queue_root, True)]
-        for root, is_queue_root in roots:
-            if not root.exists():
-                continue
-            for path in root.rglob("*.json"):
-                if path == marker or path.name.endswith(".tmp"):
-                    continue
-                try:
-                    original = self._read_json(path)
-                except (OSError, json.JSONDecodeError):
-                    continue
-                upgraded = upgrade(original)
-                if upgraded != original:
-                    try:
-                        self._write(path, upgraded)
-                    except OSError:
-                        # Queue bundles may be read-only or temporarily locked by
-                        # Dropbox while answers are syncing. A legacy queue
-                        # manifest should not prevent Zet from starting or
-                        # rendering scenes; leave that queue file untouched.
-                        if not is_queue_root:
-                            raise
-        marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text(self._now() + "\n", encoding="utf-8")
-
     @staticmethod
     def _now() -> str:
         return datetime.now().isoformat(timespec="seconds")
@@ -239,10 +175,7 @@ class LocalBodyReferenceService:
         return read_library_json(path, self.library_root)
 
     def _write(self, path: Path, value: dict[str, Any]) -> None:
-        if path.resolve().is_relative_to(self.runs_root.resolve()):
-            write_library_json(path, value, self.library_root)
-        else:
-            write_json_atomic(path, value)
+        write_library_json(path, value, self.library_root)
 
     @staticmethod
     def _safe(value: str) -> str:

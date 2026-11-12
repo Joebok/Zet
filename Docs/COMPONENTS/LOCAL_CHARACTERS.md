@@ -481,7 +481,7 @@ See the [active pilot plan](../../plans/active/head-reference-quality.md) for it
 The new character workflow uses persistent Asset Containers and manual per-view
 Candidate Boards. It reuses the existing prompt compilers while keeping board,
 selection and lock state independent of legacy runs. Body Reference compilation
-and text previews use the Qwen prompt formatter without starting legacy migration.
+and text previews use the same Qwen prompt formatter.
 Traditional stage-driven generation remains retired via
 [pipeline_retirement.py](../../zet/services/pipeline_retirement.py).
 
