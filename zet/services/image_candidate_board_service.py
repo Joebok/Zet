@@ -1,6 +1,7 @@
 """Mode-independent, eight-position working image board rules."""
 
 from datetime import datetime, timezone
+import logging
 import math
 
 SLOT_COUNT = 8
@@ -37,6 +38,18 @@ def record_render_completion(candidate, completed_at=None, duration_seconds=None
         candidate.pop("render_started_at", None)
     except (TypeError, ValueError):
         return
+
+
+def record_harvests(app, attempts, route, label, *, board_id=None, harvested_at=None):
+    """Publish an advisory snapshot after the owning workflow commits its images."""
+    if not attempts:
+        return
+    from zet.services.recent_render_service import RecentRenderStore
+
+    try:
+        RecentRenderStore(app).record(attempts, route, label, board_id=board_id, now=harvested_at)
+    except (OSError, ValueError, KeyError, TypeError):
+        logging.getLogger(__name__).exception("Unable to record recent renders for %s", app.universe_id)
 
 
 def allocate(slots, candidates, selected_id, count=1, slot=None, active=()):

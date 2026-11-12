@@ -45,8 +45,14 @@ test("library and narrative authoring save and reload through the dashboard", as
   const editedCharacter = originalCharacter.replace("Canonical Art Style: `Simple graphic illustration`", "Canonical Art Style: `Warm watercolor illustration`");
   await page.locator("#onboarding-template-file").setInputFiles({ name: "Character.md", mimeType: "text/markdown", buffer: Buffer.from(editedCharacter) });
   await page.getByRole("button", { name: "Upload Template" }).click();
-  await expect.poll(async () => readFile(path.join(context.library, "Test", "Characters", "Traveler", "Adult", "Character.md"), "utf8"))
-    .toContain("Warm watercolor illustration");
+  await expect.poll(async () => {
+    try {
+      return await readFile(characterPath, "utf8");
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+      return "";
+    }
+  }).toContain("Warm watercolor illustration");
   // Restore the valid fixture directly after exercising the incomplete-phase upload.
   await writeFile(characterPath, originalCharacter, "utf8");
   await unlink(backupCharacterPath);

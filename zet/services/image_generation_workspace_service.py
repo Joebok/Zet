@@ -137,6 +137,7 @@ class ImageGenerationWorkspace:
                 options["legacy_dimensions"] = True
             if self.asset_id:
                 inputs = {**inputs, "ai_owner": {"image_generation_asset_id": self.asset_id}}
+                options["candidate_board"] = {"asset_id": self.asset_id, "label": board["name"]}
             self.generator.submit(inputs, **options)
 
     def action(self, operation, payload):
@@ -217,6 +218,7 @@ class ImageGenerationWorkspace:
                         submit_options = {"request_id": request_id, "seeds": seeds}
                         if self.asset_id:
                             inputs["ai_owner"] = {"image_generation_asset_id": self.asset_id}
+                            submit_options["candidate_board"] = {"asset_id": self.asset_id, "label": board["name"]}
                         if operation == "retry" and job.get("render_sizing"):
                             submit_options["frozen_sizing"] = job["render_sizing"]
                         if operation == "retry" and not job.get("render_sizing"):

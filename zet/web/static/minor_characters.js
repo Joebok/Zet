@@ -29,7 +29,7 @@ const promptKey = () => [universe, character?.character_id, view].join(":");
 const renderActive = status => ["SUBMITTING", "QUEUED", "RUNNING"].includes(status);
 
 function routeUrl(id, assetView) {
-  const params = new URLSearchParams({page:"minor-characters"});
+  const params = new URLSearchParams({page:"minor-characters", universe_id:universe});
   if (id) params.set("minor_character", id);
   if (id && assetView) params.set("view", assetView);
   const taskUniverse = new URLSearchParams(location.search).get("task_universe");

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+from datetime import datetime, timezone
 import hashlib
 from io import BytesIO
 import json
@@ -21,6 +22,7 @@ from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.local_render_policy import require_qwen_profile
 from zet.services.workflow_storage import validate_image
 from zet.services.workflow_storage import file_lock
+from zet.services.image_candidate_board_service import record_harvests
 from zet.services.image_generation_workspace_service import ImageGenerationWorkspace
 from zet.services.library_reference_service import read_library_json, serialize_library_document
 from zet.services.atomic_file_service import write_bytes_atomic, write_json_atomic
@@ -98,12 +100,13 @@ class AdHocImageGenerationService:
             raise AdHocImageGenerationError(str(exc)) from exc
 
     def submit(self, payload: dict[str, Any], *, request_id: str | None = None, seeds: list[int] | None = None,
-               frozen_sizing: dict | None = None, legacy_dimensions: bool = False) -> dict[str, Any]:
+               frozen_sizing: dict | None = None, legacy_dimensions: bool = False,
+               candidate_board: dict | None = None) -> dict[str, Any]:
         request_id = request_id or uuid4().hex
         self.proxy_paths.jobs.validate_id(request_id)
         with self._lock, file_lock(self.results_root / request_id / ".collect.lock"):
             return self._submit(payload, request_id=request_id, seeds=seeds, frozen_sizing=frozen_sizing,
-                                legacy_dimensions=legacy_dimensions)
+                                legacy_dimensions=legacy_dimensions, candidate_board=candidate_board)
 
     def render_configuration(self, payload: dict[str, Any], mode: str) -> dict[str, Any]:
         """Resolve optional character settings while keeping ordinary ad hoc defaults."""
@@ -141,7 +144,8 @@ class AdHocImageGenerationService:
                 "append_reference_labels": supplied.get("append_reference_labels", True)}
 
     def _submit(self, payload: dict[str, Any], *, request_id: str | None = None, seeds: list[int] | None = None,
-                frozen_sizing: dict | None = None, legacy_dimensions: bool = False) -> dict[str, Any]:
+                frozen_sizing: dict | None = None, legacy_dimensions: bool = False,
+                candidate_board: dict | None = None) -> dict[str, Any]:
         mode = str(payload.get("mode") or "txt2img").strip().lower()
         if mode not in {"txt2img", "img2img"}:
             raise AdHocImageGenerationError("Choose txt2img or img2img.")
@@ -293,6 +297,8 @@ class AdHocImageGenerationService:
             children.append({"ask_id": "", "reserved_ask_id": "Image_" + uuid4().hex, "index": index, "seed": seed, "status": "QUEUED"})
         job = self._new_job(request_id, mode, count, workspace, children, prompt_path, "QUEUED", "")
         job.update(self._request_details(payload, width, height, user_prompt))
+        if candidate_board:
+            job["candidate_board"] = candidate_board
         if sizing:
             job["render_sizing"] = dict(sizing)
             job["render_payload"].update(render_mode=sizing["render_mode"], aspect_ratio=sizing["aspect_ratio"])
@@ -656,6 +662,7 @@ class AdHocImageGenerationService:
                     else:
                         job["images"].append((image_bytes, content_type))
                     child["status"] = "COMPLETE"
+                    child["harvested_at"] = time.time()
                     child.pop("error", None)
                 except Exception as exc:
                     execution_failed = execution_failed or isinstance(exc, AIExecutionError)
@@ -699,6 +706,15 @@ class AdHocImageGenerationService:
     def _finish_child(self, job, child):
         evidence = {}
         if child["status"] == "COMPLETE":
+            board = job.get("candidate_board")
+            if child.get("harvested_at") and not board:
+                board = self._existing_board_reservation(job, child)
+            if board and child.get("harvested_at"):
+                record_harvests(
+                    self.zet_app, [f"image-generation:{child['ask_id']}"],
+                    {"page": "image-generation", "generation_asset": board["asset_id"]},
+                    board["label"], harvested_at=datetime.fromtimestamp(child["harvested_at"], timezone.utc),
+                )
             path = self.results_root / job["request_id"] / f"image-{child['index']}.bin"
             evidence["applied_artifact"] = {"path": str(path), "sha256": child.get("image_sha256", ""), "image": True}
         self.proxy_paths.jobs.finish(child["ask_id"], status="FAILED" if child["status"] == "FAILED" else "APPLIED",
@@ -707,6 +723,21 @@ class AdHocImageGenerationService:
     def _release(self, job: dict[str, Any]) -> None:
         shutil.rmtree(job["workspace"], ignore_errors=True)
         job["images"].clear()
+
+    def _existing_board_reservation(self, job, child):
+        """Resolve a named board for jobs already in flight when tracking is enabled."""
+        owner = (job.get("submission") or {}).get("owner")
+        asset_id = owner.get("image_generation_asset_id") if isinstance(owner, dict) else None
+        if not asset_id:
+            return None
+        try:
+            board = self.slot_workspace.asset(asset_id)._load()
+            if any(slot and slot["requestId"] == job["request_id"] and slot["index"] == child["index"]
+                   for slot in board["slots"]):
+                return {"asset_id": asset_id, "label": board["name"]}
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+        return None
 
     def _save_job(self, job: dict[str, Any]) -> None:
         with file_lock(self.results_root / job["request_id"] / ".collect.lock"):
@@ -731,6 +762,8 @@ class AdHocImageGenerationService:
             "children", "status", "error", "failures", "created_at", "finished_at",
         )}
         record["submission"] = job.get("submission")
+        if job.get("candidate_board"):
+            record["candidate_board"] = job["candidate_board"]
         record["render_payload"] = job.get("render_payload")
         record["render_sizing"] = job.get("render_sizing")
         record["image_slots_version"] = job.get("image_slots_version", 0)

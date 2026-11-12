@@ -467,6 +467,7 @@ class MinorCharacterService(QuickCharacterWizardService):
         board = self._board(value, view)
         sid = value["session_id"]
         changed = False
+        harvested = []
         for item in board["candidates"].values():
             if item["status"] not in ACTIVE:
                 continue
@@ -488,6 +489,7 @@ class MinorCharacterService(QuickCharacterWizardService):
                 updates["image"] = True
                 board_policy.record_render_completion(item, duration_seconds=updates.get("render_duration_seconds"))
                 self._obsolete_review(board)
+                harvested.append(f"minor:{sid}:{item['id']}:{attempt}")
             elif updates["status"] == "FAILED":
                 self._failed(item, updates["error"])
                 changed = True
@@ -496,6 +498,15 @@ class MinorCharacterService(QuickCharacterWizardService):
             item.update(updates)
         if changed:
             self._save(value)
+            if harvested:
+                try:
+                    name = self._template(sid)[2]["NAME"]
+                except (OSError, ValueError, KeyError):
+                    name = sid
+                board_policy.record_harvests(
+                    self.app, harvested, {"page": "minor-characters", "minor_character": sid, "view": view},
+                    f"{name} / {board['label']}",
+                )
         self._cleanup(value)
 
     @staticmethod

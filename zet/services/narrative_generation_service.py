@@ -1,6 +1,6 @@
 """Durable interview, synthesis and candidate lifecycle; no legacy scene orchestration."""
 from zet.services.image_candidate_board_service import cleanup, remove, retry_request
-from zet.services.image_candidate_board_service import record_render_start, record_render_completion
+from zet.services.image_candidate_board_service import record_harvests, record_render_start, record_render_completion
 from zet.services.llm_role_service import resolve_role_model
 from dataclasses import asdict
 from copy import deepcopy
@@ -424,6 +424,7 @@ class NarrativeGenerationService:
 
     def _refresh(self, story, scene, target, record):
         release = []
+        harvested = []
         for job in list(record["jobs"].values()):
             if job["kind"] == "image" and job["status"] in ACTIVE:
                 candidate = record["candidates"].get(job.get("candidate_id"))
@@ -435,7 +436,8 @@ class NarrativeGenerationService:
                     self._cleanup_upscale(record, job)
                     continue
                 if job.get("upscale"):
-                    self._refresh_upscale(story, scene, target, record, candidate, job)
+                    if self._refresh_upscale(story, scene, target, record, candidate, job):
+                        harvested.append(job)
                     if job["status"] not in ACTIVE:
                         release.append(job)
                     continue
@@ -493,6 +495,7 @@ class NarrativeGenerationService:
                             candidate["image"] = relative
                             record_render_completion(candidate, duration_seconds=job.get("proxy_duration_seconds"))
                             self._invalidate_luna_for_harvest(record)
+                            harvested.append(job)
                     else:
                         value = json.loads(result.decode("utf-8"))
                         if job["kind"] == "interview":
@@ -519,6 +522,16 @@ class NarrativeGenerationService:
             if state in {"COMPLETE", "FAILED"}:
                 release.append(job)
         self.repository.write(record, story, scene, target)
+        if harvested:
+            titles = harvested[-1].get("queue_titles") or {}
+            label = " / ".join(part for part in (
+                titles.get("story"), titles.get("scene"), record["title"]
+            ) if part)
+            record_harvests(
+                self.author.app, [f"narrative:{job['id']}" for job in harvested],
+                {"page": "narrative", "workspace": "story", "story": story, "scene": scene, "target": target},
+                label,
+            )
         self._cleanup_pending(story, scene, target, record)
         for job in release:
             self.proxy.release(story, scene, target, job)
@@ -556,6 +569,7 @@ class NarrativeGenerationService:
             if record.get("scene_text") and record["selected_id"] == candidate["id"]:
                 record["selected_id"] = None
         self._cleanup_upscale(record, job)
+        return job["status"] == "COMPLETE"
 
     @staticmethod
     def _cleanup_upscale(record, job):

@@ -24,7 +24,7 @@ from zet.services.image_candidate_board_service import (
     unlock as unlock_candidate,
 )
 from zet.services.image_candidate_board_service import allocate as allocate_candidates, cleanup, remove, retry_request
-from zet.services.image_candidate_board_service import record_render_start, record_render_completion
+from zet.services.image_candidate_board_service import record_harvests, record_render_start, record_render_completion
 from zet.services.image_production_service import ImageProductionService
 from zet.services.image_render_request import draft_upscale_request, verify_upscale_output
 
@@ -686,6 +686,7 @@ class CharacterAssetContainerService:
         board = value["boards"][view]
         changed = False
         board_applications = []
+        harvested = []
         for candidate_id in board["slots"]:
             if not candidate_id:
                 continue
@@ -711,6 +712,8 @@ class CharacterAssetContainerService:
                 candidate.update(updates)
                 if candidate.get("status") == "COMPLETE":
                     record_render_completion(candidate, duration_seconds=updates.get("render_duration_seconds"))
+                    if candidate.get("image_path") and candidate["image_path"] != previous_image_path:
+                        harvested.append(f"character:{value['container_id']}:{candidate_id}:{attempt_id}")
                     if candidate.get("image_path") != previous_image_path and board.get("luna_review", {}).get("status") in {"COMPLETE", "RUNNING"}:
                         board["luna_review"]["status"] = "OBSOLETE"
                         board["luna_review"]["active_id"] = ""
@@ -718,6 +721,14 @@ class CharacterAssetContainerService:
         if changed:
             board["revision"] += 1
             self.save(character, phase, pipeline, costume, value, expected_revision=value["revision"])
+            route = {"page": "character-asset-container", "character": character, "phase": phase,
+                     "pipeline": pipeline, "view": view}
+            if costume:
+                route["costume"] = costume
+            label = " / ".join(part for part in (
+                character, phase, pipeline.replace("-", " ").title(), costume, view.replace("_", " ")
+            ) if part)
+            record_harvests(self.app, harvested, route, label, board_id=f"character:{value['container_id']}:{view}")
         for ask_id in board_applications:
             self.app.ai_proxy_service.ai_proxy_path_service.jobs.repository.update(
                 ask_id, board_application_state="SETTLED")

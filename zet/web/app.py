@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import markdown
 from starlette.background import BackgroundTask
@@ -1095,6 +1095,40 @@ def _create_available_app(
 
     from zet.services.ai_job_coordinator import AIJobCoordinator, image_services
     app.state.ai_job_coordinator = AIJobCoordinator(app.state.zet_app, resolve_job_app)
+    @app.get("/api/recent-renders/events")
+    async def recent_render_events():
+        import asyncio
+        from zet.services.recent_render_service import RecentRenderStore
+
+        owner = await run_in_threadpool(_app, app.state.config_path)
+        store = await run_in_threadpool(RecentRenderStore, owner)
+        loop = asyncio.get_running_loop()
+        pending = asyncio.Queue(maxsize=1)
+
+        def enqueue(snapshot):
+            if pending.full():
+                pending.get_nowait()
+            pending.put_nowait(snapshot)
+
+        def publish(snapshot):
+            if not loop.is_closed():
+                loop.call_soon_threadsafe(enqueue, snapshot)
+
+        async def stream():
+            revision = -1
+            with store.subscribe(publish):
+                snapshot = await run_in_threadpool(store.snapshot)
+                while True:
+                    if snapshot["revision"] > revision:
+                        revision = snapshot["revision"]
+                        yield f"data: {json.dumps(snapshot)}\n\n"
+                    try:
+                        snapshot = await asyncio.wait_for(pending.get(), timeout=30)
+                    except TimeoutError:
+                        yield ": keep-alive\n\n"
+
+        return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-store"})
+
     @app.middleware("http")
     async def bind_universe(request: Request, call_next):
         universe_id = request.headers.get("x-zet-universe") or request.query_params.get("universe_id")
@@ -3878,7 +3912,7 @@ def main() -> int:
         os.environ["ZET_AI_QUEUE_DEBUG"] = "1"
     import uvicorn
 
-    uvicorn.run(create_app(args.config), host=args.host, port=args.port, reload=False)
+    uvicorn.run(create_app(args.config), host=args.host, port=args.port, reload=False, timeout_graceful_shutdown=30)
     return 0
 
 

@@ -365,3 +365,13 @@ and captured input links. The current Character review offers selected view
 images and has a separate status area for candidate actions. Narrative offers
 the target's selected image in a chooser. Minor Characters automatically
 displays the selected image beside a different candidate when available.
+
+## Recent Renders
+
+Recent Renders appears between Story Telling and Universe when the selected
+universe has recorded harvests. Each row links to a Candidate Board and shows
+how many qualifying images were harvested there. The latest image on a board
+sets its position. The saved snapshot keeps the newest eight images plus any
+others under 24 hours old when the latest harvest was recorded. The server
+sends the saved snapshot on connection and pushes updates after successful
+harvests, including those collected while the dashboard is on another page.

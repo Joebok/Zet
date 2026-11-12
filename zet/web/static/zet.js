@@ -215,6 +215,12 @@ const storyContext = document.querySelector("#story-context");
 const workspaceCharacter = document.querySelector("#workspace-character");
 const workspaceLocal = document.querySelector("#workspace-local");
 const workspaceStory = document.querySelector("#workspace-story");
+const recentRendersButton = document.querySelector("#recent-renders-button");
+const recentRendersPage = document.querySelector("#recent-renders-page");
+const recentRendersList = document.querySelector("#recent-renders-list");
+const recentRendersStatus = document.querySelector("#recent-renders-status");
+const UNIVERSE_SCOPED_PAGES = new Set(["recent-renders", "character-asset-container", "minor-characters", "image-generation", "narrative"]);
+let recentRendersStream;
 const characterNavigation = document.querySelector("#character-navigation");
 const localNavigation = document.querySelector("#local-navigation");
 const localAssetsButton = document.querySelector("#local-assets-button");
@@ -2832,6 +2838,7 @@ function browserRouteUrl() {
     return '/?'+current;
   }
   if (page) params.set("page", page);
+  if (UNIVERSE_SCOPED_PAGES.has(page) && state.universeId) params.set("universe_id", state.universeId);
   if (page === "image-generation") {
     const id = new URLSearchParams(location.search).get("generation_asset");
     if (id) params.set("generation_asset", id);
@@ -3593,6 +3600,9 @@ async function activatePage(page, options = {}) {
   const pageLoad = beginPageLoad(page);
   rememberPage(page);
   document.querySelector('#narrative-page').classList.toggle('active', page === 'narrative');
+  recentRendersPage.classList.toggle("active", page === "recent-renders");
+  if (page === "recent-renders") recentRendersButton.setAttribute("aria-current", "page");
+  else recentRendersButton.removeAttribute("aria-current");
   for (const button of document.querySelectorAll(".tab")) {
     button.classList.toggle("active", button.dataset.page === page);
   }
@@ -11316,6 +11326,42 @@ for (const button of actionButtons) {
 workspaceCharacter.addEventListener("click", () => switchWorkspace("character"));
 workspaceLocal?.addEventListener("click", () => switchWorkspace("local"));
 workspaceStory.addEventListener("click", () => switchWorkspace("story"));
+recentRendersButton.addEventListener("click", () => {
+  void activatePage("recent-renders").catch(error => showActionMessage(error.message, "error"));
+});
+
+function subscribeRecentRenders() {
+  recentRendersStream?.close();
+  if (!state.universeId) return;
+  const universeId = state.universeId;
+  const stream = new EventSource(`/api/recent-renders/events?${new URLSearchParams({universe_id: universeId})}`);
+  recentRendersStream = stream;
+  stream.onmessage = event => {
+    if (stream !== recentRendersStream || universeId !== state.universeId) return;
+    const {boards} = JSON.parse(event.data);
+    recentRendersList.replaceChildren(...boards.map(board => {
+      const row = document.createElement("li");
+      const link = document.createElement("a");
+      link.href = `/?${new URLSearchParams({...board.route, universe_id: universeId})}`;
+      link.textContent = board.label;
+      row.append(link, ` · ${board.count} ${board.count === 1 ? "image" : "images"}`);
+      return row;
+    }));
+    recentRendersButton.hidden = boards.length === 0;
+    recentRendersStatus.hidden = boards.length > 0;
+    recentRendersStatus.textContent = boards.length ? "" : "No recent renders.";
+  };
+  stream.onerror = () => {
+    if (stream === recentRendersStream && recentRendersButton.hidden) {
+      recentRendersStatus.textContent = "Recent renders are unavailable.";
+    }
+  };
+}
+
+window.addEventListener("pagehide", () => recentRendersStream?.close());
+window.addEventListener("pageshow", event => {
+  if (event.persisted) subscribeRecentRenders();
+});
 localAssetsButton.addEventListener("click", (event) => {
   event.stopPropagation();
   localAssetsMenu.hidden = !localAssetsMenu.hidden;
@@ -12059,12 +12105,15 @@ async function loadUniverses() {
   const response = await fetch("/api/universes");
   if (!response.ok) throw new Error(`Unable to load universes (${response.status}).`);
   const payload = await response.json();
-  const requested = new URLSearchParams(window.location.search).get("task_universe");
+  const route = new URLSearchParams(window.location.search);
+  const requested = route.get("task_universe")
+    || (UNIVERSE_SCOPED_PAGES.has(route.get("page")) ? route.get("universe_id") : "");
   if (requested && (payload.universes || []).some((item) => item.universe_id === requested)) {
     payload.selected_universe_id = requested;
   } else if (requested) {
-    window.ZetTaskCapture.notice(`Recorded universe "${requested}" is unavailable. Showing the current universe.`);
+    window.ZetTaskCapture.notice(`Universe "${requested}" is unavailable. Showing the current universe.`);
   }
+  const previousUniverseId = state.universeId;
   state.universeId = payload.selected_universe_id || "";
   state.universes = payload.universes || [];
   universeSelect.replaceChildren(...state.universes.map((universe) => {
@@ -12074,6 +12123,13 @@ async function loadUniverses() {
     return option;
   }));
   universeSelect.value = state.universeId;
+  if (!recentRendersStream || previousUniverseId !== state.universeId) {
+    recentRendersButton.hidden = true;
+    recentRendersList.replaceChildren();
+    recentRendersStatus.hidden = false;
+    recentRendersStatus.textContent = "Loading recent renders...";
+    subscribeRecentRenders();
+  }
 }
 
 async function loadUniverseList() {
@@ -12176,6 +12232,10 @@ async function selectUniverse(universeId) {
     setUniverseMessage("universes-message", payload.detail || "Unable to select universe.", "error");
     return;
   }
+  const destination = new URL(location.href);
+  destination.searchParams.delete("universe_id");
+  destination.searchParams.delete("task_universe");
+  history.replaceState({}, "", destination);
   window.location.reload();
 }
 

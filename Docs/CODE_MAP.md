@@ -487,3 +487,11 @@ The shared image production service transports
 frozen requests. AIJobCoordinator applies answers by owning universe,
 collection, asset, candidate, slot and attempt. The offline name-and-source
 bootstrap lives in `zet.scripts.bootstrap_minor_character_templates`.
+
+## Recent Renders
+
+`image_candidate_board_service.record_harvests` is the post-commit entry point
+for Character, Minor Character, Narrative, and Image Generation.
+`recent_render_service.py` persists and groups the per-universe snapshot in
+workflow state. `/api/recent-renders/events` pushes snapshots to the dashboard
+shell. Board adapters retain their own image admission and placement rules.

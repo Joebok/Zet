@@ -6186,3 +6186,15 @@ button:enabled:active, .button-link:active { filter: brightness(.92); }
 
 .image-generation-gallery[hidden] { display: none; }
 .image-generation-gallery figure { margin: 0; }
+
+#recent-renders-button[aria-current="page"] {
+  background: var(--primary-soft);
+  border-color: var(--primary-soft);
+  color: var(--primary-hover);
+}
+
+#recent-renders-list li { margin-block: .5rem; }
+
+@media (max-width: 760px) {
+  .workspace-switch:has(#recent-renders-button:not([hidden])) { flex-wrap: wrap; }
+}

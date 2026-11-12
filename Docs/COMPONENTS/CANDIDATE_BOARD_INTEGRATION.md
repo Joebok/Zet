@@ -182,3 +182,13 @@ guards unsaved decisions. Return false to keep the current review. Use
 `activeKey`. Use `update(model)` for UI data, including updates that arrive
 while review is open. The module owns the DOM for both hosts.
 See the [UI ownership decision](../DECISIONS/0051-candidate-board-ui-ownership.md).
+
+## Report harvested images
+
+Call `record_harvests` in the shared Candidate Board service after persisting
+accepted image results. Supply the stable attempt IDs, the canonical board
+route, and a display label. Supply a separate board ID when route values can
+change for the same board. A successful upscale counts as a new harvest.
+Imports, reused images, and failed attempts leave the snapshot alone.
+Image Generation associates a render with its named board reservation and
+reports each successful child independently.

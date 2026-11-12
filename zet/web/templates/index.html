@@ -24,6 +24,7 @@
     <div class="workspace-switch" role="group" aria-label="Workspace">
       <button id="workspace-character" class="workspace-option" type="button" aria-pressed="true">Character Development</button>
       <button id="workspace-story" class="workspace-option" type="button" aria-pressed="false">Story Telling</button>
+      <button id="recent-renders-button" class="workspace-option" type="button" hidden>Recent Renders</button>
     </div>
     <div class="header-middle">
       <span id="story-git-warning" class="story-git-warning" hidden>Uncommitted story changes</span>
@@ -141,6 +142,11 @@
   </nav>
 
   <main>
+    <section id="recent-renders-page" class="page">
+      <h1>Recent Renders</h1>
+      <p id="recent-renders-status" role="status">Loading recent renders...</p>
+      <ul id="recent-renders-list"></ul>
+    </section>
     <p id="task-context-notice" class="action-message" role="status" aria-live="polite" hidden></p>
     <section id="placeholder-page" class="page active">
       <h1 id="placeholder-title">Overview</h1>
