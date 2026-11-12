@@ -38,6 +38,10 @@ def create_minor_character_router(provider):
     def create(data: dict = Body(...)):
         return {"character": call("create_character", data)}
 
+    @router.delete("/{sid}")
+    def delete(sid: str):
+        return call("delete_character", sid)
+
     @router.get("/{sid}")
     def character(sid: str):
         return {"character": call("get_character", sid)}

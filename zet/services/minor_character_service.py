@@ -146,6 +146,39 @@ class MinorCharacterService(QuickCharacterWizardService):
             self.templates.write(sid, seed(name))
             return self._public(empty_collection(sid))
 
+    def delete_character(self, sid):
+        """Permanently remove one named workspace and its owned outputs."""
+        import shutil
+        from pathlib import Path
+        with file_lock(self.root / "names.lock"):
+            with self._lock(sid):
+                template_path = self.templates.path(sid)
+                text, _, sections, _ = self.templates.read(sid)
+                value = self._read(sid)
+                if value.get("intake_job", {}).get("status") in ACTIVE or any(
+                        board.get("text_job", {}).get("status") in ACTIVE
+                        or board.get("luna_review", {}).get("status") == "RUNNING"
+                        or any(item.get("status") in ACTIVE for item in board.get("candidates", {}).values())
+                        for board in value.get("boards", {}).values()):
+                    raise ValueError("Wait for this Minor Character's active work to finish before deleting it.")
+                library = self.app.entity_library_service
+                owners = [library.lock_owner("minor", sid, view) for view in value.get("boards", {})]
+                for owner in owners:
+                    asset = library.repository.fetchone("SELECT asset_id FROM assets WHERE lock_owner=?", (owner,))
+                    if asset and library.usage_for_asset(asset["asset_id"]):
+                        raise ValueError("A published Minor Character image has recorded usages; remove those references first.")
+                library.unbind_workflow_locks(owners)
+                directory = self._directory(sid).resolve()
+                root = self.root.resolve()
+                if not directory.is_relative_to(root) or directory == root:
+                    raise ValueError("Minor Character directory is outside its universe.")
+                shutil.rmtree(directory)
+                template_root = template_path.parent.resolve()
+                if not template_root.is_relative_to(self.templates.root.resolve()):
+                    raise ValueError("Minor Character template is outside its universe.")
+                shutil.rmtree(template_root, ignore_errors=False)
+                return {"deleted": True, "name": sections["NAME"]}
+
     @staticmethod
     def _name(name):
         if not isinstance(name, str) or not name.strip():
