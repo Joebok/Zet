@@ -1028,6 +1028,10 @@ Character Template Instructions and section metadata. Canonical style comes from
 the universe. Interview turns, evidence, answers and editable drafts are saved
 under the universe's private CharacterWizard state.
 
+Interview responses use ZET marker IDs and editable metadata labels from the
+session. An unambiguous template heading or section label also resolves to its
+marker ID. Duplicate edits to the same section are rejected.
+
 Approval publishes a staged character and first phase, or saves a reviewed edit
 against the captured master revision. Concurrent master edits require a fresh
 interview. Wizard images serve as interview evidence and have no role in render
