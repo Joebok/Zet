@@ -164,11 +164,13 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
     const busy = pending.has(pendingKey(action.key, slot));
     const reason = action.disabledReason || (busy ? 'Working…' : '');
     const glyph = action.glyph || glyphs[action.key] || (actionOrder.includes(action.key) ? action.key : '');
+    const renderGlyph = action.key.startsWith('render-') && qualities.includes(action.mode)
+      ? window.ZetImageCardUI.iconMarkup('regenerate') : '';
     const tooltip = (slot || action.group === 'bulk') && reason ? escape(`${action.label} · ${reason}`) : '';
     return `<span class="zcb-action" ${tooltip ? `title="${tooltip}" role="group" aria-label="${tooltip}" tabindex="0" data-key="${escape(action.key)}"` : ''}><button type="button" data-command="action" data-key="${escape(action.key)}"
       class="${escape(action.role || '')}" data-quality="${escape(action.mode)}"
       ${glyph ? `data-glyph="${escape(glyph)}" data-label="${escape(action.label)}"` : ''}
-      ${reason ? 'disabled' : ''}>${escape(action.label)}</button>
+      ${reason ? 'disabled' : ''}>${renderGlyph}${escape(action.label)}</button>
       ${reason && !tooltip ? `<small>${escape(reason)}</small>` : ''}</span>`;
   }
 

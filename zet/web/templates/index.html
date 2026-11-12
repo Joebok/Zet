@@ -1853,7 +1853,7 @@
     </section>
 
     <section id="image-generation-page" class="page">
-      <div class="page-title-row"><h1>Image Generation</h1></div>
+      <div class="page-title-row"><h1><a href="/?page=image-generation" data-ig-back>Image Generation</a><span data-ig-title></span></h1></div>
       <p data-ig-status role="status"></p>
       <div data-ig-gallery>
         <div class="button-row"><button type="button" data-ig-new>Add asset</button>
@@ -1862,9 +1862,8 @@
         <details open><summary>Assets</summary><ul data-ig-assets></ul></details>
       </div>
       <div data-ig-asset hidden>
-        <div class="button-row"><button type="button" data-ig-back>All assets</button>
-          <h2 data-ig-title></h2><button type="button" data-ig-rename>Rename</button>
-          <button type="button" data-ig-delete>Delete asset</button>
+        <div class="button-row compact image-generation-asset-actions"><button type="button" data-ig-rename>Rename</button>
+          <button type="button" class="danger-action" data-ig-delete>Delete asset</button>
           <button type="button" data-ig-refresh>Refresh</button></div>
         <div data-ig-board></div>
         <details data-ig-references hidden><summary>Reference images</summary>

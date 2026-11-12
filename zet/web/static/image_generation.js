@@ -83,7 +83,7 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
 
   function render() {
     if (!data) return;
-    el("title").textContent = data.name;
+    el("title").textContent = " - " + data.name;
     el("references").hidden = data.inputs.mode !== "img2img";
     const input = data.inputs;
     const selected = result(data.selected_slot);
@@ -214,8 +214,7 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
     busy = dirty = false;
   }
 
-  function link(name, assetId) {
-    const anchor = document.createElement("a");
+  function link(name, assetId, anchor = document.createElement("a")) {
     anchor.href = url(assetId);
     anchor.textContent = name;
     anchor.onclick = event => {
@@ -230,6 +229,8 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
     if (!await flush()) return;
     leave();
     owner = universe();
+    link("Image Generation", null, el("back"));
+    el("title").textContent = "";
     const token = scope;
     if (navigate) history.pushState({}, "", url(assetId));
     else if (assetId || new URLSearchParams(location.search).has("generation_asset")) history.replaceState({}, "", url(assetId));
@@ -566,7 +567,6 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
     }, recoveryId);
     if (live(token)) await enter(created.asset_id, true);
   });
-  click("back", () => enter(null, true));
   click("refresh", async () => {
     if (!dirty) return enter(data.asset_id);
     const choice = prompt("Unsaved edits conflict with a saved version. Enter RELOAD to discard local edits, or OVERWRITE to save this editor's inputs over the latest version.");
