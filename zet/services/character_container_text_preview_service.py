@@ -52,7 +52,7 @@ class CharacterContainerTextPreviewService:
                 prompt = Path(compiled["final_prompt"]).read_text(encoding="utf-8")
                 if pipeline == "body-reference":
                     from zet.services.local_body_reference_service import LocalBodyReferenceService
-                    prompt = LocalBodyReferenceService(self.app, self.project_root)._qwen_prompt(
+                    prompt = LocalBodyReferenceService._qwen_prompt(
                         prompt, view, anchor=view != "FRONT", anchor_view=PREDECESSORS.get(view, "FRONT"))
                 result.append({"view": view, "prompt": prompt,
                                "reference_inputs": compiled.get("reference_files", references),

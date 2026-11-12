@@ -69,8 +69,7 @@ class CharacterContainerPromptService:
                 universe_root=self.app.config.base_library_path)
             from zet.services.local_body_reference_service import LocalBodyReferenceService
             prompt = Path(compiled["final_prompt"]).read_text(encoding="utf-8")
-            adapter = LocalBodyReferenceService(self.app, self.project_root)
-            prompt = adapter._qwen_prompt(prompt, view, anchor=bool(normalized_references), 
+            prompt = LocalBodyReferenceService._qwen_prompt(prompt, view, anchor=bool(normalized_references),
                 anchor_view=normalized_references[0]["view"] if normalized_references else "FRONT")
         else:
             compile_options = {"pipeline_mode": "local", "universe_root": self.app.config.base_library_path}
