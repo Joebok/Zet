@@ -36,7 +36,8 @@ def read_active() -> tuple[dict, Path]:
     config = ConfigService.load(release / "config.runtime.toml")
     if (config.runtime_role != "local" or Path(config.runtime_state_path).resolve() != STATE
             or Path(config.base_library_path).resolve() != LIBRARY
-            or Path(config.base_ai_queue_path).resolve() != Path(r"D:\Zet\Zet_Test\AI_Queue")):
+            or Path(config.base_ai_queue_path).resolve() != Path(r"D:\Zet\AI_Queue")
+            or config.ai_proxy_subscriber_id != "zet_test"):
         raise ValueError("The active release config does not identify the isolated Test data roots.")
     return active, release
 
@@ -114,7 +115,8 @@ def deploy() -> None:
         raise ValueError(f"Test config is missing: {CONFIG_SOURCE}")
     config = ConfigService.load(CONFIG_SOURCE)
     if (config.runtime_role != "local" or Path(config.base_library_path).resolve() != LIBRARY
-            or Path(config.base_ai_queue_path).resolve() != Path(r"D:\Zet\Zet_Test\AI_Queue")):
+            or Path(config.base_ai_queue_path).resolve() != Path(r"D:\Zet\AI_Queue")
+            or config.ai_proxy_subscriber_id != "zet_test"):
         raise ValueError("Test config paths differ from the provisioned Test library and queue.")
     if (STATE / "active-release.json").is_file():
         previous, previous_release = read_active()

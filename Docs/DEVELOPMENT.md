@@ -8,7 +8,9 @@ on `127.0.0.1:8082`, `-Action Start` to restart its active release, and
 `-Action Stop` to stop only its dashboard and harvester. Test runtime state and
 logs are under `C:/Users/Joe/Projects/Zet_Runtime_Test/state`; its authored
 library is `E:/Zet/Zet_Library_Test`, and its AI queue is
-`D:/Zet/Zet_Test/AI_Queue`. The private AI_Proxy runtime journal is on C: at
+`D:/Zet/AI_Queue`, shared with the single machine AI_Proxy instance. Zet Test
+uses the `zet_test` subscriber registration to keep its Ask/Answer folders and
+harvesting separate from production. The private AI_Proxy runtime journal is on C: at
 `C:/Users/Joe/Projects/Zet_Runtime_Test/ai-proxy-runtime` so proxy recovery does
 not depend on the D: queue volume. Both proxy instances share Ollama and
 ComfyUI, so schedule Test inference while production inference is idle.

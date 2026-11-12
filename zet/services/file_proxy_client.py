@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 from pathlib import PurePosixPath, PureWindowsPath
+import re
 import shutil
 import socket
 import time
@@ -26,7 +27,7 @@ class FileProxyClient:
 
     def __init__(self, base_queue_path: str | Path, *, route_root: Path | None = None,
                  library_root: str | Path | None = None, universe_id: str = "",
-                 storage_root: str | Path | None = None):
+                 storage_root: str | Path | None = None, subscriber_id: str = "zet"):
         self.base_queue_path = Path(base_queue_path)
         self.root = self.base_queue_path / "File_Proxy"
         self.local_state_root = queue_local_state_root(self.base_queue_path, state_root=storage_root)
@@ -36,6 +37,9 @@ class FileProxyClient:
         self.legacy_route_root = self.base_queue_path / "Zet_File_Proxy_State" / "Routes"
         self.library_root = Path(library_root).resolve() if library_root else None
         self.universe_id = str(universe_id or "")
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", str(subscriber_id)):
+            raise ValueError("subscriber_id must be a valid subscriber identifier")
+        self.subscriber_id = str(subscriber_id)
 
     @property
     def ask_root(self) -> Path:

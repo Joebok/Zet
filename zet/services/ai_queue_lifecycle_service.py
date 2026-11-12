@@ -228,7 +228,8 @@ class AIQueueLifecycleService:
         client = FileProxyClient(self.queue_root, route_root=self.route_root,
                                library_root=self.config.base_library_path,
                                universe_id=getattr(self.config, "universe_id", ""),
-                               storage_root=self.root.parent.parent)
+                               storage_root=self.root.parent.parent,
+                               subscriber_id=getattr(self.config, "ai_proxy_subscriber_id", "zet"))
         client.lifecycle = self
         client.config = self.config
         return client

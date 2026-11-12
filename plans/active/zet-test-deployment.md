@@ -3,7 +3,7 @@ Status: active
 Related issue/specification: none
 
 ## Goal
-Provide a separately managed Zet release at 127.0.0.1:8082 using a dedicated library, queue and machine state. Zet_Tester must verify Test release identity before it launches an agent.
+Provide a separately managed Zet release at 127.0.0.1:8082 using a dedicated library and machine state. Zet Test shares the single machine AI_Proxy process and queue with production under a separate subscriber. Zet_Tester must verify Test release identity before it launches an agent.
 
 ## Current behavior
 Production releases are staged under Zet_Runtime/releases and run on 8081. Zet_Tester currently starts the development checkout with config.toml on 8081. Production and that config both select ZetTester. AI_Proxy runs against the production queue.
@@ -15,7 +15,7 @@ Update_Test.ps1 deploys merged origin/main, starts the last Test release, and st
 ### WP1 - Isolated Test data and config
 - Dependencies: none.
 - Files/interfaces: Runtime_Test/config.test.toml, Zet_Library_Test, Zet_Test.
-- Work: Create isolated library and queue roots, seed a fresh ZetTester descriptor using existing style settings, configure local role and private state paths.
+- Work: Create an isolated library and machine state, seed a fresh ZetTester descriptor using existing style settings, and point Test at the shared production AI queue.
 - Acceptance: resolved Test paths are disjoint from production paths and universe selection is ZetTester.
 - Validation: load config with release Python and inspect effective paths without constructing ZetApp.
 - Status: complete. Separate library, config and AI_Proxy storage were provisioned. Proxy subscriber validation passed.
@@ -39,8 +39,8 @@ Update_Test.ps1 deploys merged origin/main, starts the last Test release, and st
 ### WP4 - AI_Proxy and operational docs
 - Dependencies: WP1, WP2.
 - Files/interfaces: private proxy registry/runtime and Zet/Talker documentation.
-- Work: Configure a private subscriber rooted at the Test queue and document lifecycle, logs, and shared-backend live-run constraints.
-- Acceptance: subscriber validation does not enqueue work or alter production proxy configuration.
+- Work: Add the Test subscriber registration to the existing AI_Proxy registry, configure the Test release to use its subscriber ID, and document lifecycle, logs, and shared-backend live-run constraints.
+- Acceptance: both subscribers validate through the same proxy process and receive answers under separate queue folders.
 - Validation: AI_Proxy validate-subscriber and git diff --check.
 - Status: in progress. The private registry and runtime are configured. `validate-subscriber zet` passed. Development documentation was added. The C: journal requirement was met while retaining the queue on D:.
 
@@ -54,4 +54,4 @@ Both proxy instances use the same Ollama and ComfyUI backends. Test live inferen
 Latest merged origin/main is the selected release source. A dedicated updater is used to keep Test actions separate from production.
 
 ## Final results
-The active Test release still includes the legacy fallback that displayed a synthetic Moonsea in the universe chooser. A source fix now limits that fallback to legacy root-level authoring folders; a disposable check found only ZetTester in the Test library. The already deployed release has not yet received this source change. `npm.cmd run test:e2e` passed all four approved scenarios, Tester `--validate` passed, Python/Node syntax checks passed, proxy subscriber validation passed, and `git diff --check` passed. Production remained on port 8081 with its original boot ID. Live Tester execution and Test redeployment with the Moonsea fix remain outstanding.
+The active Test release now lists only ZetTester. The one existing AI_Proxy process was restarted with its Test subscriber registration loaded. Zet now supports a configured subscriber ID, and Test config points to the shared production queue under `zet_test`; these latest Zet changes are in the working tree and still need a release. The two asks already in the former isolated Test queue remain there and should be resubmitted after Test is updated. `npm.cmd run test:e2e` passed all four approved scenarios; Tester `--validate`, both subscriber validations, and `git diff --check` passed. Production dashboard identity remained unchanged. Live Tester execution and deployment of the shared-queue Test config remain outstanding.

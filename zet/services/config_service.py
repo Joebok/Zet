@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 import os
 import platform
 from pathlib import Path
+import re
 import tomllib
 from zet.services.local_render_policy import configured_qwen_profile, configured_qwen_checkpoint, SCENE_PROFILE
 from zet.services.task_report_service import validate_repository
@@ -29,6 +30,7 @@ class Config:
     base_asset_path: str
     base_pipeline_path: str
     base_ai_queue_path: str
+    ai_proxy_subscriber_id: str = "zet"
     prompt_condense_enabled: bool = False
     prompt_condense_model: str = "general:latest"
     prompt_condense_file: str = "Config/Prompt_Condense_Tasks/body_reference_condense.md"
@@ -252,6 +254,12 @@ class ConfigService:
             if not isinstance(trusted, list) or any(not isinstance(user, str) or not user.strip() for user in trusted):
                 raise ConfigServiceError("GitHub.TrustedUsers must be a list of GitHub account names.")
             base_folders = ConfigService._base_folders_for_platform(payload)
+            ai_proxy = payload.get("AIProxy", {})
+            if not isinstance(ai_proxy, dict):
+                raise ConfigServiceError("AIProxy settings must be a TOML table.")
+            subscriber_id = str(ai_proxy.get("SubscriberId", "zet"))
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", subscriber_id):
+                raise ConfigServiceError("AIProxy.SubscriberId must be a valid subscriber identifier.")
             prompt_condense = ConfigService._prompt_condense_config(payload)
             ai_models = ConfigService._ai_models_config(payload)
             from zet.services.llm_role_service import validate_overrides
@@ -326,6 +334,7 @@ class ConfigService:
                 base_pipeline_path=(str(render_root / "PipelineCandidates") if render_root else
                                     ConfigService._resolve_base_folder(library_base, base_folders["BasePipelinePath"])),
                 base_ai_queue_path=ConfigService._normalize_path_value(base_folders["BaseAIQueuePath"]),
+                ai_proxy_subscriber_id=subscriber_id,
                 prompt_condense_enabled=bool(prompt_condense.get("Enabled", False)),
                 prompt_condense_model=str(
                     ai_models.get("PromptCondense", prompt_condense.get("Model", "general:latest"))
