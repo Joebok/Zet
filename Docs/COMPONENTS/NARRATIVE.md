@@ -96,7 +96,9 @@ Animations are persisted beneath a story in `animations/<id>/`; their versioned
 specification references pinned source IDs and contains ordered shots, durations,
 camera tracks, text opacity tracks and transitions. `StoryAnimationService`
 owns story-scoped storage, revision checks, locked final-assembly source discovery,
-source snapshots and timeline resolution. The compiler embeds image and text-layer
+source snapshots and timeline resolution. Refresh scene snapshots the current locked
+image on the same assembly, including when a Final image replaces a Draft.
+The compiler embeds image and text-layer
 assets in a standalone HTML player; the persisted instructions contain no output
 implementation. Confirmed scene text is separated only when rendering its frozen
 entry/placement/style snapshot over the original artwork reproduces the finished

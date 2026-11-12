@@ -2461,7 +2461,14 @@ async function pollStartupRecoveryStatus() {
 }
 
 async function loadContext() {
-  const payload = await fetchJson("/api/context");
+  characterSelect.dataset.contextStatus = "loading";
+  let payload;
+  try {
+    payload = await fetchJson("/api/context");
+  } catch (error) {
+    characterSelect.dataset.contextStatus = "failed";
+    throw error;
+  }
   updateStartupRecoveryStatus(payload.recovery);
   const stored = loadStoredContext();
   state.characters = payload.characters || [];
@@ -2483,6 +2490,7 @@ async function loadContext() {
   if (state.auxiliaryResourceCategories.length) {
   }
   updatePhaseSelect();
+  characterSelect.dataset.contextStatus = "ready";
   saveStoredContext();
   renderOnboarding();
   applyWorkspaceChrome();
@@ -2514,6 +2522,7 @@ function updatePhaseSelect() {
     state.phase = phases[0] || null;
   }
   phaseSelect.value = state.phase || "";
+  phaseSelect.dataset.character = state.character || "";
   saveStoredContext();
   updateHeaderFitmentPreview();
 }

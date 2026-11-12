@@ -1353,6 +1353,8 @@ def _create_available_app(
             character: discovery.list_phases(character)
             for character in characters
         }
+        default_character = characters[0] if characters else None
+        default_phase = next(iter(phases_by_character.get(default_character, [])), None)
         onboarding_statuses = {
             character: {
                 phase: _onboarding_status_payload(zet_app.character_onboarding_status(character, phase))
@@ -1375,8 +1377,8 @@ def _create_available_app(
             "recovery": _recovery_status(current_universe.get()),
             "onboarding_options": _onboarding_options_payload(zet_app.character_onboarding_options()),
             "auxiliary_resource_categories": AUXILIARY_RESOURCE_CATEGORIES,
-            "default_character": characters[0] if characters else None,
-            "default_phase": phases_by_character.get(characters[0], [None])[0] if characters else None,
+            "default_character": default_character,
+            "default_phase": default_phase,
         }
 
     @app.delete("/api/character-phase")

@@ -256,16 +256,10 @@ class StoryAnimationService:
             shot=next((s for s in spec["shots"] if s["id"]==shot_id),None)
             if shot is None: raise ValueError("Scene not found in animation.")
             old=current["assets"][shot["source_id"]]
-            scene_id,target_id,candidate_id=old["source_id"].split(":")
+            scene_id,target_id,_=old["source_id"].split(":")
             target=self.repository.read(story,scene_id,target_id)
-            mode=old.get("render_mode") or "draft"
-            selected=target.get("selected_id")
-            candidates=target.get("candidates",{})
-            def eligible(key):
-                c=candidates.get(key,{})
-                return bool(c.get("locked")) and (c.get("render_mode") or "draft")==mode
-            choice=selected if eligible(selected) else candidate_id if eligible(candidate_id) else None
-            if not choice: raise ValueError("No matching locked scene is available to refresh.")
+            choice=next((cid for cid in target["slots"] if cid and target["candidates"][cid].get("locked")),None)
+            if not choice: raise ValueError("No locked image is available for this scene assembly.")
             asset=self._snapshot(story,animation,f"{scene_id}:{target_id}:{choice}")
             old_entries=old.get("text_entries",[]); new_entries=asset.get("text_entries",[]); tracks=shot.get("text",{}); matched={}; used=set()
             for entry in new_entries:
