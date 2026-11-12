@@ -1,4 +1,4 @@
-import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261111-upscale";
+import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261112-queued-cancel";
 import {renderProposalComparison} from "./interview_proposals.js";
 
 const $ = id => document.getElementById(id);
@@ -294,6 +294,7 @@ function boardModel(current) {
     const selected = id && id === current.selected_id;
     if (!item) return slot;
     slot.renderActive = Boolean(active);
+    slot.cancelAttempt = item.status === "QUEUED" && item.ask_id ? item.attempt_id : null;
     const otherLocked = locked && locked !== item ? "Unlock the current image first." : "";
     const ready = active || (!item.image ? "Wait for a completed image." : "");
     if (!item.locked) action(selected ? "unselect" : "select", selected ? active || otherLocked : ready || otherLocked);
@@ -306,8 +307,8 @@ function boardModel(current) {
     const version = encodeURIComponent(item.image_version || item.id);
     slot.candidate = {id, quality:item.render_mode, status:item.status, locked:item.locked,
       image:imageDescriptor(item, view), thumbnail:imageDescriptor(item, view, "thumbnail"),
-      elapsedSeconds:item.render_duration_seconds, error:item.error,
-      notices:[item.source_change_fyi && "Earlier source or prompt.", earlierDraft && "Showing original Draft evidence. The upscale request was not retained."].filter(Boolean),
+      earlierPrompt:item.earlier_prompt, elapsedSeconds:item.render_duration_seconds, error:item.error,
+      notices:[item.source_change_fyi && "Saved source differs from current source.", earlierDraft && "Showing original Draft evidence. The upscale request was not retained."].filter(Boolean),
       prompt:request.prompt ?? item.prompt,
       inputs:(request.inputs || []).map((input, index) => ({
         label:[input.label || input.role || "Reference", input.view, input.render_mode === "final" ? "Final" : input.render_mode === "draft" ? "Draft" : ""].filter(Boolean).join(" · "),
@@ -449,14 +450,16 @@ async function boardAction(intent) {
     } else {
       const selected = current.selected_id === candidateId;
       if (key === "clear" && selected && !window.confirm("Clear the selected image?")) return cancelled;
-      accepted = await change(asset()+"/candidates/"+candidateId+"/"+key, {confirm_selected:selected});
+      accepted = await change(asset()+"/candidates/"+candidateId+"/"+key, {confirm_selected:selected, expected_attempt_id:intent.expectedAttempt});
     }
     if (!accepted || !isCurrent()) return cancelled;
-    const messages = {"save-settings":"Settings saved.", "save-prompt":"Prompt saved.", lock:view === "STYLE" ? "Locked privately." : "Locked and published."};
+    const messages = {cancel:"Render cancelled.", "save-settings":"Settings saved.", "save-prompt":"Prompt saved.", lock:view === "STYLE" ? "Locked privately." : "Locked and published."};
     return {status:"success", message:messages[key]};
   } catch (error) {
     if (!isCurrent()) return cancelled;
     try {
+      if (key === "cancel") await api(asset()+"/progress").catch(() => {});
+      if (!isCurrent()) return cancelled;
       const {character:value} = await api(base());
       if (isCurrent() && value.revision >= character.revision &&
           (!edits.size || value.template_hash === character.template_hash)) adopt(value);

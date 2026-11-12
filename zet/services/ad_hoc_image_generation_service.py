@@ -451,10 +451,11 @@ class AdHocImageGenerationService:
         return {
             "request_id": request_id,
             "retryable": bool(job.get("render_payload")),
+            "upscale_source": job.get("upscale_source"),
             "reference_labels": [ref.get("label", "") for ref in (job.get("render_payload") or {}).get("reference_images", [])],
             "mode": job["mode"],
             "status": job["status"],
-            "requested": job["count"],
+            "requested": len(job["children"]),
             "completed": sum(image is not None for image in job["images"]),
             "failed": job["failures"],
             "error": job["error"],
@@ -467,7 +468,7 @@ class AdHocImageGenerationService:
             "reconstruction": job.get("reconstruction", {}),
             "results": [{"index": index, "status": "COMPLETE" if index < len(job["images"]) and job["images"][index] is not None else next((child.get("status", "QUEUED") for child in job["children"] if child["index"] == index), "FAILED"),
                          "error": next((child.get("error", "") for child in job["children"] if child["index"] == index), job.get("error", ""))}
-                        for index in range(job["count"])],
+                        for index in sorted(child["index"] for child in job["children"])],
             "images": [
                 {"index": index, "url": f"/api/image-generation/jobs/{request_id}/images/{index}"}
                 for index, image in enumerate(job["images"]) if image is not None
@@ -559,6 +560,41 @@ class AdHocImageGenerationService:
             del self._jobs[request_id]
             shutil.rmtree(self.results_root / request_id, ignore_errors=True)
 
+    def cancel_queued_child(self, request_id, index, asset_id, commit, *, withdrawn_id=None):
+        from zet.services.image_production_service import ImageProductionService
+
+        self.proxy_paths.jobs.validate_id(request_id)
+        directory = self.results_root / request_id
+        with self._lock, file_lock(directory / ".collect.lock"):
+            job = self._read_saved_job(request_id)
+            child = next((item for item in job["children"] if item["index"] == index), None) if job else None
+            production = ImageProductionService(self.zet_app)
+            if withdrawn_id and child is None:
+                production.finish_withdrawal(withdrawn_id)
+                return
+            if not child or not child.get("ask_id") or (withdrawn_id and child["ask_id"] != withdrawn_id):
+                raise AdHocImageGenerationError("Could not verify that this render is still queued.")
+            if (job.get("submission") or {}).get("owner", {}).get("image_generation_asset_id") != asset_id:
+                raise AdHocImageGenerationError("This image request belongs to another workflow.")
+            expected = {"consumer": IMAGE_GENERATION_CONSUMER, "universe_id": self.zet_app.universe_id,
+                        "ad_hoc_request_id": request_id,
+                        "ad_hoc_child_index": index}
+
+            def remove_child(ask_id):
+                commit(ask_id)
+                job["children"].remove(child)
+                if job["children"]:
+                    self._save_job_locked(job)
+                    self._jobs[request_id] = job
+                else:
+                    workspace = self.workspace_root / request_id
+                    if workspace.is_dir():
+                        shutil.rmtree(workspace)
+                    (directory / "job.json").unlink(missing_ok=True)
+                    self._jobs.pop(request_id, None)
+
+            production.cancel_queued(child["ask_id"], expected, remove_child)
+
     def cancel_owned_request(self, request_id: str, owner: dict[str, str]) -> None:
         """Fence a workflow-owned request and remove its generated image bytes."""
         from zet.services.workflow_storage import supersede_task
@@ -619,6 +655,9 @@ class AdHocImageGenerationService:
             if not ask_id:
                 self._dispatch_child(job, child)
                 ask_id = child["ask_id"]
+            if self.proxy_client.withdrawn_path(ask_id).is_dir():
+                child["status"] = "WITHDRAWING"
+                continue
             inspection = self.proxy_paths.jobs.inspect(ask_id)
             if inspection["status"] in {"PAUSED_STORAGE", "RECOVERING", "HELD"}:
                 child.update(status=inspection["status"], error="", done=False)

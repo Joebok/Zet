@@ -3,7 +3,7 @@ const escape = value => String(value ?? '').replace(/[&<>"']/g, char =>
   ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'})[char]);
 const qualities = ['draft', 'final'];
 let nextBoardId = 0;
-const actionOrder = ['select', 'unselect', 'lock', 'unlock', 'inventory-add', 'inventory-update', 'retry', 'upscale', 'regen-draft', 'regen-final', 'download', 'clear'];
+const actionOrder = ['select', 'unselect', 'lock', 'unlock', 'inventory-add', 'inventory-update', 'retry', 'upscale', 'cancel', 'regen-draft', 'regen-final', 'download', 'clear'];
 const glyphs = {'regen-draft':'regenerate', 'regen-final':'regenerate',
   'inventory-add':'inventory', 'inventory-update':'inventory'};
 const slotLabels = {select:'Select', unselect:'Deselect', lock:'Lock', unlock:'Unlock', retry:'Retry', upscale:'Upscale Draft', clear:'Clear slot'};
@@ -113,6 +113,9 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
     const standard = actions.map(action => slotLabels[action.key] ? {
       ...action, label:slotLabels[action.key], role:action.key === 'clear' ? 'danger-text-action' : undefined,
     } : action);
+    if (slot.cancelAttempt && surface === 'card') {
+      standard.push({key:'cancel', label:'Cancel', disabledReason:slot.replacementBlock});
+    }
     if (!slot.candidate && surface !== 'card') return standard;
     const candidate = slot.candidate;
     if (candidate?.image && candidate.quality !== 'final') {
@@ -163,7 +166,7 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
   function actionMarkup(action, slot) {
     const busy = pending.has(pendingKey(action.key, slot));
     const reason = action.disabledReason || (busy ? 'Working…' : '');
-    const glyph = action.glyph || glyphs[action.key] || (actionOrder.includes(action.key) ? action.key : '');
+    const glyph = action.glyph || glyphs[action.key] || (actionOrder.includes(action.key) && action.key !== 'cancel' ? action.key : '');
     const renderGlyph = action.key.startsWith('render-') && qualities.includes(action.mode)
       ? window.ZetImageCardUI.iconMarkup('regenerate') : '';
     const tooltip = (slot || action.group === 'bulk') && reason ? escape(`${action.label} · ${reason}`) : '';
@@ -522,7 +525,7 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
       : pendingKey(surface, slot);
     const intent = {key:action.key, origin:surface, scopeKey:model.scope.key, revision:model.revision,
       candidateId:slot?.candidate?.id, slotKey:slot?.key, expectedOccupant:slot ? slot.candidate?.id ?? null : undefined,
-      mode:action.mode, count:action.count, value:action.value,
+      mode:action.mode, count:action.count, value:action.value, expectedAttempt:slot?.cancelAttempt,
       fields:Object.fromEntries([...board.querySelectorAll('[name]:not([type="radio"]:not(:checked))')].map(field =>
         [field.name, field.type === 'checkbox' ? field.checked : field.value]))};
     pending.add(key);

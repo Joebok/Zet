@@ -123,6 +123,8 @@ class CharacterAssetContainerService:
             # The persisted view order is presentation metadata. Return the current
             # order so old containers render consistently after an ordering change.
             value["scope"] = scope
+            if self.image_production.finish_board_withdrawals(value):
+                write_json_atomic(path, value)
             pending = value.get("cleanup_pending")
             if pending:
                 try:
@@ -133,6 +135,49 @@ class CharacterAssetContainerService:
                     del value["cleanup_pending"]
                     write_json_atomic(path, value)
             return copy.deepcopy(value)
+
+    def prompt_freshness(self, character, phase, pipeline, costume, view):
+        import json
+        from tempfile import TemporaryDirectory
+
+        from zet.services.image_candidate_board_service import prompt_differs
+
+        path = self._path(self._scope(character, phase, pipeline, costume))
+        with file_lock(path.with_suffix(".lock")):
+            value = self.detail(character, phase, pipeline, costume)
+            board = value["boards"].get(view)
+            if board is None:
+                return value
+            compiled = {}
+            changed = False
+            for candidate in board["candidates"].values():
+                if not candidate.get("image_path") or candidate.get("earlier_prompt"):
+                    continue
+                request = candidate.get("render_request") or {}
+                provenance = request.get("provenance") or {}
+                captured = request.get("prompt") or candidate.get("prompt")
+                if not captured:
+                    continue
+                options = {
+                    "render_mode": request.get("settings", {}).get("render_mode", candidate.get("render_mode", "draft")),
+                    "apply_phase_change": provenance.get("apply_phase_change", False),
+                    "assembly_style_mode": provenance.get("assembly_style_mode", ""),
+                    "costume_settings": value["sources"].get("dressing_settings", {}).get(view),
+                }
+                key = json.dumps(options, sort_keys=True)
+                if key not in compiled:
+                    try:
+                        with TemporaryDirectory(prefix=".prompt-freshness-", dir=path.parent) as directory:
+                            compiled[key] = self.compile_prompt(character, phase, pipeline, costume, view,
+                                output_directory=Path(directory), **options)["prompt"]
+                    except (OSError, ValueError):
+                        compiled[key] = None
+                if prompt_differs(captured, compiled[key]):
+                    candidate["earlier_prompt"] = True
+                    changed = True
+            if changed:
+                write_json_atomic(path, value)
+            return value
 
     def governing_template(self, character: str, phase: str, pipeline: str, costume: str = "") -> Path:
         scope = self._scope(character, phase, pipeline, costume)
@@ -408,7 +453,7 @@ class CharacterAssetContainerService:
     def compile_prompt(self, character: str, phase: str, pipeline: str, costume: str,
                        view: str, *, apply_phase_change: bool = False,
                        assembly_style_mode: str = "", render_mode: str = "draft",
-                       costume_settings: dict | None = None) -> dict:
+                       costume_settings: dict | None = None, output_directory: Path | None = None) -> dict:
         scope = self._scope(character, phase, pipeline, costume)
         if apply_phase_change and pipeline in {"head-image", "head-image-edit"} and view != "FRONT":
             raise CharacterAssetContainerError("Phase Change applies only to FRONT renders.")
@@ -417,7 +462,7 @@ class CharacterAssetContainerService:
         if apply_phase_change and pipeline in {"head-image", "head-image-edit"} and not references:
             raise CharacterAssetContainerError(
                 "Phase Change requires an uploaded FRONT reference or a selected locked FRONT source.")
-        target = self._path(scope).parent / "prompt-previews" / quote(view, safe="-_.")
+        target = output_directory or self._path(scope).parent / "prompt-previews" / quote(view, safe="-_.")
         from zet.services.character_container_prompt_service import CharacterContainerPromptService
         project_root = Path(__file__).resolve().parents[2]
         try:
@@ -699,6 +744,11 @@ class CharacterAssetContainerService:
                 owner["slot"] = candidate["slot"]
             root = self._path(value["scope"]).parent / "renders" / candidate_id / "attempts" / str(attempt_id)
             ask_id = candidate.get("ask_id")
+            if self.image_production.was_withdrawn(ask_id):
+                self._board_action(character, phase, pipeline, costume, view, candidate_id, "cancel",
+                    expected_revision=value["revision"], expected_candidate_id=candidate_id,
+                    expected_attempt_id=attempt_id)
+                return self._refresh_view(character, phase, pipeline, costume, view)
             if ask_id:
                 jobs = self.app.ai_proxy_service.ai_proxy_path_service.jobs
                 if jobs.lifecycle.read_receipt(ask_id) or jobs.ready_answer(ask_id):
@@ -1001,7 +1051,7 @@ class CharacterAssetContainerService:
     def _board_action(self, character: str, phase: str, pipeline: str, costume: str,
                      view: str, candidate_id: str, action: str, *, expected_revision: int,
                      expected_candidate_id: str = "", confirm_selected: bool = False,
-                     confirm_locked: bool = False) -> dict:
+                     confirm_locked: bool = False, expected_attempt_id: str = "") -> dict:
         value = self.detail(character, phase, pipeline, costume)
         if value["revision"] != expected_revision:
             raise CharacterAssetContainerError("The container changed. Refresh before acting.")
@@ -1011,6 +1061,35 @@ class CharacterAssetContainerService:
         candidate = board["candidates"].get(candidate_id)
         if candidate is None or candidate_id not in board["slots"]:
             raise CharacterAssetContainerError("Candidate is no longer in this view's board.")
+        if action == "cancel":
+            ask_id = candidate.get("ask_id")
+            if (not ask_id or expected_candidate_id != candidate_id
+                    or candidate.get("attempt_id") != expected_attempt_id):
+                raise CharacterAssetContainerError("This render attempt changed.")
+            owner = self._render_owner(value, candidate_id, view, expected_attempt_id)
+            if candidate.get("reserved_ask_id"):
+                owner["slot"] = candidate["slot"]
+
+            def commit(withdrawn_id):
+                value.setdefault("queue_cleanup_pending", []).append(withdrawn_id)
+                from zet.services.image_candidate_board_service import restore_draft
+                if request := candidate.get("upscale_request"):
+                    root = self._path(value["scope"]).parent.resolve()
+                    value.setdefault("cleanup_pending", []).extend([
+                        str(Path(request["inputs"][0]["path"]).resolve().parent.relative_to(root)),
+                        f"renders/{candidate_id}/attempts/{expected_attempt_id}",
+                    ])
+                    restore_draft(candidate)
+                else:
+                    self._remove_candidate(value, board, candidate_id)
+                board["revision"] += 1
+                self.save(character, phase, pipeline, costume, value, expected_revision=expected_revision)
+
+            try:
+                self.image_production.cancel_queued(ask_id, {"image_production": owner}, commit)
+            except (OSError, ValueError) as exc:
+                raise CharacterAssetContainerError(str(exc)) from exc
+            return self.detail(character, phase, pipeline, costume)
         if action == "upscale":
             try:
                 source = self.candidate_image(character, phase, pipeline, costume, view, candidate_id)

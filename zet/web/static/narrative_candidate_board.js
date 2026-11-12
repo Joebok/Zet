@@ -82,7 +82,8 @@ export function narrativeBoardModel({detail, scopeKey, revision, drafts, busy, l
     if (assembly) actions.push(action('edit-text', 'Edit Text', {placement: review, disabledReason: busyReason || ready || (item.locked ? 'Unlock this image before editing.' : '')}));
     actions.push(action('inventory', 'View in Inventory', {placement: review, disabledReason: busyReason || (!item.locked || !item.image ? 'Lock this image to view it in Inventory.' : '')}));
     actions.push(action('capture-task', 'Create task', {placement: review}));
-    return {key: String(index + 1), candidate, actions, renderActive:running, replacementBlock:busyReason};
+    return {key: String(index + 1), candidate, actions, renderActive:running, replacementBlock:busyReason,
+      cancelAttempt:item.status === "QUEUED" && detail.jobs[item.job_id]?.kind === "image" ? item.job_id : null};
   });
   const extra = [];
   const item = detail.candidates[reviewedId];

@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Body, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 
+from zet.services.image_production_service import RenderAlreadyStarted
 from zet.services.narrative_scene_service import ProtectedNarrativeImages
 from zet.services.protected_effect_preview import ProtectedEffectsChanged
 from zet.web.captured_image_response import captured_image_response
@@ -13,6 +14,8 @@ def create_narrative_router(app_provider):
     def call(method, *args):
         try:
             return method(*args)
+        except RenderAlreadyStarted as exc:
+            raise HTTPException(409, detail=str(exc)) from exc
         except ProtectedNarrativeImages as exc:
             raise HTTPException(409, detail={"message": str(exc), "protected_images": exc.images}) from exc
         except ProtectedEffectsChanged as exc:

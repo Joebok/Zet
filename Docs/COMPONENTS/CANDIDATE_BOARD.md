@@ -64,6 +64,14 @@ path as the **Review** eye glyph.
   recorded, and the applicable Selected, Locked,
   Luna rank, and source-change indicators. Completed images omit the completion label. Locked images show the shared closed-padlock glyph with accessible text. Earlier prompt is an informational pill when the workflow records a saved prompt difference. These facts can coexist. Use the
   saved status and timing for each candidate.
+  Compare saved prompt text to the image's original generation prompt. Character
+  checks the current compiled prompt for the open view. Image Generation also
+  compares the saved negative prompt. For an upscaled Draft, use the originating
+  prompt. The advisory has no effect on selection, locking, or publication.
+- A published, unclaimed image render offers **Cancel** on its card. Cancellation
+  frees an ordinary candidate slot and removes the render from AI Queue. A queued
+  upscale leaves its Draft in place. If the dispatcher has already claimed the
+  render, show **Render already started** and continue normal collection.
 - Empty, pending, failed, and image-load-failed states have distinct
   placeholders or messages. Render failures keep applicable retry and
   inspection actions. Missing image bytes leave recorded details accessible

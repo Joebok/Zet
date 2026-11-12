@@ -62,7 +62,7 @@ def create_ad_hoc_image_generation_router(
                 return service.reconstruction.start_comparison({**payload, "generation_asset_id": asset_id})
             if operation == "correct":
                 return service.reconstruction.correct_selected({**payload, "generation_asset_id": asset_id})
-            if operation in {"generate", "regenerate", "retry", "upscale", "select", "unselect", "clear"}:
+            if operation in {"generate", "regenerate", "retry", "upscale", "select", "unselect", "clear", "cancel"}:
                 if (operation != "generate" or "slot" in payload) and (
                         "slot" not in payload or "expected_assignment" not in payload):
                     raise ValueError("Provide the current slot and occupant.")

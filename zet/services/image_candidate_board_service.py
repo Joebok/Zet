@@ -120,6 +120,20 @@ def unlock(record, candidate_id):
     return candidate
 
 
+def prompt_differs(captured, current, *, allow_empty=False):
+    if not isinstance(captured, str) or (not allow_empty and not captured.strip()) or not isinstance(current, str):
+        return False
+    return captured.replace("\r\n", "\n").replace("\r", "\n") != current.replace(
+        "\r\n", "\n").replace("\r", "\n")
+
+
+def restore_draft(candidate):
+    for key in ("ask_id", "attempt_id", "reserved_ask_id", "output_path",
+                "upscale_request", "render_started_at"):
+        candidate.pop(key, None)
+    candidate.update(status="COMPLETE", error="")
+
+
 def remove(record, candidate_id):
     candidate = validate_membership(record["slots"], record["candidates"], candidate_id)
     record["slots"][record["slots"].index(candidate_id)] = None

@@ -29,9 +29,12 @@ def create_character_asset_container_router(resolve_app, image_generation_provid
 
     @router.get("/api/character-containers/{pipeline}")
     def detail(pipeline: str, character: str = Query(...), phase: str = Query(...),
-               costume: str = Query(""), universe_id: str = Query("")):
+               costume: str = Query(""), universe_id: str = Query(""), prompt_view: str = Query("")):
         try:
-            return service(universe_id).detail(character, phase, pipeline, costume)
+            instance = service(universe_id)
+            if prompt_view:
+                return instance.prompt_freshness(character, phase, pipeline, costume, prompt_view)
+            return instance.detail(character, phase, pipeline, costume)
         except CharacterAssetContainerError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -266,7 +269,8 @@ def create_character_asset_container_router(resolve_app, image_generation_provid
                 expected_revision=payload.get("expected_revision", -1),
                 expected_candidate_id=payload.get("expected_candidate_id", ""),
                 confirm_selected=payload.get("confirm_selected") is True,
-                confirm_locked=payload.get("confirm_locked") is True)
+                confirm_locked=payload.get("confirm_locked") is True,
+                expected_attempt_id=payload.get("expected_attempt_id", ""))
         except CharacterAssetContainerError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 

@@ -107,3 +107,14 @@ concurrent additions survive and ranking waits for newly reserved work too.
 
 ## Automatic outage recovery
 Queue/library unavailability pauses work while both polling hosts remain alive. Fixed-local evidence coordinates reconnect and restart; verified interrupted executions receive subscriber-owned fresh attempts, while successful results receive collection-only recovery. Ordinary retained failures still require their existing recovery path. See [storage recovery](STORAGE_RECOVERY.md).
+
+
+### Candidate Board queued cancellation
+
+A board withdraws the exact owned render by moving its ready Ask to a hidden
+sibling. This competes with AI_Proxy's atomic move to Running. When AI_Proxy
+claims the Ask first, the board leaves the attempt and normal harvest in place.
+After withdrawal, the board commits slot or upscale removal, then purges the
+withdrawn bundle and producer metadata. Workflow refresh can finish an
+interrupted withdrawal. Image Generation applies this per child, preserving
+the other indices and their shared inputs while they are needed.

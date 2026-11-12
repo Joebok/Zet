@@ -1,7 +1,7 @@
 import {renderProposalComparison} from './interview_proposals.js';
 /** Mounted Narrative editor; all listeners and polling belong to this mount. */
-import {mountCandidateBoard, confirmCandidateDeletion} from './candidate_board.js?v=20261111-upscale';
-import {isNarrativeActive, narrativeBoardModel} from './narrative_candidate_board.js?v=20261111-upscale';
+import {mountCandidateBoard, confirmCandidateDeletion} from './candidate_board.js?v=20261112-queued-cancel';
+import {isNarrativeActive, narrativeBoardModel} from './narrative_candidate_board.js?v=20261112-queued-cancel';
 export async function mountNarrative(host, requestedUniverse = '', onContext = null) {
 let disposed = false;
 let pollTimer = null;
@@ -306,11 +306,17 @@ async function boardAction(intent) {
     let result;
     if (key === 'delete-drafts' || key === 'delete-non-selected') result = await deleteBoardImages(key === 'delete-drafts');
     else if (key === 'reuse' || key === 'crop') result = await api(base() + '/backdrop-source', 'POST', {action: key});
-    else result = await api(candidateUrl, 'POST', {action: key});
+    else result = await api(candidateUrl, 'POST', {action: key, expected_attempt_id:intent.expectedAttempt});
     if (!current() || !result) return cancelled;
     mergeTarget(result);
     if (key === 'upscale' && result.candidates[candidateId]?.error) throw Error(result.candidates[candidateId].error);
-    return {...success, message: 'Updated.'};
+    return {...success, message: key === 'cancel' ? 'Render cancelled.' : 'Updated.'};
+  } catch (error) {
+    if (key === 'cancel' && current()) {
+      const next = await api(base()).catch(() => null);
+      if (next && current()) mergeTarget(next);
+    }
+    throw error;
   } finally {
     busy = false;
     if (current()) {

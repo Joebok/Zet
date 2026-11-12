@@ -56,6 +56,9 @@ class FileProxyClient:
     def staging_path(self, job_id: str) -> Path:
         return self.ask_root / f".{job_id}.staging"
 
+    def withdrawn_path(self, job_id: str) -> Path:
+        return self.ask_root / f".{job_id}.withdrawn"
+
     def ready_path(self, job_id: str) -> Path:
         return self.ask_root / job_id
 
@@ -77,7 +80,8 @@ class FileProxyClient:
         receipt_name = hashlib.sha256(str(job_id).encode("utf-8")).hexdigest() + ".json"
         if (self.local_state_root / "Receipts" / receipt_name).is_file():
             raise ValueError("This AI job already has a durable receipt. Start a new attempt with a new job ID.")
-        if AIJobRepository(self.local_state_root).is_deleted(job_id):
+        if (self.withdrawn_path(job_id).is_dir()
+                or AIJobRepository(self.local_state_root).is_deleted(job_id)):
             raise ValueError("This AI job was deleted. Start a new attempt to retry.")
         initial = json.loads((staging / "ask_manifest.json").read_text(encoding="utf-8"))
         if worker_type == "ollama_generate" and str(initial.get("ollama_model") or initial.get("model") or "").startswith("codex:"):

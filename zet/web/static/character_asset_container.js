@@ -1,4 +1,4 @@
-import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261111-upscale";
+import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261112-queued-cancel";
 
 (() => {
   const $ = (id) => document.getElementById(`character-container-${id}`);
@@ -78,7 +78,7 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
 
   async function loadDetail() {
     const sequence = ++state.request;
-    const data = await request(api());
+    const data = await request(api() + (state.view ? '&prompt_view=' + encodeURIComponent(state.view) : ''));
     if (sequence !== state.request || data.revision < (state.detail?.revision ?? -1)) return;
     state.detail = data;
     if (state.view && !data.boards[state.view]) state.view = data.scope.views[0];
@@ -284,7 +284,7 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
     }));
     return {id,quality:item.render_mode,status:item.status,image:item.image_path?{url:comparisonImageUrl(view,id),label:`${view} slot ${item.slot}`,version:item.image_path}:null,
       thumbnail:item.image_path?{url:comparisonImageUrl(view,id),label:`${view} slot ${item.slot}`,version:item.image_path}:null,
-      elapsedSeconds:item.render_duration_seconds,locked:Boolean(item.locked),prompt:item.prompt,
+      earlierPrompt:item.earlier_prompt,elapsedSeconds:item.render_duration_seconds,locked:Boolean(item.locked),prompt:item.prompt,
       negativePrompt:request.negative_prompt,inputs,renderSettings:savedRenderSettings(view,request,bindings),
       error:item.error,notices:item.source_change_fyi?["Saved source differs from current source."]:[],reviewable:true};
   }
@@ -306,7 +306,8 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
       add(item.locked?"unlock":"lock",ready || held);
       add("clear",waiting || (item.locked ? "Unlock this image before clearing its slot." : ""));
       if(item.status==="COMPLETE"&&item.image_path)actions.push({key:"template-improve",label:"Improve template from this image",placement:["review"]});
-      return {key:String(index+1),candidate:candidateEvidence(state.view,id,item),actions,renderActive:active};
+      return {key:String(index+1),candidate:candidateEvidence(state.view,id,item),actions,renderActive:active,
+        cancelAttempt:item.status === "QUEUED" && item.ask_id ? item.attempt_id : null};
     });
     const order=state.view==="FRONT"?["FRONT_LEFT_3_4","FRONT_RIGHT_3_4","LEFT_PROFILE","RIGHT_PROFILE"]:["FRONT"];
     const comparisons=Object.entries(state.detail.boards).filter(([view])=>view!==state.view).map(([view,other])=>{
@@ -356,7 +357,7 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
     if(intent.key==="save-dressing-settings") {
       const source={view:state.view,mode:$("dressing-mode").value,costume_reference_view:$("dressing-reference").value};
       state.detail=await request(api("/sources/dressing_settings"),{method:"PUT",body:JSON.stringify({source,expected_revision:state.detail.revision})});
-      delete state.dressingDrafts[state.view];render();return {status:"success",message:"Costume settings saved."};
+      delete state.dressingDrafts[state.view];await loadDetail();return {status:"success",message:"Costume settings saved."};
     }
     if(intent.key.startsWith("render-")) {
       return generate(intent.count,intent.mode,intent.revision);
@@ -388,7 +389,7 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
     if(intent.key==="template-improve") {
       history.pushState({},"",route(""));await activate(state.pipeline,{view:"",costume:state.costume,templateCandidate:`${view}:${candidate.candidate_id}`});return {status:"success",message:"Template Improvement opened."};
     }
-    const payload={expected_revision:intent.revision,expected_candidate_id:intent.expectedOccupant};
+    const payload={expected_revision:intent.revision,expected_candidate_id:intent.expectedOccupant,expected_attempt_id:intent.expectedAttempt};
     if(intent.key==="clear") {
       payload.confirm_selected=board.selected_id===candidate.candidate_id&&confirm("Clear the selected candidate from this board?");
       if(board.selected_id===candidate.candidate_id&&!payload.confirm_selected)return {status:"cancelled"};
@@ -399,7 +400,13 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
     try {
       const result=await request(api(endpoint),{method:"POST",body:JSON.stringify(payload)});
       if(result.revision<state.detail.revision)return {status:"cancelled"};
-      state.detail=result;render();return {status:"success",message:intent.key==="lock"?"Locked and published.":"Candidate updated."};
+      state.detail=result;render();return {status:"success",message:intent.key==="lock"?"Locked and published.":intent.key==="cancel"?"Render cancelled.":"Candidate updated."};
+    } catch (error) {
+      if (intent.key === "cancel") {
+        await request(api(`/views/${encodeURIComponent(view)}/progress`)).catch(() => {});
+        await loadDetail().catch(() => {});
+      }
+      throw error;
     } finally { state.mutation=false; }
   }
 
@@ -468,7 +475,8 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
         method: "PUT", body: JSON.stringify({source, render_mode: renderMode,
           expected_revision: state.detail.revision}),
       });
-      render();
+      if (state.view) await loadDetail();
+      else render();
       if (!state.view && isHead()) void loadPhaseSourceCandidates();
       status.textContent = "Reference choice saved for new requests.";
     } catch (error) { if (error.name !== "AbortError") status.textContent = error.message; }

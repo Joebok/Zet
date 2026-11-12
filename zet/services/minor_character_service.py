@@ -154,7 +154,9 @@ class MinorCharacterService(QuickCharacterWizardService):
 
     def _public(self, value):
         public = deepcopy(value)
+        self._mark_earlier_prompts(public)
         public.pop("cleanup_pending", None)
+        public.pop("queue_cleanup_pending", None)
         sid = value["session_id"]
         _, digest, sections, _ = self._template(sid)
         public.update(name=sections["NAME"], template_hash=digest,
@@ -214,7 +216,14 @@ class MinorCharacterService(QuickCharacterWizardService):
         with self._lock(sid):
             return self._public(self._read(sid))
 
+    def _mark_earlier_prompts(self, value):
+        for board in value["boards"].values():
+            for item in board["candidates"].values():
+                if item.get("image") and board_policy.prompt_differs(item.get("prompt"), board["prompt"]):
+                    item["earlier_prompt"] = True
+
     def _save(self, value):
+        self._mark_earlier_prompts(value)
         value["revision"] += 1
         self._write(value)
 
@@ -457,6 +466,8 @@ class MinorCharacterService(QuickCharacterWizardService):
             pending.append(path)
 
     def _cleanup(self, value):
+        if self.production.finish_board_withdrawals(value):
+            self._write(value)
         pending = value.get("cleanup_pending", [])
         if pending:
             board_policy.cleanup(self._directory(value["session_id"]), pending)
@@ -468,7 +479,11 @@ class MinorCharacterService(QuickCharacterWizardService):
         sid = value["session_id"]
         changed = False
         harvested = []
-        for item in board["candidates"].values():
+        self._cleanup(value)
+        for item in list(board["candidates"].values()):
+            if self.production.was_withdrawn(item.get("ask_id")):
+                self._cancel_render(value, view, board, item, item["attempt_id"])
+                continue
             if item["status"] not in ACTIVE:
                 continue
             attempt = item["attempt_id"]
@@ -545,12 +560,40 @@ class MinorCharacterService(QuickCharacterWizardService):
                 return item["status"] not in ACTIVE
             return True
 
+    def _cancel_render(self, value, view, board, item, expected_attempt):
+        ask_id = item.get("ask_id")
+        if not ask_id or item.get("attempt_id") != expected_attempt:
+            raise QuickCharacterWizardConflict("This render attempt changed.")
+        owner = self._transport_owner(value, view, item)
+
+        def commit(withdrawn_id):
+            value.setdefault("queue_cleanup_pending", []).append(withdrawn_id)
+            if request := item.get("upscale_request"):
+                root = self._directory(value["session_id"]).resolve()
+                value.setdefault("cleanup_pending", []).extend([
+                    str(Path(request["inputs"][0]["path"]).resolve().parent.relative_to(root)),
+                    f"renders/{item['id']}/attempts/{expected_attempt}",
+                ])
+                board_policy.restore_draft(item)
+            else:
+                self._remove(value, board, item["id"])
+            self._save(value)
+
+        try:
+            self.production.cancel_queued(ask_id, {"image_production": owner}, commit)
+        except (OSError, ValueError) as exc:
+            raise QuickCharacterWizardConflict(str(exc)) from exc
+        self._cleanup(value)
+
     def action(self, sid, view, cid, action, data):
         with self._lock(sid):
             value = self._read(sid)
             self._check(value, data)
             board = self._board(value, view)
             item = board_policy.validate_membership(board["slots"], board["candidates"], cid)
+            if action == "cancel":
+                self._cancel_render(value, view, board, item, data.get("expected_attempt_id"))
+                return self._public(value)
             if item["status"] in ACTIVE:
                 raise QuickCharacterWizardConflict("Wait for the render to finish.")
             if action in {"select", "lock", "upscale"}:
@@ -692,8 +735,6 @@ class MinorCharacterService(QuickCharacterWizardService):
         board = self._board(value, view)
         basis = self._prompt_basis(value, view) if body.strip() else {}
         prompt = compose_style(body, basis["style"]) if basis.get("style") else body.strip()
-        if board["prompt"] != prompt:
-            self._mark_changed(board)
         board.update(prompt=prompt, prompt_body=body, prompt_basis=basis)
 
     def start_intake(self, sid, data):

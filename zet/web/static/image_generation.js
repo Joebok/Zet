@@ -1,4 +1,4 @@
-import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261111-generation-controls";
+import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261112-queued-cancel";
 
 const api = "/api/image-generation";
 const assets = api + "/assets";
@@ -123,9 +123,14 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
         const selected = index === data.selected_slot;
         const descriptor = image && {url:image.url, label:"Candidate in slot " + key};
         const settings = job?.render_sizing;
-        return {key, renderActive:running, candidate:{
+        return {key, renderActive:running,
+          cancelAttempt:upscale?.request_id
+            ? (data.upscale_statuses?.[index] === "QUEUED" ? upscale.request_id : null)
+            : (state === "QUEUED" ? item.requestId : null),
+          candidate:{
           id:candidateId(item), quality:item.quality, status:state, error:upscale?.error || child?.error || job?.error,
           notices:upscale?.request_id ? ["Upscaling Draft to Final."] : [],
+          earlierPrompt:Boolean(image && candidateId(data.earlier_prompts?.[index]) === candidateId(item)),
           thumbnail:descriptor, image:descriptor, prompt:job?.prompt, negativePrompt:job?.negative_prompt,
           inputs:(job?.reference_labels || []).map((label, i) => ({label, url:imageUrl(
             api + "/jobs/" + item.requestId + "/references/" + i)})),
@@ -356,8 +361,16 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
       if (intent.key.startsWith("delete-")) return {status:await deleteItems(intent.key) ? "success" : "cancelled"};
       const operation = intent.key.startsWith("render-") ? "generate"
         : intent.key.startsWith("regen-") ? expected ? "regenerate" : "generate" : intent.key;
-      await update(operation, {...slot, count:intent.count, render_mode:intent.mode || expected?.quality || "draft"}, token);
-      return {status:"success"};
+      const expectedUpscale = intent.key === "cancel" && intent.expectedAttempt !== expected?.requestId
+        ? intent.expectedAttempt : null;
+      await update(operation, {...slot, expected_upscale_id:expectedUpscale, count:intent.count, render_mode:intent.mode || expected?.quality || "draft"}, token);
+      return {status:"success", message:intent.key === "cancel" ? "Render cancelled." : undefined};
+    } catch (error) {
+      if (intent.key === "cancel" && live(token)) {
+        const next = await fetchJson(endpoint()).catch(() => null);
+        if (next && live(token) && !dirty) { data = next; render(); }
+      }
+      throw error;
     } finally { if (live(token)) { busy = false; schedulePoll(); } }
   }
 
@@ -383,6 +396,8 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
             data = next;
           } else {
             data.jobs = data.jobs.map(job => ({...job, ...jobs.get(job.request_id)}));
+            data.upscale_statuses = progress.upscale_statuses;
+            render();
           }
         }
         if (live(token)) await refreshAdvisory(token);

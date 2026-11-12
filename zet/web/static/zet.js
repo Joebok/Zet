@@ -1180,7 +1180,7 @@ async function modifyEntityLibraryImageWithGenerator() {
   const asset = entityLibrarySelectedAsset;
   if (!asset || asset.origin === "pipeline" || asset.status === "archived") return;
   try {
-    const {createAsset, readImage} = await import("/static/image_generation.js?v=20261111-generation-controls");
+    const {createAsset, readImage} = await import("/static/image_generation.js?v=20261112-queued-cancel");
     const response = await fetch(fileUrl(asset.image_path, asset.checksum));
     if (!response.ok) throw new Error("Unable to read the Inventory image.");
     const image = await readImage(await response.blob());
@@ -3627,7 +3627,7 @@ async function activatePage(page, options = {}) {
     await loadAiControls();
   } else window.ZetAIQueue?.stop();
   if (page === "image-generation") {
-    const controller = await import("/static/image_generation.js?v=20261111-generation-controls");
+    const controller = await import("/static/image_generation.js?v=20261112-queued-cancel");
     window.ZetImageGeneration ||= controller.setup({
       fetchJson, universe:() => state.universeId,
       style:variant => state.universes.find(item => (item.id || item.universe_id) === state.universeId)?.[
@@ -3688,7 +3688,7 @@ async function activatePage(page, options = {}) {
         history.replaceState({}, '', '/?'+params);
       } catch (error) { window.ZetTaskCapture.notice(error.message); }
     }
-    const {mountNarrative} = await import('/static/narrative.js?v=20261111-upscale');
+    const {mountNarrative} = await import('/static/narrative.js?v=20261112-queued-cancel');
     if (!pageLoadIsCurrent(pageLoad)) return false;
     const pending = mountNarrative(document.querySelector('#narrative-page'), state.universeId, async next=>{
       const requested = location.search;

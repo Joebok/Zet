@@ -40,6 +40,12 @@ component supplies the action in the grid and review. Character, Narrative,
 Minor Character, and Image Generation services dispatch through AI_Proxy and
 settle the result in the existing slot.
 
+The shared board renders the Earlier prompt badge and queued Cancel action.
+Workflow adapters supply saved-prompt evidence and the displayed attempt identity.
+`ImageProductionService.cancel_queued` owns the File Proxy withdrawal and cleanup
+boundary. The workflow services own slot updates and Image Generation applies
+cancellation to the specific child index.
+
 Legacy Character batch operation contexts and preparation services are retained
 for migration/reference only; their router is not mounted and startup no longer
 recovers or resumes those batches. The active character pipeline boundary is

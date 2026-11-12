@@ -435,6 +435,9 @@ class NarrativeGenerationService:
                     job.update(status="SUPERSEDED", error="")
                     self._cleanup_upscale(record, job)
                     continue
+                if self.proxy.image_production.was_withdrawn(job["id"]):
+                    self._cancel_render(story, scene, target, record, candidate, job["id"])
+                    continue
                 if job.get("upscale"):
                     if self._refresh_upscale(story, scene, target, record, candidate, job):
                         harvested.append(job)
@@ -707,6 +710,38 @@ class NarrativeGenerationService:
             self._cleanup_pending(story, scene, target, record)
             return self.author.target(story, scene, target)
 
+    def _cancel_render(self, story, scene, target, record, candidate, expected_attempt):
+        candidate_id = candidate["id"]
+        job = record["jobs"].get(candidate.get("job_id"))
+        if not job or job["kind"] != "image" or job["id"] != expected_attempt:
+            raise ValueError("This render attempt changed.")
+        expected = {"consumer": CONSUMER, "universe_id": self.author.app.universe_id,
+                    "narrative_story_id": story, "narrative_scene_id": scene,
+                    "narrative_target_id": target, "narrative_candidate_id": candidate_id}
+
+        def commit(withdrawn_id):
+            record.setdefault("queue_cleanup_pending", []).append(withdrawn_id)
+            del record["jobs"][job["id"]]
+            if job.get("upscale"):
+                self._cleanup_upscale(record, job)
+                candidate.update(status="COMPLETE", error="", job_id=None)
+            else:
+                self._remove_candidate(story, scene, target, record, candidate_id)
+                for parent in list(record["jobs"].values()):
+                    children = parent.get("candidate_ids", [])
+                    if candidate_id in children:
+                        children.remove(candidate_id)
+                        if not children and parent["kind"] == "render":
+                            record.setdefault("cleanup_pending", []).append(f"snapshots/{parent['id']}")
+                            del record["jobs"][parent["id"]]
+            self.repository.write(record, story, scene, target)
+
+        try:
+            self.proxy.image_production.cancel_queued(job["id"], expected, commit)
+        except OSError as exc:
+            raise ValueError(str(exc)) from exc
+        self._cleanup_pending(story, scene, target, record)
+
     def candidate_action(self, story, scene, target, candidate_id, data):
         with self.repository.lock():
             record = self.repository.read(story, scene, target)
@@ -718,6 +753,9 @@ class NarrativeGenerationService:
             mode = candidate.get("render_mode", "draft")
             if "render_mode" in data and data["render_mode"] != mode:
                 raise ValueError("Candidate belongs to a different render mode.")
+            if action == "cancel":
+                self._cancel_render(story, scene, target, record, candidate, data.get("expected_attempt_id"))
+                return self.author.target(story, scene, target)
             if action == "upscale":
                 folder = self.repository.folder(story, scene, target).resolve()
                 source = (folder / candidate["image"]).resolve()
@@ -789,6 +827,8 @@ class NarrativeGenerationService:
             pending.append(finished)
         pending.append(f"lettering/{candidate_id}")
     def _cleanup_pending(self, story, scene, target, record):
+        if self.proxy.image_production.finish_board_withdrawals(record):
+            self.repository.write(record, story, scene, target)
         pending = record.get("cleanup_pending", [])
         if pending:
             cleanup(self.repository.folder(story, scene, target), pending)

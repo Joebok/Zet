@@ -11,11 +11,91 @@ from zet.services.atomic_file_service import write_bytes_atomic, write_json_atom
 from zet.services.image_render_request import ImageRenderRequest
 
 
+class RenderAlreadyStarted(ValueError):
+    pass
+
+
 class ImageProductionService:
     """Queue and collect image requests while callers retain candidate state."""
 
     def __init__(self, app):
         self.app = app
+
+    def was_withdrawn(self, ask_id):
+        client = self.app.ai_proxy_service.ai_proxy_path_service.file_proxy_client
+        return bool(ask_id and client.withdrawn_path(ask_id).is_dir())
+
+    def cancel_queued(self, ask_id: str, expected: dict, commit) -> None:
+        """Withdraw the published Ask before committing its owner's slot change."""
+        import socket
+        from zet.services.workflow_storage import file_lock
+
+        paths = self.app.ai_proxy_service.ai_proxy_path_service
+        jobs, client = paths.jobs, paths.file_proxy_client
+        jobs.validate_id(ask_id)
+        ready, withdrawn = client.ready_path(ask_id), client.withdrawn_path(ask_id)
+        with file_lock(paths.lifecycle.lock_path(ask_id)):
+            started = (client.running_root / ask_id, client.answer_root / ask_id,
+                       paths.lifecycle.inbox_root / ask_id)
+            def already_started():
+                return any(path.is_dir() for path in started) or paths.lifecycle.read_receipt(ask_id)
+
+            if already_started():
+                raise RenderAlreadyStarted("Render already started.")
+            bundle = withdrawn if withdrawn.is_dir() else ready
+            manifest = self._manifest(bundle)
+            try:
+                envelope = json.loads((bundle / "job.json").read_text(encoding="utf-8"))
+            except FileNotFoundError:
+                if already_started():
+                    raise RenderAlreadyStarted("Render already started.") from None
+                raise ValueError("Could not verify that this render is still queued.") from None
+            if (envelope.get("job_id") != ask_id
+                    or envelope.get("producer_id", "").casefold() != socket.gethostname().casefold()
+                    or manifest.get("worker_type") != "local_image_render"
+                    or any(manifest.get(key) != value for key, value in expected.items())):
+                raise ValueError("Queued render ownership does not match this slot.")
+            if bundle == ready:
+                try:
+                    ready.rename(withdrawn)
+                except OSError:
+                    if already_started():
+                        raise RenderAlreadyStarted("Render already started.") from None
+                    raise
+            commit(ask_id)
+            self.finish_withdrawal(ask_id)
+
+    def finish_withdrawal(self, ask_id):
+        import hashlib
+
+        from zet.services.ai_queue_query_service import AIQueueQueryService
+        from zet.services.storage_health_service import request_journal_root
+        from zet.services.workflow_storage import file_lock
+
+        paths = self.app.ai_proxy_service.ai_proxy_path_service
+        jobs, client = paths.jobs, paths.file_proxy_client
+        jobs.validate_id(ask_id)
+        with file_lock(paths.lifecycle.lock_path(ask_id)):
+            withdrawn = client.withdrawn_path(ask_id)
+            if not withdrawn.is_dir():
+                return
+            jobs.repository.path(ask_id).unlink(missing_ok=True)
+            for root in (client.route_root, client.legacy_route_root):
+                (root / f"{ask_id}.json").unlink(missing_ok=True)
+            journal = request_journal_root(paths.config)
+            (journal / (hashlib.sha256(ask_id.encode()).hexdigest() + ".json")).unlink(missing_ok=True)
+            jobs.repository.metadata.invalidate()
+            AIQueueQueryService.mark_deleted(paths, ask_id)
+            shutil.rmtree(withdrawn)
+
+    def finish_board_withdrawals(self, record):
+        pending = record.get("queue_cleanup_pending")
+        if not pending:
+            return False
+        for ask_id in pending:
+            self.finish_withdrawal(ask_id)
+        del record["queue_cleanup_pending"]
+        return True
 
     def supersede_candidate(self, candidate: dict, owner: dict) -> None:
         ask_id = candidate.get("ask_id")

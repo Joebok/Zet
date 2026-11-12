@@ -11,6 +11,7 @@ from uuid import uuid4
 from PIL import Image
 
 from zet.services.atomic_file_service import write_json_atomic
+from zet.services.image_candidate_board_service import prompt_differs
 from zet.services.image_render_request import draft_upscale_spec
 from zet.services.render_slot_service import RenderSlotConflict, render_count
 from zet.services.workflow_storage import file_lock, validate_image
@@ -67,10 +68,12 @@ class ImageGenerationWorkspace:
             return self._detail(board) if self.asset_id else {**self._detail(board), "render_mode": render_mode}
 
     def _detail(self, board):
+        upscale_statuses = {}
         if self.asset_id:
-            self._settle_upscales(board)
+            self._finish_cancellations(board)
+            upscale_statuses = self._settle_upscales(board)
         jobs = {}
-        busy = any("request_id" in attempt for attempt in board.get("upscales", {}).values())
+        busy = bool(upscale_statuses)
         for assignment in board["slots"]:
             if not assignment:
                 continue
@@ -85,7 +88,74 @@ class ImageGenerationWorkspace:
                         "error": pending.get("error", "Render submission was interrupted. Clear this slot and generate again."),
                         "results": [], "prompt": pending.get("prompt", "")}
             busy |= self._active(assignment, {"jobs": [jobs[request_id]]})
-        return {**{key: value for key, value in board.items() if key != "final_board"}, "jobs": list(jobs.values()), "busy": busy, "empty_count": board["slots"].count(None)}
+        if self.asset_id:
+            for index, assignment in enumerate(board["slots"]):
+                if not assignment:
+                    continue
+                if upscale_statuses.get(str(index)) == "WITHDRAWING":
+                    self._cancel_slot(board, index, assignment, board["upscales"][str(index)]["request_id"])
+                    return self._detail(board)
+                job = jobs[assignment["requestId"]]
+                if any(child["index"] == assignment["index"] and child["status"] == "WITHDRAWING"
+                       for child in job["results"]):
+                    self._cancel_slot(board, index, assignment, None)
+                    return self._detail(board)
+            self._mark_earlier_prompts(board, jobs)
+        return {"upscale_statuses": upscale_statuses, **{key: value for key, value in board.items() if key != "final_board"}, "jobs": list(jobs.values()), "busy": busy, "empty_count": board["slots"].count(None)}
+
+    def _finish_cancellations(self, board):
+        pending = board.get("queue_cleanup_pending")
+        if not pending:
+            return
+        for request_id, index, ask_id in pending:
+            self.generator.cancel_queued_child(request_id, index, self.asset_id,
+                                               lambda _: None, withdrawn_id=ask_id)
+        del board["queue_cleanup_pending"]
+        self._save(board)
+
+    def _cancel_slot(self, board, index, assignment, upscale):
+        request_id = upscale or assignment["requestId"]
+        child_index = 0 if upscale else assignment["index"]
+
+        def commit(ask_id):
+            board.setdefault("queue_cleanup_pending", []).append([request_id, child_index, ask_id])
+            if upscale:
+                del board["upscales"][str(index)]
+            else:
+                board["slots"][index] = None
+            self._save(board)
+
+        try:
+            self.generator.cancel_queued_child(request_id, child_index, self.asset_id, commit)
+        except (OSError, ValueError) as exc:
+            raise RenderSlotConflict(str(exc)) from exc
+
+    def _mark_earlier_prompts(self, board, jobs):
+        previous = board.get("earlier_prompts", {})
+        marked = {}
+        for index, assignment in enumerate(board["slots"]):
+            if not assignment:
+                continue
+            key = str(index)
+            job = jobs[assignment["requestId"]]
+            if previous.get(key) == assignment:
+                marked[key] = assignment
+                continue
+            if not any(image["index"] == assignment["index"] for image in job["images"]):
+                continue
+            if source := job.get("upscale_source"):
+                try:
+                    job = self.generator.workspace_status(source["requestId"])
+                except KeyError:
+                    continue
+            inputs = board["inputs"]
+            if (prompt_differs(job.get("prompt"), inputs.get("prompt", ""))
+                    or prompt_differs(job.get("negative_prompt"), (inputs.get("negative_prompt") or "").strip(),
+                                      allow_empty=True)):
+                marked[key] = assignment
+        if marked != previous:
+            board["earlier_prompts"] = marked
+            self._save(board)
 
     def _start_upscale(self, board, index, assignment, detail):
         source = next(job for job in detail["jobs"] if job["request_id"] == assignment["requestId"])
@@ -126,6 +196,7 @@ class ImageGenerationWorkspace:
 
     def _settle_upscales(self, board):
         upscales = board.get("upscales", {})
+        statuses = {}
         changed = False
         for key, attempt in list(upscales.items()):
             request_id = attempt.get("request_id")
@@ -136,15 +207,21 @@ class ImageGenerationWorkspace:
             except KeyError:
                 job = {"status": "FAILED", "images": [], "error": "Render submission was interrupted."}
             if job["status"] not in {"COMPLETE", "PARTIAL", "FAILED", "ERROR", "CANCELLED"}:
+                statuses[key] = (job["results"][0] if job["results"] else job)["status"]
                 continue
             if any(image["index"] == 0 for image in job["images"]):
-                board["slots"][int(key)] = {"requestId": request_id, "index": 0, "quality": "final"}
+                final = {"requestId": request_id, "index": 0, "quality": "final"}
+                marked = board.get("earlier_prompts", {})
+                if marked.get(key) == board["slots"][int(key)]:
+                    marked[key] = final
+                board["slots"][int(key)] = final
                 del upscales[key]
             else:
                 upscales[key] = {"error": "Upscale failed. " + (job["error"] or "The Draft was kept.")}
             changed = True
         if changed:
             self._save(board)
+        return statuses
 
     def reserve_reconstruction(self, request_id, count, render_mode="draft"):
         with self.locked():
@@ -222,6 +299,15 @@ class ImageGenerationWorkspace:
                 if self.asset_id and (index is None or index != board["selected_slot"]):
                     raise RenderSlotConflict("The selection changed.")
                 board["selected_slot"] = None
+            elif operation == "cancel" and self.asset_id:
+                if not assignment:
+                    raise RenderSlotConflict("This slot is empty.")
+                upscale = board.get("upscales", {}).get(str(index), {}).get("request_id")
+                if payload.get("expected_upscale_id") != upscale:
+                    raise RenderSlotConflict("This render attempt changed.")
+
+                self._cancel_slot(board, index, assignment, upscale)
+                return self._detail(board)
             elif operation == "select":
                 if not assignment or not any(image["index"] == assignment["index"] for job in detail["jobs"] if job["request_id"] == assignment["requestId"] for image in job["images"]):
                     raise RenderSlotConflict("Select a completed image.")
@@ -452,7 +538,7 @@ class ImageGenerationWorkspace:
     def progress(self):
         with self.locked():
             detail = self._detail(self._load())
-            return {"revision": detail["revision"], "busy": detail["busy"], "jobs": [
+            return {"revision": detail["revision"], "busy": detail["busy"], "upscale_statuses": detail["upscale_statuses"], "jobs": [
                 {key: job[key] for key in ("request_id", "status", "results", "error")} for job in detail["jobs"]]}
 
     def publish(self, operation, payload):
