@@ -127,7 +127,7 @@ Use simple neutral fitment clothing.
 
 Clothing rules:
 
-* Beige pasties.
+* Lightweight beige bandeau crop top.
 * Beige compression shorts.
 * No additional garments.
 * Keep the body silhouette readable.
