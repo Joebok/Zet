@@ -1,3 +1,7 @@
+:root {
+  --render-final: #62409a;
+}
+
 .zet-candidate-board .zcb-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
@@ -66,8 +70,8 @@
   background: #c9e1e6;
 }
 :is(.zet-candidate-board, .zet-candidate-review) button:not(:disabled)[data-quality="final"] {
-  background: #62409a;
-  border-color: #62409a;
+  background: var(--render-final);
+  border-color: var(--render-final);
   color: white;
 }
 :is(.zet-candidate-board, .zet-candidate-review) button:not(:disabled)[data-quality="final"]:hover {
@@ -144,8 +148,8 @@
 }
 
 .narrative-render-mode-pill { display:inline-block; padding:.12rem .48rem; border-radius:999px; font-size:.76rem; font-weight:700; line-height:1.35; }
-.narrative-render-mode-pill.draft { color:#175cd3; background:#eff6ff; }
-.narrative-render-mode-pill.final { color:#15803d; background:#ecfdf3; }
+.narrative-render-mode-pill.draft { color: var(--primary); background: var(--primary-soft); }
+.narrative-render-mode-pill.final { color: var(--render-final); background: #f1ebfa; }
 .zcb-lock svg { width: 1em; height: 1em; vertical-align: -.12em; fill: none; stroke: currentColor; stroke-width: 2; }
 .zcb-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .zet-candidate-board [data-part="authoring"] section { margin-block: .75rem; }

@@ -60,7 +60,7 @@ path as the **Review** eye glyph.
 - Use the shared surface, border, spacing, typography, and focus styles. Fit the
   entire thumbnail inside the fixed 4:3 well without cropping or stretching.
   Leave space around images whose aspect ratio differs from the well. Show
-  quality as a blue Draft or green Final pill, lifecycle status while pending or failed, and whole-second render time when
+  quality as a soft teal Draft or pale violet Final pill, lifecycle status while pending or failed, and whole-second render time when
   recorded, and the applicable Selected, Locked,
   Luna rank, and source-change indicators. Completed images omit the completion label. Locked images show the shared closed-padlock glyph with accessible text. Earlier prompt is an informational pill when the workflow records a saved prompt difference. These facts can coexist. Use the
   saved status and timing for each candidate.
