@@ -650,8 +650,13 @@ function manualBackdrop(layer, image) {
 function renderPlacement() {
   const canvas=host.querySelector('#assembly-canvas'); if(!canvas || layerDrag) return;
   const layers=detail.layers.filter(layer=>layer.visible).sort((a,b)=>a.role==='base'?-1:b.role==='base'?1:a.z-b.z);
-  if(!layers.some(layer=>layer.id===activeLayer)) activeLayer=layers[0]?.id || null;
-  const picker=host.querySelector('#assembly-active-layer'); picker.innerHTML=layers.map(layer=>`<option value="${esc(layer.id)}">${esc(layer.label)}</option>`).join(''); picker.value=activeLayer || '';
+  if (!layers.some(layer=>layer.id===activeLayer)) {
+    activeLayer=layers.find(layer=>layer.source_kind!=='backdrop')?.id || null;
+  }
+  const picker=host.querySelector('#assembly-active-layer');
+  const options=layers.map(layer=>`<option value="${esc(layer.id)}">${esc(layer.label)}</option>`).join('');
+  picker.innerHTML=activeLayer ? options : `<option value="" disabled>Choose a layer</option>${options}`;
+  picker.value=activeLayer || '';
   const size=previewSizing?.aspect_ratio===detail.scene_canvas ? previewSizing : detail;
   canvas.style.aspectRatio=`${detail.scene_canvas.replace(':','/')}`; host.querySelector('#assembly-size').textContent=`Output: ${size.width} x ${size.height}`;
   canvas.innerHTML=layers.map(layer=>{ const selected=layer.id===activeLayer, preset=layer.role==='base' && layer.fit!=='manual';
