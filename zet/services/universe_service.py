@@ -76,9 +76,13 @@ class UniverseService:
             return []
         result = [self._descriptor(path) for path in sorted(self.container.iterdir(), key=lambda item: item.name.casefold())
                   if path.is_dir() and (path / "universe.json").is_file()]
-        # Keep the pre-migration library root available as Moonsea alongside new sibling universes.
+        # Keep a pre-migration library root available as Moonsea when the container
+        # itself still has the legacy root-level authoring folders.
         moonsea_folder = self.container / "Moonsea" / "universe.json"
-        if not any(item["universe_id"].casefold() == "moonsea" for item in result) and not moonsea_folder.is_file():
+        legacy_root = any((self.container / name).is_dir()
+                          for name in ("Characters", "Assets", "Pipelines", "images", "Stories"))
+        if (legacy_root and not any(item["universe_id"].casefold() == "moonsea" for item in result)
+                and not moonsea_folder.is_file()):
             result.append({"universe_id": "Moonsea", "name": "Moonsea", "canonical_art_style": "",
                            "environmental_art_style": "",
                            "layout_version": 0, "root": self.container, "legacy": True})

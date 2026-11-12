@@ -1,5 +1,18 @@
 # Development and verification
 
+## Isolated Test release
+
+`Update_Test.ps1` manages Zet Test separately from the production updater. Run
+`./Update_Test.ps1 -Action Deploy` to stage and launch the latest merged release
+on `127.0.0.1:8082`, `-Action Start` to restart its active release, and
+`-Action Stop` to stop only its dashboard and harvester. Test runtime state and
+logs are under `C:/Users/Joe/Projects/Zet_Runtime_Test/state`; its authored
+library is `E:/Zet/Zet_Library_Test`, and its AI queue is
+`D:/Zet/Zet_Test/AI_Queue`. The private AI_Proxy runtime journal is on C: at
+`C:/Users/Joe/Projects/Zet_Runtime_Test/ai-proxy-runtime` so proxy recovery does
+not depend on the D: queue volume. Both proxy instances share Ollama and
+ComfyUI, so schedule Test inference while production inference is idle.
+
 ## Minor Character view true-ups (2026-10-27)
 
 The four approved fast scenarios passed (44.1s), with focused isolated
