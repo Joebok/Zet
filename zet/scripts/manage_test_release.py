@@ -67,10 +67,26 @@ def require_port_free() -> None:
 
 def stop_release(release: Path) -> None:
     service = test_process_service(release / "config.runtime.toml")
-    for process in matching_processes(service):
+    processes = matching_processes(service)
+    process_ids = {process.pid for process in processes}
+    roots = [process for process in processes if process.parent_pid not in process_ids]
+    for process in roots:
         if os.name == "nt":
-            subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], check=True,
-                           capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            command = ("Get-CimInstance Win32_Process -Filter 'ProcessId = " + str(process.pid)
+                       + "' | Select-Object -ExpandProperty CommandLine")
+            current = subprocess.run(["powershell", "-NoProfile", "-Command", command], capture_output=True,
+                                     text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            if not current.stdout.strip():
+                continue
+            if current.stdout.strip() != process.command_line.strip():
+                raise RuntimeError(f"Test process {process.pid} changed identity during shutdown; it was left untouched.")
+            stopped = subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True,
+                                     text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            if stopped.returncode:
+                current = subprocess.run(["powershell", "-NoProfile", "-Command", command], capture_output=True,
+                                         text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                if current.stdout.strip() == process.command_line.strip():
+                    raise RuntimeError(f"Could not stop Test process {process.pid}: {stopped.stderr.strip()}")
         else:
             os.kill(process.pid, 15)
 
@@ -104,9 +120,12 @@ def deploy() -> None:
         previous, previous_release = read_active()
         with urlopen(f"http://{HOST}:{PORT}/api/health", timeout=3) as response:
             previous_health = json.load(response)
-        if (previous_health.get("revision") != previous["revision"]
+        if (not previous_health.get("ready") or previous_health.get("revision") != previous["revision"]
                 or previous_health.get("instance") != "local:" + str((previous_release / "config.runtime.toml").resolve())):
             raise ValueError("Port 8082 is not running the recorded Test release; no process was stopped.")
+        if previous_health.get("boot_id") != previous.get("boot_id"):
+            previous["boot_id"] = previous_health["boot_id"]
+            atomic_json(STATE / "active-release.json", previous)
     else:
         previous = previous_release = previous_health = None
     STATE.mkdir(parents=True, exist_ok=True)
