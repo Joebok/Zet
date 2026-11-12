@@ -24,7 +24,7 @@ HOST = "127.0.0.1"
 PORT = 8082
 
 
-def read_active() -> tuple[dict, Path]:
+def read_active(*, allow_previous_queue: bool = False) -> tuple[dict, Path]:
     active_path = STATE / "active-release.json"
     if not active_path.is_file():
         raise ValueError("No Test release is deployed. Run Update_Test.ps1 to deploy merged origin/main.")
@@ -34,10 +34,13 @@ def read_active() -> tuple[dict, Path]:
             or active.get("port") != PORT or active.get("host") != HOST):
         raise ValueError("Test active-release.json is invalid or points outside the Test runtime.")
     config = ConfigService.load(release / "config.runtime.toml")
+    queue_path = Path(config.base_ai_queue_path).resolve()
+    valid_pair = (queue_path == Path(r"D:\Zet\AI_Queue") and config.ai_proxy_subscriber_id == "zet_test")
+    previous_pair = (queue_path == Path(r"D:\Zet\Zet_Test\AI_Queue")
+                     and config.ai_proxy_subscriber_id == "zet")
     if (config.runtime_role != "local" or Path(config.runtime_state_path).resolve() != STATE
             or Path(config.base_library_path).resolve() != LIBRARY
-            or Path(config.base_ai_queue_path).resolve() != Path(r"D:\Zet\AI_Queue")
-            or config.ai_proxy_subscriber_id != "zet_test"):
+            or not (valid_pair or (allow_previous_queue and previous_pair))):
         raise ValueError("The active release config does not identify the isolated Test data roots.")
     return active, release
 
@@ -119,7 +122,7 @@ def deploy() -> None:
             or config.ai_proxy_subscriber_id != "zet_test"):
         raise ValueError("Test config paths differ from the provisioned Test library and queue.")
     if (STATE / "active-release.json").is_file():
-        previous, previous_release = read_active()
+        previous, previous_release = read_active(allow_previous_queue=True)
         with urlopen(f"http://{HOST}:{PORT}/api/health", timeout=3) as response:
             previous_health = json.load(response)
         if (not previous_health.get("ready") or previous_health.get("revision") != previous["revision"]
