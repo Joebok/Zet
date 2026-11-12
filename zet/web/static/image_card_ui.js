@@ -22,6 +22,8 @@
     refine: '<path d="m4 20 4-1L20 7l-3-3L5 16l-1 4ZM14 7l3 3"/>',
     task: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2h6v2M9 10h6M9 14h6M9 18h3"/>',
     import: '<path d="M12 3v12m-5-5 5 5 5-5M3 14v7h18v-7M17 5h4M19 3v4"/>',
+    inventory: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="9" r="1.5"/><path d="m3 17 5-4 3 2 5-5 5 5"/>',
+    paste: '<path d="M9 4H6a1 1 0 0 0-1 1v15a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1h-3"/><rect x="9" y="2" width="6" height="5" rx="1"/><path d="M9 12h6m-6 4h6"/>',
     details: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v1"/>',
   };
   const scopes = [

@@ -4,7 +4,8 @@ const escape = value => String(value ?? '').replace(/[&<>"']/g, char =>
 const qualities = ['draft', 'final'];
 let nextBoardId = 0;
 const actionOrder = ['select', 'unselect', 'lock', 'unlock', 'inventory-add', 'inventory-update', 'retry', 'upscale', 'regen-draft', 'regen-final', 'download', 'clear'];
-const glyphs = {'regen-draft':'regenerate', 'regen-final':'regenerate'};
+const glyphs = {'regen-draft':'regenerate', 'regen-final':'regenerate',
+  'inventory-add':'inventory', 'inventory-update':'inventory'};
 const slotLabels = {select:'Select', unselect:'Deselect', lock:'Lock', unlock:'Unlock', retry:'Retry', upscale:'Upscale Draft', clear:'Clear slot'};
 const bulkLabels = {'delete-drafts':'Delete Drafts', 'delete-non-selected':'Delete Non-Selected'};
 const selectedKey = 'selected';
@@ -84,10 +85,10 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
     }
     const replacement = token && [...node.querySelectorAll('button,input,select,textarea,summary,.zcb-action[tabindex]')].find(control =>
       control.dataset.command === token[0] && control.dataset.key === token[1] && control.name === token[2] &&
-      control.tagName === token[3]
+      control.tagName === token[3] && (focused.type !== 'radio' || control.value === focused.value)
     );
     if (replacement) {
-      if (replacement.name) {
+      if (replacement.name && replacement.type !== 'radio') {
         replacement.value = focused.value;
         if (replacement.type === 'checkbox') replacement.checked = focused.checked;
         if (selection) replacement.setSelectionRange(...selection);
@@ -182,6 +183,10 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
     const host = part(board, 'fields');
     const fieldMarkup = field => {
       const attrs = `name="${escape(field.key)}" ${field.disabled ? 'disabled' : ''}`;
+      if (field.type === 'radio') {
+        return `<fieldset class="zcb-radio-group"><legend>${escape(field.label)}</legend>${(field.options || []).map(option =>
+          `<label><input ${attrs} type="radio" value="${escape(option.value)}">${escape(option.label)}</label>`).join('')}</fieldset>`;
+      }
       const list = `zcb-${boardId}-${escape(field.key)}`;
       const input = field.type === 'textarea' ? `<textarea ${attrs}></textarea>`
         : field.type === 'select' ? `<select ${attrs}>${(field.options || []).map(option =>
@@ -206,11 +211,15 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
     patch(host, fields.length || settingsActions.length ? `<details><summary>Prompt and render settings</summary>
       ${fields.length ? `<div class="zcb-fields ${controls.fieldsLayout === 'inline' ? 'zcb-fields-inline' : ''}">${fields.map(fieldMarkup).join('')}</div>` : ''}
       ${settingsActions.length ? `<div class="zcb-tools zcb-settings-actions">${settingsActions.map(action => actionMarkup(action)).join('')}</div>` : ''}</details>` : '');
-    for (const field of [...(controls.promptFields || []), ...fields]) {
-      const control = [...board.querySelectorAll('[name]')].find(input => input.name === field.key);
-      if (control === document.activeElement) continue;
-      if (field.type === 'checkbox') control.checked = Boolean(field.value);
-      else if (control.value !== String(field.value ?? '')) control.value = field.value ?? '';
+    const fieldsByName = new Map([...(controls.promptFields || []), ...fields].map(field => [field.key, field]));
+    for (const control of board.querySelectorAll('[name]')) {
+      const field = fieldsByName.get(control.name);
+      if (!field) continue;
+      if (field.type === 'radio') control.checked = control.value === String(field.value ?? '');
+      else if (control !== document.activeElement) {
+        if (field.type === 'checkbox') control.checked = Boolean(field.value);
+        else if (control.value !== String(field.value ?? '')) control.value = field.value ?? '';
+      }
     }
     const toolbar = part(board, 'toolbar');
     patch(toolbar, `<div class="zcb-tools">${actions.filter(action => (!action.placement || action.placement.includes('controls')) && action.group !== 'bulk' && (!split || action.group !== 'prompt')).map(action => actionMarkup(action)).join('')}
@@ -512,7 +521,7 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
     const intent = {key:action.key, origin:surface, scopeKey:model.scope.key, revision:model.revision,
       candidateId:slot?.candidate?.id, slotKey:slot?.key, expectedOccupant:slot ? slot.candidate?.id ?? null : undefined,
       mode:action.mode, count:action.count, value:action.value,
-      fields:Object.fromEntries([...board.querySelectorAll('[name]')].map(field =>
+      fields:Object.fromEntries([...board.querySelectorAll('[name]:not([type="radio"]:not(:checked))')].map(field =>
         [field.name, field.type === 'checkbox' ? field.checked : field.value]))};
     pending.add(key);
     if (target === 'luna') feedback.delete(target);

@@ -1,4 +1,4 @@
-import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261111-upscale";
+import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261111-generation-controls";
 
 const api = "/api/image-generation";
 const assets = api + "/assets";
@@ -99,7 +99,7 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
       selectedId:candidateId(selection()),
       renderControls:{
         promptFields:[field("prompt", "Prompt", "textarea"), field("negative_prompt", "Negative prompt", "textarea")],
-        fields:[field("mode", "Generation mode", "select", [["txt2img", "Text to image"], ["img2img", "Image to image"]]),
+        fields:[field("mode", "Generation mode", "radio", [["txt2img", "Text to image"], ["img2img", "Image to image"]]),
           field("aspect_ratio", "Aspect ratio", "text"),
           field("universe_style_variant", "Universe style", "select", [["canonical", "Canonical"], ["environmental", "Environmental"]])],
         readiness:{draft:readiness, final:readiness}, renderStatus:data.busy ? "Renders in progress" : "",
@@ -473,14 +473,14 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
     list.replaceChildren();
     for (let index = 0; index < 10; index += 1) {
       const ref = data.inputs.reference_images?.[index] || {};
-      const row = document.createElement("div");
-      row.className = "image-generation-reference-controls";
+      const card = document.createElement("article");
+      card.className = "image-generation-reference-controls";
       if (ref.image) {
         const image = document.createElement("img");
         image.src = ref.image;
         image.alt = ref.label || "Reference " + (index + 1);
         image.className = "image-generation-reference-thumb";
-        row.append(image);
+        card.append(image);
       }
       const label = document.createElement("input");
       label.value = ref.label || "";
@@ -508,7 +508,7 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
       upload.onchange = () => { if (upload.files[0]) void run(() => load(upload.files[0])); };
       const paste = document.createElement("button");
       paste.type = "button";
-      paste.textContent = "Focus to paste";
+      window.ZetImageCardUI.decorate(paste, "paste", "Focus to paste " + label.placeholder);
       paste.onpaste = event => {
         const file = [...event.clipboardData.files].find(file => file.type.startsWith("image/"));
         if (file) { event.preventDefault(); void run(() => load(file)); }
@@ -520,7 +520,7 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
       remove.onclick = () => { edit({image:"", metadata:{}}); renderReferences(); };
       const pick = document.createElement("button");
       pick.type = "button";
-      pick.textContent = "Choose Inventory image";
+      window.ZetImageCardUI.decorate(pick, "inventory", "Choose Inventory image");
       pick.onclick = () => {
         const token = scope;
         void run(() => pickImage(item => run(async () => {
@@ -533,8 +533,11 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
           renderReferences();
         })));
       };
-      row.append(label, upload, pick, paste, remove);
-      list.append(row);
+      const actions = document.createElement("div");
+      actions.className = "button-row";
+      actions.append(pick, paste, remove);
+      card.append(label, upload, actions);
+      list.append(card);
     }
   }
 
@@ -605,6 +608,8 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
     el("upload").value = "";
     if (file) void run(() => setUploadedSource(file));
   };
+  window.ZetImageCardUI.decorate(el("pick"), "inventory");
+  window.ZetImageCardUI.decorate(el("paste"), "paste");
   el("paste").onpaste = event => {
     const file = [...event.clipboardData.files].find(file => file.type.startsWith("image/"));
     if (file) { event.preventDefault(); void run(() => setUploadedSource(file)); }

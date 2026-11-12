@@ -562,8 +562,30 @@ main {
 .image-generation-reference-slots legend .status-text { display: block; }
 #image-generation-reference-list { display: grid; gap: .6rem; }
 .image-generation-reference-slot { border-top: 1px solid var(--border); display: grid; gap: .4rem; padding-top: .6rem; }
-.image-generation-reference-controls { align-items: center; display: flex; flex-wrap: wrap; gap: .5rem; }
-.image-generation-reference-thumb { background: var(--surface-muted, #171c25); border-radius: 5px; height: 56px; object-fit: contain; width: 56px; }
+[data-ig-reference-list] {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
+  gap: .75rem;
+  margin-top: .5rem;
+}
+.image-generation-reference-controls {
+  display: grid;
+  align-content: end;
+  gap: .5rem;
+  min-width: 0;
+  padding: .65rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.image-generation-reference-controls input { min-width: 0; }
+.image-generation-reference-thumb {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+  border-radius: 5px;
+  background: var(--surface-subtle);
+}
 .image-generation-reference-paste { flex: 1; min-width: 160px; padding: .55rem; }
 
 .image-generation-results h2 { margin: 0; }
