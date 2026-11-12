@@ -35,6 +35,7 @@ class AIWorkflowService:
     METHODS = {
         "minor_collection": {"run_authoring_job"},
         "minor": {"_draft_job", "_render_job", "_review_job", "_dispatch_candidate", "_analyze_then_render"},
+        "character_wizard": {"run_turn"},
         "costume": {"_draft_job", "_render_job", "_refine_job"},
         "reconstruction": {"_run", "_comparison_task", "_correction_task", "_analyze_asset_prompt"},
         "image_prompt": {"_run"},
@@ -171,6 +172,8 @@ class AIWorkflowService:
             return self.app.minor_character_service
         if name == "minor":
             return self.app.quick_character_wizard_service
+        if name == "character_wizard":
+            return self.app.character_wizard_service
         if name == "costume":
             return self.app.costume_wizard_service
         if name in {"reconstruction", "image_prompt"}:

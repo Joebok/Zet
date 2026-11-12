@@ -49,27 +49,20 @@ class ImageRenderRequest:
                    provenance=dict(value.get("provenance", {})))
 
 
-def draft_upscale_request(config, target_id: str, candidate_id: str, candidate: dict,
-                          source: Path, directory: Path) -> dict:
-    """Freeze a Qwen edit separately from the candidate's original generation record."""
+def draft_upscale_spec(config, image: Image.Image) -> tuple[str, dict]:
+    """Use the same Qwen edit recipe and exact Draft aspect ratio on every board."""
     from zet.services.local_render_backend_service import LocalRenderBackendService
-    from zet.services.render_slot_service import frozen_input
-
-    if (candidate.get("render_mode", "draft") != "draft" or candidate.get("status") != "COMPLETE"
-            or candidate.get("locked")):
-        raise ValueError("Upscaling requires a completed, unlocked Draft image.")
     preset = "comfyui-qwen-local-character-edit"
     presets_path = config.state_file(Path(__file__).resolve().parents[2], "Local_Render_Presets.json")
     profile = LocalRenderBackendService(presets_path, config=config).preset(preset)
     if not profile:
         raise ValueError("The Qwen Image 2.1 edit profile is unavailable.")
     prompt = DRAFT_UPSCALE_PROMPT
-    with Image.open(source) as image:
-        width, height = image.size
-        if "A" in image.getbands() or "transparency" in image.info:
-            # Qwen may emit slight alpha variation even on an opaque render.
-            if image.convert("RGBA").getchannel("A").getextrema()[0] < 128:
-                prompt = f"{TRANSPARENT_DRAFT_INSTRUCTION} {prompt}"
+    width, height = image.size
+    if "A" in image.getbands() or "transparency" in image.info:
+        # Qwen may emit slight alpha variation even on an opaque render.
+        if image.convert("RGBA").getchannel("A").getextrema()[0] < 128:
+            prompt = f"{TRANSPARENT_DRAFT_INSTRUCTION} {prompt}"
     divisor = gcd(width, height)
     ratio = f"{width // divisor}:{height // divisor}"
     unit_width, unit_height = width // divisor * 32, height // divisor * 32
@@ -84,10 +77,23 @@ def draft_upscale_request(config, target_id: str, candidate_id: str, candidate: 
     output_width, output_height = unit_width * scale, unit_height * scale
     sizing = {"render_mode": "final", "aspect_ratio": ratio, "width": output_width,
               "height": output_height, "target_pixels": output_width * output_height}
+    return prompt, {**sizing, "profile": preset, "profile_snapshot": profile,
+                    "checkpoint": profile["diffusion_model"], "disable_prompt_globals": True}
+
+
+def draft_upscale_request(config, target_id: str, candidate_id: str, candidate: dict,
+                          source: Path, directory: Path) -> dict:
+    """Freeze a Qwen edit separately from the candidate's original generation record."""
+    from zet.services.render_slot_service import frozen_input
+
+    if (candidate.get("render_mode", "draft") != "draft" or candidate.get("status") != "COMPLETE"
+            or candidate.get("locked")):
+        raise ValueError("Upscaling requires a completed, unlocked Draft image.")
+    with Image.open(source) as image:
+        prompt, settings = draft_upscale_spec(config, image)
+    sizing = {key: settings[key] for key in ("render_mode", "aspect_ratio", "width", "height", "target_pixels")}
     frozen = frozen_input(directory, prompt,
-        [{"path": str(source), "role": "Draft image"}], preset, render_sizing=sizing)
-    settings = {**sizing, "profile": preset, "profile_snapshot": profile,
-                "checkpoint": profile["diffusion_model"], "disable_prompt_globals": True}
+        [{"path": str(source), "role": "Draft image"}], settings["profile"], render_sizing=sizing)
     return ImageRenderRequest(config.universe_id, target_id, candidate_id, frozen["prompt"],
         tuple(frozen["references"]), settings, random.SystemRandom().randrange(2**63 - 1), {}).to_dict()
 

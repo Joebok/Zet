@@ -148,6 +148,14 @@ class CharacterOnboardingService:
 
     def save_draft(self, payload: dict[str, Any]) -> CharacterOnboardingDraft:
         """Create or update a draft Character.md for onboarding."""
+        with self.character_creation_lock():
+            return self._save_draft(payload)
+
+    def character_creation_lock(self):
+        from zet.services.workflow_storage import file_lock
+        return file_lock(self.path_service.state_path("CharacterWizard", "create.lock"))
+
+    def _save_draft(self, payload: dict[str, Any]) -> CharacterOnboardingDraft:
         character = self._clean_folder_name(payload.get("character"), "Character")
         phase = self._clean_folder_name(payload.get("phase"), "Phase")
         if not character or not phase:
@@ -163,6 +171,10 @@ class CharacterOnboardingService:
 
     def upload_template(self, character: str, phase: str, contents: str, create_only: bool = False) -> CharacterOnboardingStatus:
         """Validate and install an uploaded character image template."""
+        with self.character_creation_lock():
+            return self._upload_template(character, phase, contents, create_only)
+
+    def _upload_template(self, character: str, phase: str, contents: str, create_only: bool) -> CharacterOnboardingStatus:
         # Uploads can arrive with CRLF already present. Normalize before text-mode
         # writing so Windows does not expand each existing CR into CRCRLF.
         contents = contents.replace("\r\r\n", "\n").replace("\r\n", "\n").replace("\r", "\n")
@@ -257,13 +269,18 @@ class CharacterOnboardingService:
 
     def _ensure_phase_scaffold(self, character: str, phase: str, source_phase: str) -> None:
         """Create non-asset support files and folders for a character phase."""
-        phase_path = self.path_service.character_path(character, phase)
-        phase_path.mkdir(parents=True, exist_ok=True)
+        self.scaffold_phase_files(self.path_service.character_path(character, phase))
+        self.ensure_support_folders(character, phase)
+
+    def ensure_support_folders(self, character: str, phase: str) -> None:
         for folder in [
             self.path_service.character_asset_path(character, phase),
             self.path_service.pipeline_base_path(character, phase),
         ]:
             folder.mkdir(parents=True, exist_ok=True)
+    @staticmethod
+    def scaffold_phase_files(phase_path: Path) -> None:
+        phase_path.mkdir(parents=True, exist_ok=True)
         identity_keys_path = phase_path / "IdentityKeys.json"
         if not identity_keys_path.exists():
             identity_keys_path.write_text('{\n  "schema_version": 1,\n  "identity_keys": []\n}\n', encoding="utf-8")

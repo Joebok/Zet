@@ -27,6 +27,7 @@ from zet.services.character_source_service import CharacterSourceService
 from zet.services.config_service import ConfigService
 from zet.services.task_service import TaskService
 from zet.services.costume_service import CostumeCreateResult, CostumeService, CostumeServiceError, CostumeUpdateResult
+from zet.services.character_wizard_service import CharacterWizardService
 from zet.services.costume_wizard_service import CostumeWizardService
 from zet.services.minor_character_service import MinorCharacterService
 from zet.services.expression_service import ExpressionCreateResult, ExpressionService, ExpressionUpdateResult
@@ -206,6 +207,7 @@ class ZetApp:
         self.scene_appearance_service = scene_appearance_service
         self.expression_service = expression_service
         self.character_onboarding_service = character_onboarding_service
+        self.character_wizard_service = CharacterWizardService(self)
         self.phase_comparison_service = phase_comparison_service
         self.story_service = story_service
         self.library_index_service = LibraryIndexService(

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Query, Request
+from Scripts.Compile_Character_Template import TemplateCompileError
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import markdown
@@ -71,15 +72,15 @@ def _read_json_file(path: Path) -> dict[str, Any]:
     return data
 
 
-def _parse_costume_wizard_multipart(content_type: str, body: bytes) -> dict[str, Any]:
+def _parse_wizard_multipart(content_type: str, body: bytes) -> dict[str, Any]:
     """Read the wizard's small fixed multipart form without an optional parser package."""
     if len(body) > 80 * 1024 * 1024:
-        raise ValueError("Costume Wizard uploads must total less than 80 MB.")
+        raise ValueError("Wizard uploads must total less than 80 MB.")
     message = BytesParser(policy=policy.default).parsebytes(
         f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode("ascii", "strict") + body
     )
     if not message.is_multipart() or message.get_content_type() != "multipart/form-data":
-        raise ValueError("Expected a multipart costume wizard form.")
+        raise ValueError("Expected a multipart wizard form.")
     fields: dict[str, Any] = {}
     for part in message.iter_parts():
         if part.get_content_disposition() != "form-data":
@@ -1403,6 +1404,46 @@ def _create_available_app(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    def wizard_call(method, *args):
+        try:
+            wizard = _app(app.state.config_path).character_wizard_service
+            return getattr(wizard, method)(*args)
+        except (ValueError, TemplateCompileError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @app.get("/api/character-wizard")
+    def character_wizard_options(mode: str, character: str = "", phase: str = ""):
+        return wizard_call("options", mode, character, phase)
+
+    @app.post("/api/character-wizard")
+    async def character_wizard_create(request: Request):
+        try:
+            fields = _parse_wizard_multipart(request.headers.get("content-type", ""), await request.body())
+            if any(isinstance(value, dict) and key not in {"image1", "image2", "image3"}
+                   for key, value in fields.items()):
+                raise ValueError("Use reference image slots 1 through 3.")
+            images = [(index, fields[f"image{index}"]) for index in range(1, 4)
+                      if isinstance(fields.get(f"image{index}"), dict)]
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return wizard_call("create", fields, images)
+
+    @app.get("/api/character-wizard/{sid}")
+    def character_wizard_detail(sid: str):
+        return wizard_call("detail", sid)
+
+    @app.get("/api/character-wizard/{sid}/progress")
+    def character_wizard_progress(sid: str):
+        return wizard_call("progress", sid)
+
+    @app.get("/api/character-wizard/{sid}/images/{slot}")
+    def character_wizard_image(sid: str, slot: int):
+        return FileResponse(wizard_call("image", sid, slot))
+
+    @app.post("/api/character-wizard/{sid}/{action}")
+    def character_wizard_action(sid: str, action: str, data: dict = Body(...)):
+        return wizard_call("act", sid, action, data)
+
     @app.get("/api/onboarding/prefill")
     def onboarding_prefill(character: str = Query(""), source_phase: str = Query("")) -> dict[str, Any]:
         """Return metadata defaults for a new character or phase draft."""
@@ -2355,7 +2396,7 @@ def _create_available_app(
         try:
             body = await request.body()
             content_type = request.headers.get("content-type", "")
-            form = await run_in_threadpool(_parse_costume_wizard_multipart, content_type, body)
+            form = await run_in_threadpool(_parse_wizard_multipart, content_type, body)
             zet_app = await run_in_threadpool(_app, app.state.config_path)
             images = []
             for index in range(1, 4):

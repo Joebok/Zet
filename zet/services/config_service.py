@@ -70,6 +70,7 @@ class Config:
     ai_prompt_analysis_model: str = "general:latest"
     ai_image_description_model: str = "image-analysis:latest"
     ai_image_prompt_generation_model: str = "image-analysis:latest"
+    ai_character_wizard_model: str = "codex:gpt-6-luna"
     ai_costume_wizard_model: str = "codex:gpt-6-luna"
     ai_quick_character_wizard_model: str = "codex:gpt-6-luna"
     ai_prompt_analysis_instructions_file: str = "Config/AI_Prompt_Analysis_Instructions.md"

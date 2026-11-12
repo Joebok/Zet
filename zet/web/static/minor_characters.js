@@ -1,4 +1,4 @@
-import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261110-deselect-action";
+import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261111-upscale";
 import {renderProposalComparison} from "./interview_proposals.js";
 
 const $ = id => document.getElementById(id);
@@ -298,7 +298,6 @@ function boardModel(current) {
     const ready = active || (!item.image ? "Wait for a completed image." : "");
     if (!item.locked) action(selected ? "unselect" : "select", selected ? active || otherLocked : ready || otherLocked);
     action(item.locked ? "unlock" : "lock", ready || otherLocked);
-    if (item.image && item.render_mode === "draft") action("upscale", active || (item.locked ? "Unlock this image first." : ""));
     if (item.status === "FAILED") action("retry", item.render_request ? "" : "The original render request is unavailable.");
     action("clear", active || (item.locked ? "Unlock this image before clearing its slot." : ""));
     if (completed(item)) slot.actions.push({key:"interview-candidate",label:"Interview this candidate",disabledReason:authorReason,placement:["review"]});

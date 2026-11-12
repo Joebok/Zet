@@ -1,4 +1,4 @@
-import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261110-deselect-action";
+import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261111-upscale";
 
 (() => {
   const $ = (id) => document.getElementById(`character-container-${id}`);
@@ -304,7 +304,6 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
       const ready=waiting || (!item.image_path ? "Wait for a completed image." : "");
       if(!item.locked) add(selected?"unselect":"select",selected?(waiting||held):(ready||held));
       add(item.locked?"unlock":"lock",ready || held);
-      if(item.render_mode!=="final"&&item.image_path)add("upscale",waiting || (item.locked ? "Unlock this image first." : ""));
       add("clear",waiting || (item.locked ? "Unlock this image before clearing its slot." : ""));
       if(item.status==="COMPLETE"&&item.image_path)actions.push({key:"template-improve",label:"Improve template from this image",placement:["review"]});
       return {key:String(index+1),candidate:candidateEvidence(state.view,id,item),actions,renderActive:active};

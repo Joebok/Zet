@@ -18,6 +18,7 @@ class LLMRole:
 
 
 ROLES = (
+    LLMRole("character_wizard", "Character Wizard", "Interviews and drafts Character.md for review.", "ai_character_wizard_model", capabilities=("vision", "structured_json")),
     LLMRole("narrative_interview", "Narrative interview", "Proposes editable scene fields and resolves intent; not a render prompt.", "ai_narrative_scene_model"),
     LLMRole("narrative_prompt", "Narrative prompt writing", "Writes scene, backdrop adaptation and assembly prompts.", "ai_narrative_scene_model", "authoring", prompt_fields=("scene", "rendering")),
     LLMRole("image_prompt", "Image-to-prompt drafting", "Writes a complete generation prompt from an image.", "ai_image_prompt_generation_model", "authoring", ("vision",), prompt_fields=("prompt", "negative_prompt")),

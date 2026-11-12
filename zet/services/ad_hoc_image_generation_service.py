@@ -27,6 +27,7 @@ from zet.services.image_generation_workspace_service import ImageGenerationWorks
 from zet.services.library_reference_service import read_library_json, serialize_library_document
 from zet.services.atomic_file_service import write_bytes_atomic, write_json_atomic
 from zet.services.ai_job_service import AIExecutionError
+from zet.services.image_render_request import verify_upscale_output
 from zet.services.image_sizing_service import resolve_image_sizing
 
 
@@ -101,12 +102,13 @@ class AdHocImageGenerationService:
 
     def submit(self, payload: dict[str, Any], *, request_id: str | None = None, seeds: list[int] | None = None,
                frozen_sizing: dict | None = None, legacy_dimensions: bool = False,
-               candidate_board: dict | None = None) -> dict[str, Any]:
+               candidate_board: dict | None = None, upscale_source: dict | None = None) -> dict[str, Any]:
         request_id = request_id or uuid4().hex
         self.proxy_paths.jobs.validate_id(request_id)
         with self._lock, file_lock(self.results_root / request_id / ".collect.lock"):
             return self._submit(payload, request_id=request_id, seeds=seeds, frozen_sizing=frozen_sizing,
-                                legacy_dimensions=legacy_dimensions, candidate_board=candidate_board)
+                                legacy_dimensions=legacy_dimensions, candidate_board=candidate_board,
+                                upscale_source=upscale_source)
 
     def render_configuration(self, payload: dict[str, Any], mode: str) -> dict[str, Any]:
         """Resolve optional character settings while keeping ordinary ad hoc defaults."""
@@ -145,7 +147,7 @@ class AdHocImageGenerationService:
 
     def _submit(self, payload: dict[str, Any], *, request_id: str | None = None, seeds: list[int] | None = None,
                 frozen_sizing: dict | None = None, legacy_dimensions: bool = False,
-                candidate_board: dict | None = None) -> dict[str, Any]:
+                candidate_board: dict | None = None, upscale_source: dict | None = None) -> dict[str, Any]:
         mode = str(payload.get("mode") or "txt2img").strip().lower()
         if mode not in {"txt2img", "img2img"}:
             raise AdHocImageGenerationError("Choose txt2img or img2img.")
@@ -297,6 +299,11 @@ class AdHocImageGenerationService:
             children.append({"ask_id": "", "reserved_ask_id": "Image_" + uuid4().hex, "index": index, "seed": seed, "status": "QUEUED"})
         job = self._new_job(request_id, mode, count, workspace, children, prompt_path, "QUEUED", "")
         job.update(self._request_details(payload, width, height, user_prompt))
+        if upscale_source:
+            # Keep the Inventory association as provenance. The edit input is
+            # the captured Draft, which must not be substituted with Inventory.
+            job.update(upscale_source=upscale_source, source_asset_id=upscale_source["source_asset_id"],
+                       source_checksum=upscale_source["source_checksum"])
         if candidate_board:
             job["candidate_board"] = candidate_board
         if sizing:
@@ -473,7 +480,7 @@ class AdHocImageGenerationService:
         record = self._read_job_metadata(request_id)
         if record is None:
             raise KeyError("Image generation request not found.")
-        if record["status"] in {"QUEUED", "RUNNING", "DISPATCHING"}:
+        if record["status"] in {"QUEUED", "RUNNING", "DISPATCHING", "PAUSED_STORAGE"}:
             return self.status(request_id)
         return self._job_summary(record)
 
@@ -656,6 +663,11 @@ class AdHocImageGenerationService:
                     validate_image(image_bytes)
                     child["image_sha256"] = hashlib.sha256(image_bytes).hexdigest()
                     with Image.open(BytesIO(image_bytes)) as image:
+                        if job.get("upscale_source"):
+                            try:
+                                verify_upscale_output(image, {"settings": job["render_sizing"]})
+                            except ValueError as exc:
+                                raise AIExecutionError(str(exc)) from exc
                         content_type = Image.MIME.get(image.format or "", "application/octet-stream")
                     if job.get("image_slots_version") == 1:
                         job["images"][child["index"]] = (image_bytes, content_type)
@@ -764,6 +776,8 @@ class AdHocImageGenerationService:
         record["submission"] = job.get("submission")
         if job.get("candidate_board"):
             record["candidate_board"] = job["candidate_board"]
+        if job.get("upscale_source"):
+            record["upscale_source"] = job["upscale_source"]
         record["render_payload"] = job.get("render_payload")
         record["render_sizing"] = job.get("render_sizing")
         record["image_slots_version"] = job.get("image_slots_version", 0)

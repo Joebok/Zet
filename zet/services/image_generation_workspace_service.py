@@ -1,12 +1,17 @@
 """Universe-owned eight-slot board over persisted ad hoc render jobs."""
 from __future__ import annotations
 
+from base64 import b64encode
 from contextlib import contextmanager
 from copy import deepcopy
+from io import BytesIO
 import json
 from uuid import uuid4
 
+from PIL import Image
+
 from zet.services.atomic_file_service import write_json_atomic
+from zet.services.image_render_request import draft_upscale_spec
 from zet.services.render_slot_service import RenderSlotConflict, render_count
 from zet.services.workflow_storage import file_lock, validate_image
 
@@ -62,8 +67,10 @@ class ImageGenerationWorkspace:
             return self._detail(board) if self.asset_id else {**self._detail(board), "render_mode": render_mode}
 
     def _detail(self, board):
+        if self.asset_id:
+            self._settle_upscales(board)
         jobs = {}
-        busy = False
+        busy = any("request_id" in attempt for attempt in board.get("upscales", {}).values())
         for assignment in board["slots"]:
             if not assignment:
                 continue
@@ -79,6 +86,65 @@ class ImageGenerationWorkspace:
                         "results": [], "prompt": pending.get("prompt", "")}
             busy |= self._active(assignment, {"jobs": [jobs[request_id]]})
         return {**{key: value for key, value in board.items() if key != "final_board"}, "jobs": list(jobs.values()), "busy": busy, "empty_count": board["slots"].count(None)}
+
+    def _start_upscale(self, board, index, assignment, detail):
+        source = next(job for job in detail["jobs"] if job["request_id"] == assignment["requestId"])
+        if assignment["quality"] != "draft" or not any(
+                image["index"] == assignment["index"] for image in source["images"]):
+            raise RenderSlotConflict("Upscaling requires a completed Draft image.")
+        try:
+            contents, _ = self.generator.image(assignment["requestId"], assignment["index"])
+            with Image.open(BytesIO(contents)) as image:
+                prompt, settings = draft_upscale_spec(self.generator.zet_app.config, image)
+        except (KeyError, OSError) as exc:
+            raise RenderSlotConflict("The Draft image is unavailable.") from exc
+
+        request_id = uuid4().hex
+        sizing = {key: settings[key] for key in ("render_mode", "aspect_ratio", "width", "height", "target_pixels")}
+        inputs = {
+            "mode": "img2img", "count": 1, "prompt": prompt,
+            "reference_images": [{"label": "Draft image", "image": b64encode(contents).decode("ascii")}],
+            "render_config": {"preset": settings["profile"], "checkpoint": settings["checkpoint"],
+                              "disable_prompt_globals": True, "append_reference_labels": False},
+            "ai_owner": {"image_generation_asset_id": self.asset_id},
+            "reconstruction": source.get("reconstruction", {}),
+        }
+        upscales = board.setdefault("upscales", {})
+        key = str(index)
+        upscales[key] = {"request_id": request_id}
+        self._save(board)
+        try:
+            self.generator.submit(inputs, request_id=request_id, frozen_sizing=sizing,
+                candidate_board={"asset_id": self.asset_id, "label": board["name"]},
+                upscale_source={**assignment, "source_asset_id": source.get("source_asset_id", ""),
+                                "source_checksum": source.get("source_checksum", "")})
+        except Exception:
+            if request_id not in self.generator._jobs:
+                del upscales[key]
+                self._save(board)
+            raise
+
+    def _settle_upscales(self, board):
+        upscales = board.get("upscales", {})
+        changed = False
+        for key, attempt in list(upscales.items()):
+            request_id = attempt.get("request_id")
+            if not request_id:
+                continue
+            try:
+                job = self.generator.workspace_status(request_id)
+            except KeyError:
+                job = {"status": "FAILED", "images": [], "error": "Render submission was interrupted."}
+            if job["status"] not in {"COMPLETE", "PARTIAL", "FAILED", "ERROR", "CANCELLED"}:
+                continue
+            if any(image["index"] == 0 for image in job["images"]):
+                board["slots"][int(key)] = {"requestId": request_id, "index": 0, "quality": "final"}
+                del upscales[key]
+            else:
+                upscales[key] = {"error": "Upscale failed. " + (job["error"] or "The Draft was kept.")}
+            changed = True
+        if changed:
+            self._save(board)
 
     def reserve_reconstruction(self, request_id, count, render_mode="draft"):
         with self.locked():
@@ -144,9 +210,9 @@ class ImageGenerationWorkspace:
         with self.locked():
             render_mode = payload.get("render_mode", "draft")
             board = self._load(render_mode)
+            detail = self._detail(board)
             if self.asset_id:
                 self._check_revision(board, payload)
-            detail = self._detail(board)
             slot = payload.get("slot")
             index = render_count(slot) - 1 if slot is not None else None
             assignment = board["slots"][index] if index is not None else None
@@ -163,16 +229,20 @@ class ImageGenerationWorkspace:
                     self.generator.image(assignment["requestId"], assignment["index"])
                 board["selected_slot"] = index
             else:
-                if self.asset_id and index is not None and self._active(assignment, detail):
+                if self.asset_id and index is not None and self._active(assignment, detail, index):
                     raise RenderSlotConflict("Wait for this render to settle.")
                 if operation != "generate" and operation != "clear_all" and not assignment:
                     raise RenderSlotConflict("This slot is empty.")
+                if operation == "upscale" and self.asset_id:
+                    self._start_upscale(board, index, assignment, detail)
+                    return self._detail(board)
                 if operation != "generate" and board["selected_slot"] is not None and (operation == "clear_all" or index == board["selected_slot"]):
                     raise RenderSlotConflict("Unselect this image before clearing or regenerating it.")
                 if operation == "clear_all":
                     board["slots"] = [None] * 8
                 elif operation == "clear":
                     board["slots"][index] = None
+                    board.get("upscales", {}).pop(str(index), None)
                 elif operation in {"generate", "regenerate", "retry"}:
                     if operation == "generate":
                         if assignment:
@@ -209,6 +279,7 @@ class ImageGenerationWorkspace:
                     # Save inputs and reservation before publishing asks. Crash recovery can
                     # display a failed reservation without assigning another job's output.
                     previous = deepcopy(board["slots"])
+                    previous_upscale = board.get("upscales", {}).pop(str(index), None)
                     for child_index, position in enumerate(indices):
                         board["slots"][position] = {"requestId": request_id, "index": child_index,
                             **({"quality": assignment["quality"] if operation == "retry" else render_mode} if self.asset_id else {})}
@@ -227,6 +298,8 @@ class ImageGenerationWorkspace:
                     except Exception:
                         if request_id not in self.generator._jobs:
                             board["slots"] = previous
+                            if previous_upscale:
+                                board["upscales"][str(index)] = previous_upscale
                             self._save(board, render_mode)
                         raise
                 else:
@@ -243,10 +316,13 @@ class ImageGenerationWorkspace:
     @contextmanager
     def standalone_request(self, request_id):
         with self.locked():
-            if any(item and item["requestId"] == request_id
-                   for path in self.assets.glob("*.json") if len(path.stem) == 32
-                   for item in self.asset(path.stem)._load()["slots"]):
-                raise RenderSlotConflict("Manage this image through its Image Generation asset.")
+            for path in self.assets.glob("*.json"):
+                if len(path.stem) != 32:
+                    continue
+                board = self.asset(path.stem)._load()
+                if (any(item and item["requestId"] == request_id for item in board["slots"])
+                        or any(attempt.get("request_id") == request_id for attempt in board.get("upscales", {}).values())):
+                    raise RenderSlotConflict("Manage this image through its Image Generation asset.")
             yield
 
     @staticmethod
@@ -255,9 +331,11 @@ class ImageGenerationWorkspace:
             raise RenderSlotConflict("This asset changed. Refresh before applying changes.")
 
     @staticmethod
-    def _active(assignment, detail):
+    def _active(assignment, detail, index=None):
         if assignment is None:
             return False
+        if detail.get("upscales", {}).get(str(index), {}).get("request_id"):
+            return True
         job = next(job for job in detail["jobs"] if job["request_id"] == assignment["requestId"])
         child = next((child for child in job["results"] if child["index"] == assignment["index"]), None)
         return (child or job)["status"] in {"QUEUED", "RUNNING", "DISPATCHING"}
@@ -399,7 +477,7 @@ class ImageGenerationWorkspace:
                 operation == "delete-asset" or
                 operation == "delete-drafts" and item["quality"] == "draft" or
                 operation == "delete-non-selected" and i != selected)]
-            active = [i for i in slots if self._active(board["slots"][i], detail)]
+            active = [i for i in slots if self._active(board["slots"][i], detail, i)]
             if operation != "delete-drafts" and (active or operation == "delete-asset" and
                     self._analysis_active(board)):
                 raise RenderSlotConflict("Wait for active work to settle.")
@@ -422,12 +500,18 @@ class ImageGenerationWorkspace:
                     continue
                 other = self.asset(path.stem)._load()
                 retained.update(item["requestId"] for item in other["slots"] if item)
-            for request_id in {board["slots"][i]["requestId"] for i in active} - retained:
+            upscales = board.get("upscales", {})
+            # Cancel the pending Final attempt, leaving the original Draft job
+            # alone. That job may contain other completed or running children.
+            requests = {upscales.get(str(i), {}).get("request_id") or board["slots"][i]["requestId"]
+                        for i in active}
+            for request_id in requests - retained:
                 job = self.generator._read_saved_job(request_id)
                 if job is not None:
                     self.generator.cancel_owned_request(request_id, {"image_generation_asset_id": self.asset_id})
             for i in slots:
                 board["slots"][i] = None
+                upscales.pop(str(i), None)
             if selected in slots:
                 board["selected_slot"] = None
             self._save(board)

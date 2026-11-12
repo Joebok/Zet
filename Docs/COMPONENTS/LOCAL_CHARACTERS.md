@@ -1018,3 +1018,17 @@ Alignment image. Captured requests remain available for retry.
 
 See [ADR 0050](../DECISIONS/0050-minor-character-asset-collections.md) for the
 name-and-source-only offline bootstrap.
+
+## Character Wizard
+
+The Character Overview and New Character menu open the same authoring dialog.
+Create starts with one to three references. Edits start from the current phase
+master and may include up to three references. The wizard uses the current
+Character Template Instructions and section metadata. Canonical style comes from
+the universe. Interview turns, evidence, answers and editable drafts are saved
+under the universe's private CharacterWizard state.
+
+Approval publishes a staged character and first phase, or saves a reviewed edit
+against the captured master revision. Concurrent master edits require a fresh
+interview. Wizard images serve as interview evidence and have no role in render
+bindings or Inventory publication.

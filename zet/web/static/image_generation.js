@@ -1,4 +1,4 @@
-import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261111-inventory";
+import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261111-upscale";
 
 const api = "/api/image-generation";
 const assets = api + "/assets";
@@ -117,13 +117,15 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
         const key = index + 1;
         if (!entry) return {key};
         const {job, child, image} = entry;
+        const upscale = data.upscales?.[index];
         const state = image ? "COMPLETE" : child?.status || job?.status || "FAILED";
-        const running = active(state);
+        const running = Boolean(upscale?.request_id) || active(state);
         const selected = index === data.selected_slot;
         const descriptor = image && {url:image.url, label:"Candidate in slot " + key};
         const settings = job?.render_sizing;
         return {key, renderActive:running, candidate:{
-          id:candidateId(item), quality:item.quality, status:state, error:child?.error || job?.error,
+          id:candidateId(item), quality:item.quality, status:state, error:upscale?.error || child?.error || job?.error,
+          notices:upscale?.request_id ? ["Upscaling Draft to Final."] : [],
           thumbnail:descriptor, image:descriptor, prompt:job?.prompt, negativePrompt:job?.negative_prompt,
           inputs:(job?.reference_labels || []).map((label, i) => ({label, url:imageUrl(
             api + "/jobs/" + item.requestId + "/references/" + i)})),

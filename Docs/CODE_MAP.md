@@ -34,9 +34,11 @@ FRONT upload/paste, Phase Change source selection, render-mode captions, and
 per-view Head reference choice. `CharacterAssetContainerService` resolves the
 selected source and enforces the Phase Change/reference requirement at prompt
 compilation.
-The shared `draft_upscale_request` in `image_render_request.py` freezes a
-single-image Qwen edit at the Draft's exact ratio. The Character and Narrative
-board services settle the existing slot through their normal AI_Proxy polling.
+The shared `draft_upscale_spec` in `image_render_request.py` defines the
+single-image Qwen edit at the Draft's exact ratio. The Candidate Board
+component supplies the action in the grid and review. Character, Narrative,
+Minor Character, and Image Generation services dispatch through AI_Proxy and
+settle the result in the existing slot.
 
 Legacy Character batch operation contexts and preparation services are retained
 for migration/reference only; their router is not mounted and startup no longer
@@ -495,3 +497,11 @@ for Character, Minor Character, Narrative, and Image Generation.
 `recent_render_service.py` persists and groups the per-universe snapshot in
 workflow state. `/api/recent-renders/events` pushes snapshots to the dashboard
 shell. Board adapters retain their own image admission and placement rules.
+
+## Character Wizard
+
+[CharacterWizardService](../zet/services/character_wizard_service.py) owns
+ordered interview evidence, resumable AI turns, template validation and explicit
+publication. The dashboard controller in character_wizard.js calls
+/api/character-wizard. CharacterOnboardingService owns first-phase scaffolding,
+and SourceEditorService fences existing-master writes.

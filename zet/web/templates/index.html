@@ -203,17 +203,72 @@
     <section id="onboarding-page" class="page">
       <div class="page-title-row">
         <h1>Character Overview</h1>
+        <button id="character-wizard-edit" type="button" hidden>Character Wizard</button>
         <div id="onboarding-status" class="status-text"></div>
       </div>
       <div id="onboarding-message" class="action-message" hidden></div>
       <p id="character-overview-status" class="status-text" role="status" aria-live="polite"></p>
+        <dialog id="character-wizard" class="costume-wizard-dialog" aria-labelledby="character-wizard-title">
+          <div class="page-title-row">
+            <h2 id="character-wizard-title">Character Wizard</h2>
+            <button type="button" data-command="close">Close</button>
+          </div>
+          <p data-style class="status-text"></p>
+          <p data-status class="action-message" role="status"></p>
+          <label data-resume-label>Resume draft<select data-resume></select></label>
+          <form data-intake>
+            <label>Character Name<input name="character" required maxlength="80"></label>
+            <label>Character Phase<input name="phase" required maxlength="80"></label>
+            <label data-fallback>Art style fallback (optional)<input name="fallback" maxlength="500"></label>
+            <label>Direction<textarea name="notes" rows="3" maxlength="10000"></textarea></label>
+            <label>Vision model<button type="button" data-command="model"></button></label>
+            <details open><summary>Reference images</summary>
+              <label>Reference 1<input name="image1" type="file" accept="image/*"></label>
+              <button type="button" data-paste="1">Paste image here</button>
+              <button type="button" data-clear-reference="1" hidden>Remove reference 1</button>
+              <label>What should Zet use from this image? (optional)<input name="caption1" maxlength="500"></label>
+              <img class="costume-wizard-preview" data-preview="1" alt="Reference 1" hidden>
+              <label>Reference 2<input name="image2" type="file" accept="image/*"></label>
+              <button type="button" data-paste="2">Paste image here</button>
+              <button type="button" data-clear-reference="2" hidden>Remove reference 2</button>
+              <label>What should Zet use from this image? (optional)<input name="caption2" maxlength="500"></label>
+              <img class="costume-wizard-preview" data-preview="2" alt="Reference 2" hidden>
+              <label>Reference 3<input name="image3" type="file" accept="image/*"></label>
+              <button type="button" data-paste="3">Paste image here</button>
+              <button type="button" data-clear-reference="3" hidden>Remove reference 3</button>
+              <label>What should Zet use from this image? (optional)<input name="caption3" maxlength="500"></label>
+              <img class="costume-wizard-preview" data-preview="3" alt="Reference 3" hidden>
+            </details>
+            <button type="submit" class="primary-action">Start interview</button>
+            <button type="button" data-command="manual">Manual setup</button>
+          </form>
+          <section data-session hidden>
+            <div data-images class="button-row"></div>
+            <div data-history></div>
+            <div data-questions></div>
+            <section data-review hidden>
+              <label>Character.md<textarea data-markdown rows="15"></textarea></label>
+              <pre data-errors></pre>
+              <details data-diff-panel open><summary>Review changes</summary><pre data-diff class="character-wizard-diff"></pre></details>
+              <label>Revision direction<textarea data-direction rows="2"></textarea></label>
+            </section>
+            <div class="button-row">
+              <button type="button" data-command="answer">Continue interview</button>
+              <button type="button" data-command="retry">Retry</button>
+              <button type="button" data-command="save">Review edits</button>
+              <button type="button" data-command="revise">Revise draft</button>
+              <button type="button" data-command="accept" class="primary-action">Accept</button>
+              <button type="button" data-command="abandon">Abandon draft</button>
+            </div>
+          </section>
+        </dialog>
       <details id="character-setup-details" class="overview-details character-overview-section">
         <summary>Setup</summary>
         <div class="character-overview-setup-actions"><button id="onboarding-edit-template" type="button" hidden>Edit character template</button></div>
         <div id="character-setup-forms">
         <div class="onboarding-layout">
         <section class="control-panel">
-          <h3>Interview</h3>
+          <h3>Manual setup</h3>
           <label>
             Character Name
             <input id="onboarding-character" type="text">
@@ -231,19 +286,14 @@
             <select id="onboarding-gender"></select>
           </label>
           <label>
-            Canonical Art Style
+            Character art style fallback
             <textarea id="onboarding-art-style" rows="4"></textarea>
           </label>
           <div class="button-row compact">
             <button id="onboarding-save-draft" class="primary-action" type="button">Save Draft</button>
             <a id="onboarding-download-template" class="button-link" href="#" download hidden>Download Template</a>
-            <button id="onboarding-copy-gpt-prompt" type="button" disabled>Copy ChatGPT Prompt</button>
             <button class="open-template-manual" data-manual="character" type="button">Character Template Instructions</button>
           </div>
-          <section class="onboarding-helper">
-            <h3>ChatGPT Prompt</h3>
-            <textarea id="onboarding-gpt-prompt" rows="12" readonly></textarea>
-          </section>
         </section>
         <section class="review-main">
           <div class="review-header">
@@ -2248,11 +2298,12 @@ Add prompt language here.
   <script src="/static/ai_queue.js?v=20261017"></script>
   <script src="/static/template_editor.js?v=20261026"></script>
   <script src="/static/character_hub.js?v=20261107-character-overview"></script>
-  <script src="/static/zet.js?v=20261110-deselect-action"></script>
-  <script type="module" src="/static/minor_characters.js?v=20261110-deselect-action"></script>
+  <script src="/static/character_wizard.js?v=1"></script>
+  <script src="/static/zet.js?v=20261111-upscale"></script>
+  <script type="module" src="/static/minor_characters.js?v=20261111-upscale"></script>
   <script src="/static/local_template_improvement.js?v=20261102-batch-pages"></script>
   <script src="/static/local_asset_pipeline.js?v=20261103-rerun-rejected"></script>
-  <script type="module" src="/static/character_asset_container.js?v=20261110-deselect-action"></script>
+  <script type="module" src="/static/character_asset_container.js?v=20261111-upscale"></script>
 
 </body>
 </html>

@@ -113,6 +113,13 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
       ...action, label:slotLabels[action.key], role:action.key === 'clear' ? 'danger-text-action' : undefined,
     } : action);
     if (!slot.candidate && surface !== 'card') return standard;
+    const candidate = slot.candidate;
+    if (candidate?.image && candidate.quality !== 'final') {
+      const disabledReason = slot.replacementBlock || (slot.renderActive ? 'Wait for the render to finish.'
+        : candidate.locked ? 'Unlock this image first.'
+        : candidate.status !== 'COMPLETE' ? 'Wait for a completed Draft image.' : '');
+      standard.push({key:'upscale', label:slotLabels.upscale, disabledReason});
+    }
     const protectedImage = slot.candidate && (slot.candidate.locked || slot.candidate.id === model.selectedId);
     const blocked = slot.replacementBlock || (slot.renderActive ? 'Wait for the render to finish.'
       : protectedImage ? 'Clear the protected image before replacing it.' : '');

@@ -72,8 +72,10 @@ path as the **Review** eye glyph.
   Select/Unselect, Lock/Unlock, render recovery or replacement, Download where
   supported, then Clear. Share the applicable subset and order in the review
   dialog. Distinguish **Retry** of a failed request, **Regen Draft/Final** with
-  current inputs, and **Upscale Draft** using the completed Draft. Preserve
-  policy-specific reasons when actions are disabled. Omit unsupported actions.
+  current inputs, and **Upscale Draft** using the completed Draft. The shared
+  board offers Upscale Draft on candidate cards and in review when a Draft
+  image is available. A locked or active candidate shows the disabled reason.
+  Preserve policy-specific reasons when actions are disabled.
   Character and Minor Character boards show **Deselect** for the selected,
   unlocked image. A locked image offers **Unlock** and cannot be deselected.
 - Keep prompt, ordered inputs, and long assessments in review. Card feedback
@@ -176,7 +178,7 @@ transitions. Pass normalized data and action handlers through the component API.
 | `selectedId`, candidate review state | Current selection, optional lock state, and optional human assessment. Saved prompt, ordered inputs with optional prompt markers, saved render settings, and optional provenance belong to the candidate under review. |
 | `lunaReview` | Optional advisory status, criteria, and error, with rankings and assessments keyed by candidate ID. Render Controls show one Review Status line above the criteria. Outdated results identify the ranking as obsolete and mark retained assessments as previous. |
 | `renderControls` | Optional fields, readiness reasons, and prompt and render status. The component provides the four render shortcuts and calculates capacity from the slots. The adapter supplies workflow readiness. |
-| `actions` | Board- and candidate-scoped descriptors with stable action key, placement, label, shared glyph key, semantic style role, and enabled/disabled state with reason. The component supplies slot generation and bulk-delete actions. Slots supply `renderActive` and `replacementBlock` for readiness. Supply remaining candidate actions once for both surfaces, with explicit placement for context-specific actions. |
+| `actions` | Board- and candidate-scoped descriptors with stable action key, placement, label, shared glyph key, semantic style role, and enabled/disabled state with reason. The component supplies slot generation, Upscale Draft, and bulk-delete actions. Slots supply `renderActive` and `replacementBlock` for readiness. Adapters handle the `upscale` intent and supply remaining candidate actions once for both surfaces, with explicit placement for context-specific actions. |
 | `comparisons`, `comparisonDefaults` | Ordered `{key, label, image}` descriptors and optional default keys. The component owns the stable `selected` key and deduplicates additional sources by image URL and version. Comparisons supply images and captions. The prompt, ordered inputs, saved settings, and provenance stay with the reviewed candidate when the comparison changes. |
 
 ### Methods and events
@@ -242,6 +244,7 @@ handlers. They share the board, card, and dialog layouts above.
 | Character Asset Containers | Other selected views, with FRONT or matching opposite view prioritized as applicable. An eligible locked Draft or a pipeline-specific source can be supplied with its own label. | Mixed-quality view boards. The page places Preview Prompt beside Refresh and compiles current masters and ordered inputs for the active view. View/phase, head-source and costume recipe settings vary by pipeline. Keep supported prepare/submit, select, lock/publication, retry, regen, upscale, clear, Luna, and template-improvement actions. |
 | Narrative Scenes | The current review offers its selected image. Relevant captured backdrop, composite, or other target-specific evidence can be offered by the adapter when available. | Mixed-quality target boards. Write Prompt and manual edits, target sizing, assembly mode and backdrop-operation eligibility stay in Narrative. Preserve captured input and assembly provenance, Edit Text where supported, task capture, and the existing Inventory action. Scene-text eligibility and lock/publication stay service-owned. |
 | Minor Characters | Style Alignment can offer its original source. Official views can offer the locked Style reference, matching private Draft where eligible, and other relevant saved views. | Mixed-quality asset boards. Keep Write/Save Prompt, interview using candidate evidence, and current source/Style readiness. STYLE locking is private. Official-view publication follows its existing rules. |
+| Image Generation | Selected candidate | Upscale captures the Draft as the edit input. The Draft remains available while the render runs or if it fails. A valid Final replaces the Draft in the same slot and retains its selection. |
 
 Character, Narrative, and Minor Character Lock can also select the candidate
 as part of the same operation. Their adapters explain when the current lock

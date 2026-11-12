@@ -256,8 +256,6 @@ const onboardingGender = document.querySelector("#onboarding-gender");
 const onboardingArtStyle = document.querySelector("#onboarding-art-style");
 const onboardingSaveDraft = document.querySelector("#onboarding-save-draft");
 const onboardingDownloadTemplate = document.querySelector("#onboarding-download-template");
-const onboardingCopyGptPrompt = document.querySelector("#onboarding-copy-gpt-prompt");
-const onboardingGptPrompt = document.querySelector("#onboarding-gpt-prompt");
 const onboardingTemplateFile = document.querySelector("#onboarding-template-file");
 const onboardingUploadTemplate = document.querySelector("#onboarding-upload-template");
 const onboardingAddHeadImages = document.querySelector("#onboarding-add-head-images");
@@ -1182,7 +1180,7 @@ async function modifyEntityLibraryImageWithGenerator() {
   const asset = entityLibrarySelectedAsset;
   if (!asset || asset.origin === "pipeline" || asset.status === "archived") return;
   try {
-    const {createAsset, readImage} = await import("/static/image_generation.js?v=1");
+    const {createAsset, readImage} = await import("/static/image_generation.js?v=20261111-upscale");
     const response = await fetch(fileUrl(asset.image_path, asset.checksum));
     if (!response.ok) throw new Error("Unable to read the Inventory image.");
     const image = await readImage(await response.blob());
@@ -2539,61 +2537,6 @@ function showOnboardingMessage(message, kind = "info") {
   onboardingMessage.dataset.kind = kind;
 }
 
-function onboardingHelperPrompt(templatePath = "") {
-  const character = onboardingCharacter.value || state.character || "[Character Name]";
-  const phase = onboardingPhase.value || state.phase || "[Character Phase]";
-  const species = onboardingSpecies.value || "[Species / Ancestry]";
-  const gender = onboardingGender.value || "[Gender Presentation]";
-  const artStyle = onboardingArtStyle.value || "[Canonical Art Style]";
-  return `I am building a structured Zet character image template for ${character}, phase ${phase}.
-
-I will attach:
-- The draft markdown file named Character.md${templatePath ? ` from ${templatePath}` : ""}
-- The Character Template Instructions manual from Zet Help
-- One or more reference images for the character/phase
-
-Your task:
-Fill out Character.md using the attached reference image(s) and the metadata below, then return the completed template as a downloadable markdown file named Character.md.
-
-Metadata to preserve exactly:
-- Character Name: ${character}
-- Character Phase: ${phase}
-- Species / Ancestry: ${species}
-- Gender Presentation: ${gender}
-- Canonical Art Style: ${artStyle}
-
-Hard rules:
-- Do not remove, rename, reorder, or alter any ZET compiler markers.
-- Preserve every line shaped like <!-- ZET:BEGIN SECTION_NAME --> and <!-- ZET:END SECTION_NAME --> exactly.
-- Keep all section names exactly as written.
-- Do not delete empty sections; fill useful sections, but leave uncertain sections empty rather than inventing facts.
-- Do not add markdown fences around the final file.
-- Do not summarize the file in the final answer.
-- Return the completed markdown file itself, suitable for saving directly as Character.md.
-- Keep prompt language factual, visual, and render-facing.
-- Avoid story, personality, mood, scene action, and narrative.
-- Do not add technical modesty or fitment-clothing instructions; Zet supplies those globally.
-- Preserve the template's existing structure, headings, bullet style, and metadata fields.
-
-Content guidance:
-- Use the reference image(s) to describe visible body, head, face, hair, ears, costume-neutral appearance, proportions, silhouette, and view-specific notes.
-- Keep the character identity stable across all sections.
-- If a detail is not visible or cannot be confidently inferred, write a cautious generic rule or leave that section blank.
-- Do not invent props, weapons, costume details, injuries, markings, or accessories that are not visible or explicitly provided.
-- Keep species/ancestry-specific traits consistent with ${species}.
-
-Before returning the file:
-- Check that every ZET BEGIN marker has the matching ZET END marker.
-- Check that no compiler marker text has changed.
-- Check that the top metadata fields still match the values above.
-- Check that the result is plain markdown, not a chat explanation.`;
-}
-
-function updateOnboardingHelperPrompt(templatePath = "") {
-  onboardingGptPrompt.value = onboardingHelperPrompt(templatePath || selectedOnboardingStatus()?.template_path || "");
-  onboardingCopyGptPrompt.disabled = !onboardingGptPrompt.value.trim();
-}
-
 function renderOnboarding() {
   const isDraft = Boolean(state.onboardingMode);
   const status = isDraft ? null : selectedOnboardingStatus();
@@ -2614,13 +2557,13 @@ function renderOnboarding() {
     onboardingArtStyle.value = status?.canonical_art_style || onboardingArtStyle.value || "";
   }
   onboardingDownloadTemplate.hidden = !status?.template_path;
+  document.querySelector("#character-wizard-edit").hidden = isDraft || !status?.template_path;
   document.querySelector("#onboarding-edit-template").hidden = isDraft || !status?.template_path;
   onboardingAddHeadImages.disabled = !status?.assets_exists || !status?.pipelines_exists;
   if (status?.template_path) {
     onboardingDownloadTemplate.href = downloadFileUrl(status.template_path);
     onboardingDownloadTemplate.download = "Character.md";
   }
-  updateOnboardingHelperPrompt(status?.template_path || "");
   onboardingStatusList.replaceChildren();
   if (isDraft) {
     const rows = [
@@ -2733,7 +2676,6 @@ async function saveOnboardingDraft() {
       onboardingDownloadTemplate.href = downloadFileUrl(templatePath);
       onboardingDownloadTemplate.download = "Character.md";
       onboardingDownloadTemplate.hidden = false;
-      updateOnboardingHelperPrompt(templatePath);
     }
   } catch (error) {
     showOnboardingMessage(error.message, "error");
@@ -3685,7 +3627,7 @@ async function activatePage(page, options = {}) {
     await loadAiControls();
   } else window.ZetAIQueue?.stop();
   if (page === "image-generation") {
-    const controller = await import("/static/image_generation.js?v=1");
+    const controller = await import("/static/image_generation.js?v=20261111-upscale");
     window.ZetImageGeneration ||= controller.setup({
       fetchJson, universe:() => state.universeId,
       style:variant => state.universes.find(item => (item.id || item.universe_id) === state.universeId)?.[
@@ -3746,7 +3688,7 @@ async function activatePage(page, options = {}) {
         history.replaceState({}, '', '/?'+params);
       } catch (error) { window.ZetTaskCapture.notice(error.message); }
     }
-    const {mountNarrative} = await import('/static/narrative.js?v=20261110-deselect-action');
+    const {mountNarrative} = await import('/static/narrative.js?v=20261111-upscale');
     if (!pageLoadIsCurrent(pageLoad)) return false;
     const pending = mountNarrative(document.querySelector('#narrative-page'), state.universeId, async next=>{
       const requested = location.search;
@@ -11406,9 +11348,23 @@ newMenuButton.addEventListener("click", (event) => {
   event.stopPropagation();
   toggleNewMenu();
 });
+const characterWizard = window.mountCharacterWizard({
+  fetchJson,
+  scope: () => ({universe: state.universeId, character: state.character, phase: state.phase}),
+  manual: startNewCharacter,
+  accepted: async (session) => {
+    state.character = session.character;
+    state.phase = session.phase;
+    state.onboardingMode = null;
+    await activatePage("onboarding", {skipAutosave: true});
+    await refreshCurrentContext();
+    showOnboardingMessage(session.mode === "create" ? "Character created." : "Character.md updated.");
+  },
+});
+document.querySelector("#character-wizard-edit").addEventListener("click", () => characterWizard.open("edit"));
 newCharacterButton.addEventListener("click", () => runGuardedTransition(async () => {
   closeNewMenu();
-  await startNewCharacter();
+  await characterWizard.open("create");
 }));
 newPhaseButton.addEventListener("click", () => runGuardedTransition(async () => {
   closeNewMenu();
@@ -11474,12 +11430,8 @@ promptAnalysisDialog.addEventListener("click", (event) => {
 
 
 onboardingSaveDraft.addEventListener("click", saveOnboardingDraft);
-onboardingCopyGptPrompt.addEventListener("click", () => copyText(onboardingGptPrompt.value, "ChatGPT prompt copied."));
 
 
-onboardingSpecies.addEventListener("change", () => updateOnboardingHelperPrompt());
-onboardingGender.addEventListener("change", () => updateOnboardingHelperPrompt());
-onboardingArtStyle.addEventListener("input", () => updateOnboardingHelperPrompt());
 onboardingUploadTemplate.addEventListener("click", uploadOnboardingTemplate);
 onboardingAddHeadImages.addEventListener("click", addMissingHeadImages);
 
@@ -12214,6 +12166,7 @@ async function saveUniverseSettings() {
 }
 
 async function selectUniverse(universeId) {
+  characterWizard.close();
   if (activePageName() === "image-generation" && window.ZetImageGeneration) {
     if (!await window.ZetImageGeneration.flush()) return false;
     window.ZetImageGeneration.leave();
@@ -12444,11 +12397,9 @@ promptAnalysisDialog.addEventListener("close", () => {
   showPromptAnalysisActionMessage("");
 });
 onboardingCharacter.addEventListener("input", () => {
-  updateOnboardingHelperPrompt();
   if (state.onboardingMode) renderOnboarding();
 });
 onboardingPhase.addEventListener("input", () => {
-  updateOnboardingHelperPrompt();
   if (state.onboardingMode) renderOnboarding();
 });
 templateManualSelect.addEventListener("change", () => {

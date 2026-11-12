@@ -45,9 +45,11 @@ retain the local elapsed-time value.
   and optional `disabledReason`, `mode`, `count`, and `value`. Omit
   unsupported actions. Use `lock` and `unlock` for their corresponding
   actions. Supply their availability from the workflow's current state.
-- Slot generation and the two bulk-delete descriptors come from the component.
-  Pass `renderActive` and `replacementBlock` on slots. The component uses mode
-  readiness for slot renders too. Pass `bulkBlock` for a workflow-wide block.
+- Slot generation, Upscale Draft, and the two bulk-delete descriptors come
+  from the component. Handle `upscale` using the candidate's completed Draft
+  image. Pass `renderActive` and `replacementBlock` on slots. The component
+  uses mode readiness for slot generation. Pass `bulkBlock` for a
+  workflow-wide block.
 - `renderControls.fields` contains labeled `{key, label, type, value}`
   fields, with optional `disabled` and select `options` as `{value, label}`.
   Fields render in a vertical stack by default. Set `fieldsLayout: "inline"`

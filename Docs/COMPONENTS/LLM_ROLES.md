@@ -39,3 +39,11 @@ Recipe Lab's CLI accepts `--config` and optional `--model`, binds the configured
 ## Verification boundaries
 
 The four approved E2E scenarios remain unchanged in purpose; the shared queue fixture now names its skill-free role explicitly. Disposable request checks cover both providers/publication formats, modules, source hashes, unknown roles, missing files, new-versus-frozen instructions, model inheritance and Config round trips. Isolated browser checks cover cards, actual override popup/save/reload/clear, source-editor loading and desktop/narrow containment. These establish integration behavior, not real model adherence or image quality. Live inference and production deployment require separate authorization.
+
+## Character Wizard
+
+The Character Wizard role requires vision and structured JSON. It defaults to
+Luna 6 and supports the managed role override and per-session model picker.
+The wizard snapshots the repository Character Template Instructions alongside the
+template and universe style when starting an interview. Pipeline improvement
+roles continue to use their existing task-specific guidance.

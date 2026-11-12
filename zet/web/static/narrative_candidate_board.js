@@ -78,7 +78,6 @@ export function narrativeBoardModel({detail, scopeKey, revision, drafts, busy, l
       disabledReason: busyReason || (item.locked ? '' : ready || held || (needsText ? 'Confirm scene text first.' : '')),
     }));
     if (item.status === 'FAILED') actions.push(action('retry', undefined, {disabledReason: busyReason}));
-    if (candidate.image && candidate.quality === 'draft') actions.push(action('upscale', undefined, {disabledReason: busyReason || ready || (item.locked ? 'Unlock this image first.' : '')}));
     actions.push(action('clear', undefined, { disabledReason: busyReason || (running ? 'Wait for this render to finish.' : '')}));
     if (assembly) actions.push(action('edit-text', 'Edit Text', {placement: review, disabledReason: busyReason || ready || (item.locked ? 'Unlock this image before editing.' : '')}));
     actions.push(action('inventory', 'View in Inventory', {placement: review, disabledReason: busyReason || (!item.locked || !item.image ? 'Lock this image to view it in Inventory.' : '')}));
