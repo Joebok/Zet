@@ -382,18 +382,42 @@ class CostumeWizardService:
         runtime_app.config = replace(self.app.config, base_library_path=str(work_root),
                                      base_character_path=str(character_root))
         runtime_app.costume_template_status = lambda character, phase, costume: {"template_ready": True, "validation_errors": []}
+        from zet.services.atomic_file_service import write_bytes_atomic
+        from zet.services.local_asset_store_service import LocalAssetStoreService
+        from zet.services.local_asset_source_service import LocalAssetSourceService
+        assembly_store = LocalAssetStoreService(self.app.config.base_library_path)
         pipeline = LocalCharacterAssetPipelineService(runtime_app, self.project_root, "costume-dressing",
                                                       runs_root=work_root / "PipelineCandidates" / "Character-Pipeline")
         run_id = session.get("job", {}).get("render_run_id")
         if not run_id:
             try:
-                source = self.app.local_asset_source_service.get_category_source(
+                source = LocalAssetSourceService(assembly_store).get_category_source(
                     session["character"], session["phase"], "character-assembly:FRONT")
+                image = Path(str(source.get("image_path") or "")).resolve()
+                if (source.get("pipeline", "").casefold() != "character-assembly"
+                        or source.get("view") != "FRONT"
+                        or not source.get("candidate_id") or not source.get("inventory_asset_id")
+                        or not image.is_relative_to(assembly_store.library_root) or not image.is_file()):
+                    raise ValueError("The published Character-Assembly FRONT is unavailable.")
+                image_bytes = image.read_bytes()
+                digest = hashlib.sha256(image_bytes).hexdigest()
+                if digest != source.get("image_sha256"):
+                    raise ValueError("The published Character-Assembly FRONT changed before capture.")
+                asset = assembly_store._ensure_entity_library().get_asset(source["inventory_asset_id"])
+                if asset.get("status") != "approved":
+                    raise ValueError("The published Character-Assembly FRONT is unavailable.")
+                staged_source = work_root / "inputs" / "character-assembly-front" / image.name
+                write_bytes_atomic(staged_source, image_bytes)
+                if hashlib.sha256(staged_source.read_bytes()).hexdigest() != digest:
+                    raise ValueError("The published Character-Assembly FRONT changed during capture.")
+                source.update(pipeline="Character-Assembly", image_path=str(staged_source), locked=True,
+                              sha256=digest, image_sha256=digest)
             except Exception as exc:
+                if isinstance(exc, CostumeWizardError):
+                    raise
                 raise CostumeWizardError(
                     "Lock and publish an available Character-Assembly FRONT for this character and phase before testing the costume."
                 ) from exc
-            source["locked"] = True
             run = pipeline.create_run({"character": session["character"], "phase": session["phase"], "costume": name,
                                        "front_count": 1, "other_count": 1, "front_only": True, "use_front_anchor": False},
                                       private_front_source=source)
@@ -406,14 +430,17 @@ class CostumeWizardService:
         candidate = next((item for item in latest.get("candidates", []) if item.get("candidate_id") == "F-001"), None)
         if candidate is None:
             raise CostumeWizardError("The saved costume render candidate is unavailable.")
-        image_path = Path(candidate["image_path"])
+        image_path = (Path(candidate["image_path"]) if candidate.get("image_path") else
+                      Path(latest["root"]) / "renders" / candidate["candidate_id"] / "Local_Test_Renders" /
+                      f"pending_{candidate['candidate_id']}.png")
         if not image_path.is_file():
             if not candidate.get("ask_id"):
                 from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
                 workflow = LocalImagePipelineWorkflowService(runtime_app, self.project_root, "costume-dressing")
                 workflow.adapter.asset_store = pipeline.asset_store
                 prepared = workflow.slots.prepare_input(
-                    latest, "FRONT", image_path.parent / "inputs", recompile=True, render_mode="draft")
+                    latest, "FRONT", Path(latest["root"]) / "renders" / candidate["candidate_id"] / "inputs",
+                    recompile=True, render_mode="draft")
                 pipeline._update(run_id, "F-001", name, render_input=prepared)
                 pipeline.queue_render_candidate(run_id, "F-001", name)
                 latest = pipeline.detail(run_id, name)

@@ -1125,3 +1125,17 @@ was used.
 ## Image Generation asset container (2026-11-11)
 
 All four approved fast scenarios passed (39.9s). Disposable browser and service fixtures covered shared Draft/Final slots, migration with two legacy selections, stale revisions and publication, second-client reload without Image Generation browser storage, 390px gallery management, Inventory actions on cards and in review, analysis-only reconstruction with edited-prompt dispatch, Draft cancellation and late-result fencing, Character Assembly staging, and Inventory Modify. The fixtures used prepared images and analysis. Physical multi-host storage and live AI were outside this validation.
+
+## Costume Wizard published Assembly FRONT handoff (2026-11-13)
+
+The approved `npm.cmd run test:e2e` baseline passed all four scenarios in 40.8s.
+Disposable Wizard-to-Dressing replays used the failed Princess draft, Gia's
+published Assembly FRONT, prepared render results, and mocked Wizard review and
+Luna ranking. Both Draft and Final Assembly locks reached `TEST_READY`, costume
+acceptance, a four-candidate Dressing FRONT review, and publication of the
+top-ranked candidate with an approved Inventory record. Requests retained the
+published Assembly candidate and checksum. Replay verified preparation remained
+inside the private run, and the private Wizard render did not populate the
+normal Dressing board. Python syntax and `git diff --check` passed. No permanent
+tests, live AI, or live rendering were used. The browser flow and visual quality
+of generated images remain outside this prepared-response validation.

@@ -149,6 +149,12 @@ universe's local asset source projection and snapshots its bytes, quality,
 candidate and Inventory identities before creating the private run. Draft and
 Final locks are both valid references; the test output remains Draft. Pending
 attempts use the captured reference while a new test resolves the current lock.
+The Wizard maps the container's lower-case pipeline key to the private
+renderer identity, verifies the approved Inventory record and image checksum,
+and atomically stages the captured bytes under its private render workspace.
+Private candidate preparation is rooted at the run and candidate directories,
+including before the render ask assigns an output path. This keeps new attempts
+and queued-answer recovery within the private session workspace.
 The private candidate is not a normal Dressing batch. The Create New Batch dialog
 enables Create only after its current requirements preview is ready; submission
 still runs the server's authoritative check. The approved S2 scenario covers
