@@ -1139,3 +1139,14 @@ inside the private run, and the private Wizard render did not populate the
 normal Dressing board. Python syntax and `git diff --check` passed. No permanent
 tests, live AI, or live rendering were used. The browser flow and visual quality
 of generated images remain outside this prepared-response validation.
+
+## Costume Dressing default and prompt freshness (2026-11-13)
+
+The approved `npm.cmd run test:e2e` baseline passed all four scenarios in 41.8s.
+A disposable service check verified that freshness recalculation clears a prior
+marker when the prompt is unchanged under captured render settings and sets it
+when current masters produce a different prompt. Python syntax, JavaScript
+syntax and `git diff --check` passed. The ZetTester browser remained on release
+`a836628bb5a0e0665e59449dd8ff8745526514de` after its current-version restart,
+so the revised controls were not active there and no live Dressing renders were
+queued. No permanent test scenario or live AI/render call was added.

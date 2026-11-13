@@ -153,7 +153,7 @@ class CharacterAssetContainerService:
             compiled = {}
             changed = False
             for candidate in board["candidates"].values():
-                if not candidate.get("image_path") or candidate.get("earlier_prompt"):
+                if not candidate.get("image_path"):
                     continue
                 request = candidate.get("render_request") or {}
                 provenance = request.get("provenance") or {}
@@ -164,7 +164,8 @@ class CharacterAssetContainerService:
                     "render_mode": request.get("settings", {}).get("render_mode", candidate.get("render_mode", "draft")),
                     "apply_phase_change": provenance.get("apply_phase_change", False),
                     "assembly_style_mode": provenance.get("assembly_style_mode", ""),
-                    "costume_settings": value["sources"].get("dressing_settings", {}).get(view),
+                    "costume_settings": provenance.get("costume_settings") or
+                        value["sources"].get("dressing_settings", {}).get(view),
                 }
                 key = json.dumps(options, sort_keys=True)
                 if key not in compiled:
@@ -174,9 +175,14 @@ class CharacterAssetContainerService:
                                 output_directory=Path(directory), **options)["prompt"]
                     except (OSError, ValueError):
                         compiled[key] = None
-                if prompt_differs(captured, compiled[key]):
-                    candidate["earlier_prompt"] = True
-                    changed = True
+                if compiled[key] is not None:
+                    earlier_prompt = prompt_differs(captured, compiled[key])
+                    if candidate.get("earlier_prompt", False) != earlier_prompt:
+                        if earlier_prompt:
+                            candidate["earlier_prompt"] = True
+                        else:
+                            candidate.pop("earlier_prompt", None)
+                        changed = True
             if changed:
                 write_json_atomic(path, value)
             return value

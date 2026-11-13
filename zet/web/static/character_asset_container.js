@@ -46,7 +46,7 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
   }
 
   function savedDressingSettings() {
-    return state.detail?.sources?.dressing_settings?.[state.view] || {mode: "doll-dressing-no-ref", costume_reference_view: ""};
+    return state.detail?.sources?.dressing_settings?.[state.view] || {mode: "doll-dressing-ref", costume_reference_view: "FRONT"};
   }
 
   function show(message, error = false) {
@@ -215,20 +215,22 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
     const dressing = state.pipeline === "costume-dressing";
     $("dressing-settings").hidden = true;
     if (dressing && state.view !== "FRONT") {
-      const saved = state.detail.sources?.dressing_settings?.[state.view] || {mode: "doll-dressing-ref", costume_reference_view: "FRONT"};
-      const draft = state.dressingDrafts[state.view] || saved;
+      const saved = state.detail.sources?.dressing_settings?.[state.view];
+      const defaults = {mode: "doll-dressing-ref", costume_reference_view: "FRONT"};
+      const effective = saved || defaults;
+      const draft = state.dressingDrafts[state.view] || effective;
       const mode = $("dressing-mode"), reference = $("dressing-reference");
       mode.value = draft.mode;
       reference.replaceChildren(new Option("Choose a different view", ""), ...state.detail.scope.views.filter(view => view !== state.view).map(view => {
         const item = state.detail.boards[view].candidates[state.detail.boards[view].selected_id];
         return new Option(`${view.replaceAll("_", " ")} · ${item?.image_path ? "selected" : "image not selected"}`, view);
       }));
-      reference.value = draft.costume_reference_view || "FRONT";
+      reference.value = draft.costume_reference_view || defaults.costume_reference_view;
       reference.disabled = mode.value === "doll-dressing-no-ref";
       $("save-dressing-settings").disabled = false;
       $("dressing-status").textContent = state.dressingDrafts[state.view]
         ? "Unsaved changes. Preview and Generate use saved settings."
-        : `Saved mode: ${saved.mode}.`;
+        : saved ? `Saved mode: ${saved.mode}.` : "Default mode: Doll-dressing (w/ Ref), using FRONT. Save settings to keep this choice.";
     }
     const model = characterBoardModel(board);
     if (!sharedBoard) sharedBoard = mountCandidateBoard({boardHost:sharedBoardHost,dialogHost:sharedDialogHost},model,{
