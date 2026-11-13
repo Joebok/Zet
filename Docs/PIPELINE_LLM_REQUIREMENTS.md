@@ -40,7 +40,7 @@ This table reconciles all 35 registry entries. “Vision when attached” means 
 | `costume_template` | Costume Wizard template synthesis and revision | Synthesis text-only; vision required when review attachments are supplied | Active |
 | `costume_evidence_review` | Costume draft evidence check | Session reference images; vision required | Active |
 | `costume_render_review` | Costume test-render corrections | Render then source images; vision required | Active |
-| `character_prompt_review` | Governing Character.md template review, text or candidate mode | Text-only or one selected candidate; vision required for candidate mode; Codex-only | Active |
+| `character_prompt_review` | Governing Character.md template review, text or candidate mode | Text-only or one selected candidate; vision required for candidate mode; Codex default, Ollama supported | Active |
 | `template_revision` | Historical image-backed template revision producer | Representative evidence images; vision required; provider follows selection path | Compatibility metadata; current container producer publishes this role |
 | `local_prompt_improvement` | Local rendered-image prompt diagnosis | Selected render and labeled comparisons; vision required; Codex-only | Active |
 | `post_render_character_prompt` | Post-render Character.md edits | Selected render and evidence images; vision required; Codex-only | Active |

@@ -316,8 +316,11 @@ class LocalTemplateRevisionService:
                     "required": ["summary", "findings"], "additionalProperties": False}
                 prompt = ("Analyze ONLY the supplied governing template text and compiled prompts. No image analysis. "
                     "Check spelling, typos, unclear or contradictory wording and continuity across all eight views. "
-                    "Respect intentional asymmetry, angle and occlusion. Propose small independently selectable corrections. "
-                    "Each before must be an exact unique nonempty substring of one editable source, after its replacement. "
+                    "Respect intentional asymmetry, angle and occlusion. Write a one-sentence summary and keep each "
+                    "finding rationale brief. Propose small independently selectable corrections. Use the shortest "
+                    "exact before excerpt that matches once in its source, with enough surrounding text to disambiguate "
+                    "repeated wording. Keep each after replacement focused, update every conflicting editable occurrence "
+                    "relevant to the correction, and group views that share the same edit. Do not rewrite full sections. "
                     "Cite affected views and explain the problem. Do not invent design details or change intent. "
                     "Preserve markers, placeholders and reference order. Report compiler/config issues in the summary, "
                     "never change unlisted sources. Empty findings is valid. Operator instructions take precedence.\n"
