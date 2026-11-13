@@ -21,6 +21,8 @@ Create one head-only reference of {{CHARACTER_NAME}}, {{CHARACTER_PHASE}}, in {{
 <!-- ZET:BEGIN LOCAL_PIPELINE_ONLY -->
 Create one clean head reference of {{CHARACTER_NAME}}, {{CHARACTER_PHASE}}.
 
+{{LOCAL_GENDER_PRESENTATION}}
+
 {{LOCAL_REFERENCE_GUIDANCE}}
 
 {{LOCAL_VIEW_INSTRUCTION}}

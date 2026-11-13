@@ -103,7 +103,10 @@ For local Head-Image, place view-specific image instructions such as
 `* [bl] Ear Reference Image, use for ear shape: {{LIB:REF:elf-ears-back-left}}`
 inside `HEAD_DESCRIPTION_VIEW_OVERRIDES` under `ZET:VIEW_DOMAIN head`.
 Source-backed prompts omit `HEAD_DESCRIPTION_FACTS` unless applying phase changes;
-view overrides remain visible. Tags are filtered before image resolution, so only
+view overrides remain visible. Local Construct prompts also include the authored
+Gender Presentation field for text-only targets, phase changes, and face-visible
+views derived from a same-phase FRONT. The same-phase FRONT source remains the
+presentation authority. Tags are filtered before image resolution, so only
 the matching view's resource is appended. Static rendering replaces image tags
 inside compiler-composed metadata text as well as ordinary marked sections.
 Head compilation resolves resources in

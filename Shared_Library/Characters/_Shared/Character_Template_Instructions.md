@@ -61,7 +61,11 @@ Used by body-reference. Add tagged bullets only where body visibility, overlap, 
 
 ### `HEAD_DESCRIPTION_FACTS` — required
 
-Used by head-image. Record head shape, facial geometry, apparent age, skin, eyes, brows, nose, mouth, ears, markings, and other stable head-only identity facts. Do not mention shoulders, torso, body proportions, clothing, pose, or full-body framing.
+Used by Head Image Construct. Start with one concise sentence combining the
+supported apparent age, species, gender presentation, and distinctive facial
+geometry. Follow with the remaining stable head-only facts, including skin,
+eyes, brows, nose, mouth, ears, and markings. Use view overrides for details
+needed only at particular camera angles. Do not add body, clothing, or framing.
 
 ### `HEAD_DESCRIPTION_VIEW_OVERRIDES` — required for all eight views
 

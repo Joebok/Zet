@@ -35,6 +35,7 @@ from zet.services.pipeline_compiler_support import (
     require_job_field,
     resolve_project_path,
     template_metadata,
+    extract_template_field,
     template_path_for_job,
     validate_reference,
     view_instruction,
@@ -128,6 +129,19 @@ def compile_head_image_job(
         and bool(source_references)
     )
     reference_as_is = bool(source_references) and not apply_phase_change
+    gender_presentation = extract_template_field(
+        template_path,
+        ["Gender Presentation", "Character Gender", "Gender"],
+    )
+    same_batch_reference = any(
+        item.get("role") == "head_image_source" and item.get("candidate_id")
+        for item in source_references
+    )
+    preserve_gender = (
+        pipeline_mode == "local"
+        and view_token in {"FRONT", "FRONT_LEFT_3_4", "FRONT_RIGHT_3_4", "LEFT_PROFILE", "RIGHT_PROFILE"}
+        and (not reference_as_is or apply_phase_change or same_batch_reference)
+    )
     sections, section_sources = load_body_reference_section_data(project_root, template_path)
     if pipeline_mode == "local" and not source_references:
         for name in ("HEAD_IMAGE_TRANSFORM_INSTRUCTIONS", "HEAD_IMAGE_SOURCE_INSTRUCTIONS", "HEAD_IMAGE_SOURCE_RULES"):
@@ -247,6 +261,12 @@ def compile_head_image_job(
         "LOCAL_VIEW_INSTRUCTION": str(view_data.get("local_head_image_instruction") or ""),
         "LOCAL_GAZE_INSTRUCTION": str(view_data.get("local_head_image_gaze") or ""),
         "LOCAL_PHASE_CHANGES": local_phase_changes,
+        "LOCAL_GENDER_PRESENTATION": (
+            f"Gender presentation: {gender_presentation}."
+            if preserve_gender and gender_presentation and not re.search(
+                r"placeholder|optional, non-sensitive", gender_presentation, re.I
+            ) else ""
+        ),
         "LOCAL_VISIBLE_CHARACTER_FACTS": "\n\n".join(
             value for value in (
                 selection.sections.get("HEAD_DESCRIPTION_FACTS", "") if not reference_as_is else "",
@@ -265,6 +285,12 @@ def compile_head_image_job(
     }
     config_path = project_root / "Config" / "Prompt_View_Text.json"
     metadata_sources = {
+        "LOCAL_GENDER_PRESENTATION": {
+            "source_kind": "character_template_field",
+            "source_path": str(template_path),
+            "source_label": "Gender Presentation",
+            "editable": True,
+        },
         "VIEW_TOKEN": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Head view token", "editable": False},
         "VIEW_LABEL": {"source_kind": "config_view_instruction", "source_path": str(config_path), "source_label": "Head-Image view label", "json_pointer": f"/views/{view_token}/label", "editable": True},
         "VIEW_INSTRUCTION": {"source_kind": "config_view_instruction", "source_path": str(config_path), "source_label": "Head-Image view instruction", "json_pointer": f"/views/{view_token}/head_instructions/{task}", "editable": True},
