@@ -1039,6 +1039,15 @@ ambiguous evidence. Choose or correct the species in draft review. Both draft
 review and acceptance validate the value. Manual Setup reads the same catalog.
 Manage definitions in Universe Settings under Species.
 
+New drafts and edits that explicitly request head framing specify a crop based
+on the evidenced hairstyle. Head Image Construct reads it from
+`HAIR_DESCRIPTION_VIEW_OVERRIDES`. Head Image Edit reads the shared crop and
+view exceptions from `HEAD_EDIT_VIEW_OVERRIDES`, with matching checks in
+`HEAD_EDIT_REVIEW_CRITERIA`. Candidate Board Luna Review receives the crop in
+each candidate's saved render prompt. The
+[Character Template Instructions](../../Shared_Library/Characters/_Shared/Character_Template_Instructions.md#head-reference-framing)
+define the short-hair crop and the rules for long or uncertain endpoints.
+
 Approval publishes a staged character and first phase, or saves a reviewed edit
 against the captured master revision. Concurrent master edits require a fresh
 interview. Wizard images serve as interview evidence and have no role in render

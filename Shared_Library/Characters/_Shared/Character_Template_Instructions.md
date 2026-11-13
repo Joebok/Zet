@@ -80,7 +80,30 @@ lower hair into view or change head/neck proportions to expose it.
 
 ### `HAIR_DESCRIPTION_VIEW_OVERRIDES` — required for all eight views
 
-Used by head-image. Add tagged bullets for visible layers, overlaps, concealed areas, and view-specific silhouette. Do not add body guidance.
+Used by Head Image Construct. Add tagged bullets for visible layers, overlaps,
+concealed areas, and view-specific silhouette. Include the head-reference crop
+boundary from the framing rules below. Use body landmarks only as framing context.
+
+### Head-reference framing
+
+Write a concrete crop for both head pipelines when creating a character or
+when asked to revise head framing. Follow the pipeline's requested camera,
+head alignment, and gaze. Keep incidental costume, scenery, and body pose out
+of the instructions.
+
+- For short or nape-length hair, center the head, keep the full crown and
+  hairstyle in frame, and include the jaw and ears where visible. Set the lower
+  edge near the base of the neck, with at most a sliver of shoulder.
+- For longer hair, name the supported anatomical endpoint. Include only enough
+  shoulder, back, or torso to show the visible endpoint in that view. For
+  mid-back hair, extend below the shoulder blades where needed. Keep the face
+  large enough to read when visible, maintain natural head and neck proportions,
+  and let naturally hidden hair stay hidden.
+- If exceptionally long hair would make the head too small, let the hair
+  continue naturally below the lower edge. If the evidence leaves the endpoint
+  unclear and knowing it would change the crop, ask one focused question.
+  Accept `unknown` and frame the supported visible silhouette without assigning
+  an endpoint or turning the reference's crop edge into a hair hem.
 
 ## Expression and identity sections
 
@@ -150,5 +173,12 @@ Verify that metadata is filled, every required section contains useful content, 
 ## Independent Head-Image Edit authoring
 
 The optional HEAD_EDIT_* family belongs only to Head-Image Edit. Keep existing head/hair sections unchanged when comparing pipelines. FRONT_DESCRIPTION establishes identity from text; PRESERVE contains concise geometry, hair attachment/length and material constraints that also reach source-backed edits. VIEW_OVERRIDES uses the existing head-domain view tags for anatomical sides and intentional visibility. REFERENCE_GUIDANCE binds only applicable universe LIB:REF images and explains the feature transferred and excluded material, identity, camera and background. Never assume a tag name proves anatomy is correct. EXPRESSION_GUIDANCE applies only to visible features. PHASE_CHANGES is opt-in for uploaded FRONT inputs. REVIEW_CRITERIA describes visible acceptance, including intentional eye concealment.
+
+Put the shared crop boundary in an untagged bullet in `HEAD_EDIT_VIEW_OVERRIDES`
+so it reaches FRONT and derived renders. Use head-domain tags for view-specific
+adjustments, and word the shared crop so those adjustments can refine it. Keep
+FRONT identity in `HEAD_EDIT_FRONT_DESCRIPTION`. In `HEAD_EDIT_REVIEW_CRITERIA`,
+state the visible framing checks, such as a complete crown and a lower edge at
+the base of the neck for short hair.
 
 Use one primary edit canvas, zero for text-only FRONT, followed by optional scoped guides. FRONT independently anchors every base side/rear view. Selected BACK can guide a separate rear-quarter hair finishing attempt; do not combine this with initial rotation or automatically adopt it. Do not prepend FRONT prose to edits, mirror the opposite side, force hidden eyes into view, or substitute shoulder-length framing for authored hair length. The Character Wizard fills FRONT_DESCRIPTION, PRESERVE, VIEW_OVERRIDES, and REVIEW_CRITERIA on creation so Head-Image Edit can compile. Other pipelines do not require those four sections.
