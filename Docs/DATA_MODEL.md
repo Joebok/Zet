@@ -12,6 +12,12 @@ The locked candidate retains its Inventory asset ID and publication image path
 after unlock, so a saved Inventory source remains addressable after board removal.
 The current record format is owned by
 [CharacterAssetContainerService](../zet/services/character_asset_container_service.py).
+Each container saves its shared Draft/Final aspect ratio in
+`render_settings.aspect_ratio`. Older records default to `1:1` for Head
+Construct and Head Edit, and `2:3` for Body Reference, Assembly, and Dressing.
+Dressing settings are scoped to the selected costume. Each render request
+captures its resolved ratio and dimensions.
+
 Head containers use one `sources.phase_change` setting for both request
 qualities. A locked source records its phase and head pipeline; preparation
 resolves the current locked and published FRONT there. Older

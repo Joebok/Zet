@@ -81,6 +81,7 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
     const data = await request(api() + (state.view ? '&prompt_view=' + encodeURIComponent(state.view) : ''));
     if (sequence !== state.request || data.revision < (state.detail?.revision ?? -1)) return;
     state.detail = data;
+    state.aspectRatio = data.render_settings?.aspect_ratio || (isHead() ? "1:1" : "2:3");
     if (state.view && !data.boards[state.view]) state.view = data.scope.views[0];
     render();
     if (!state.view && isHead()) void loadPhaseSourceCandidates();
@@ -339,6 +340,18 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
 
   async function characterBoardAction(intent) {
     if (state.mutation) return {status:"cancelled"};
+    if (["render-1","render-4","render-final-1","render-final-4","stage-image-generation"].includes(intent.key)) {
+      const saved = state.detail.render_settings?.aspect_ratio || (isHead() ? "1:1" : "2:3");
+      if (state.aspectRatio !== saved) {
+        try {
+          state.detail = await request(api("/render-settings"), {method:"PUT",
+            body:JSON.stringify({aspect_ratio:state.aspectRatio,expected_revision:state.detail.revision})});
+        } catch (error) {
+          await loadDetail().catch(() => {});
+          return {status:"error",message:error.message};
+        }
+      }
+    }
     if (intent.key === "stage-image-generation") {
       const view = state.view, scope = api(), signal = state.controller.signal;
       const renderMode = state.detail.boards[view].candidates[state.detail.boards[view].selected_id]?.render_mode || "draft";

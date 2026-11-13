@@ -101,7 +101,7 @@ class ImageGeneratorStagingService:
         if container["revision"] != payload.get("expected_revision"):
             raise RenderSlotConflict("The character container changed. Refresh and stage again.")
         render_mode = str(payload.get("render_mode") or "draft")
-        aspect_ratio = str(payload.get("aspect_ratio") or "2:3")
+        aspect_ratio = str(payload.get("aspect_ratio") or container["render_settings"]["aspect_ratio"])
         self.generator.sizing(render_mode, aspect_ratio)
         style_mode = str(payload.get("assembly_style_mode") or "")
         compiled = workflow.compile_prompt(character, phase, pipeline, costume, view,

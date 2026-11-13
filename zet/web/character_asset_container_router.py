@@ -171,7 +171,7 @@ def create_character_asset_container_router(resolve_app, image_generation_provid
             return service(universe_id).prepare_candidates(character, phase, pipeline, costume,
                 view, count=payload.get("count", 1),
                 render_mode=str(payload.get("render_mode") or "draft"),
-                aspect_ratio=str(payload.get("aspect_ratio") or "2:3"),
+                aspect_ratio=str(payload.get("aspect_ratio") or ""),
                 expected_revision=payload.get("expected_revision", -1),
                 apply_phase_change=payload.get("apply_phase_change") is True,
                 costume_settings=payload.get("costume_settings"),
@@ -186,7 +186,7 @@ def create_character_asset_container_router(resolve_app, image_generation_provid
         try:
             return service(universe_id).generate(character, phase, pipeline, costume, view,
                 count=payload.get("count", 1), render_mode=payload.get("render_mode", "draft"),
-                aspect_ratio=payload.get("aspect_ratio", "2:3"),
+                aspect_ratio=payload.get("aspect_ratio", ""),
                 expected_revision=payload.get("expected_revision", -1),
                 apply_phase_change=payload.get("apply_phase_change") is True,
                 costume_settings=payload.get("costume_settings"),
@@ -255,6 +255,17 @@ def create_character_asset_container_router(resolve_app, image_generation_provid
                 source_name, payload.get("source", {}),
                 expected_revision=payload.get("expected_revision", -1),
                 render_mode=str(payload.get("render_mode") or ""))
+        except CharacterAssetContainerError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @router.put("/api/character-containers/{pipeline}/render-settings")
+    def save_render_settings(pipeline: str, payload: dict = Body(...),
+                             character: str = Query(...), phase: str = Query(...),
+                             costume: str = Query(""), universe_id: str = Query("")):
+        try:
+            return service(universe_id).save_source(character, phase, pipeline, costume,
+                "render_settings", {"aspect_ratio": payload.get("aspect_ratio")},
+                expected_revision=payload.get("expected_revision", -1))
         except CharacterAssetContainerError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 

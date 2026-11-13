@@ -123,6 +123,8 @@ class CharacterAssetContainerService:
             # The persisted view order is presentation metadata. Return the current
             # order so old containers render consistently after an ordering change.
             value["scope"] = scope
+            default_ratio = "1:1" if pipeline in {"head-image", "head-image-edit"} else "2:3"
+            value.setdefault("render_settings", {}).setdefault("aspect_ratio", default_ratio)
             if self.image_production.finish_board_withdrawals(value):
                 write_json_atomic(path, value)
             pending = value.get("cleanup_pending")
@@ -483,7 +485,7 @@ class CharacterAssetContainerService:
 
     def prepare_candidates(self, character: str, phase: str, pipeline: str, costume: str,
                            view: str, *, count: int, render_mode: str,
-                           aspect_ratio: str, expected_revision: int,
+            aspect_ratio: str = "", expected_revision: int,
                            apply_phase_change: bool = False,
                            assembly_style_mode: str = "", costume_settings: dict | None = None,
                            slot: int | None = None,
@@ -493,6 +495,7 @@ class CharacterAssetContainerService:
         if render_mode not in {"draft", "final"}:
             raise CharacterAssetContainerError("Choose Draft or Final quality.")
         value = self.detail(character, phase, pipeline, costume)
+        aspect_ratio = str(aspect_ratio or value["render_settings"]["aspect_ratio"])
         if value["revision"] != expected_revision:
             raise CharacterAssetContainerError("The container changed. Refresh before preparing renders.")
         board = value["boards"].get(view)
@@ -871,6 +874,18 @@ class CharacterAssetContainerService:
                     source_name: str, source: dict, *, expected_revision: int,
                     render_mode: str = "") -> dict:
         if source_name not in {"phase_change", "phase_change_by_mode", "head_pipeline", "views", "dressing_settings"}:
+            if source_name == "render_settings":
+                value = self.detail(character, phase, pipeline, costume)
+                if value["revision"] != expected_revision:
+                    raise CharacterAssetContainerError("The container changed. Refresh before saving.")
+                from zet.services.image_sizing_service import resolve_image_sizing
+                try:
+                    resolve_image_sizing(self.app.config, "draft", str(source.get("aspect_ratio") or ""))
+                except ValueError as exc:
+                    raise CharacterAssetContainerError(str(exc)) from exc
+                value["render_settings"] = {"aspect_ratio": str(source["aspect_ratio"]).strip()}
+                return self.save(character, phase, pipeline, costume, value,
+                                 expected_revision=expected_revision)
             raise CharacterAssetContainerError("Choose a supported container source setting.")
         value = self.detail(character, phase, pipeline, costume)
         if source_name == "phase_change_by_mode":
