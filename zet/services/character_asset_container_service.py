@@ -296,7 +296,15 @@ class CharacterAssetContainerService:
         criteria = (f"Compare all completed {pipeline.replace('-', ' ')} images for {view}. Rank Draft and Final images together. "
                     "Assess requested view accuracy, source preservation, identity, anatomy, visible detail, and usefulness as a reference. "
                     "Give each image a concise but informative full assessment, noting visible strengths and defects.")
-        if pipeline == "costume-dressing":
+        if pipeline == "body-reference":
+            criteria += (
+                " Check the stance of each finished image: both heels and both forefeet should rest on the same floor plane."
+                " Treat any raised heel, tiptoe stance, or lifted foot as a material pose defect."
+                " Rank otherwise suitable flat-footed images ahead of those with this defect, even if the latter show a clearer angle."
+                " In each review, describe visible heel and forefoot contact. Toe contact or a contact shadow alone"
+                " is insufficient evidence of a flat-footed stance. If a heel or forefoot is hidden, report the uncertainty."
+            )
+        elif pipeline == "costume-dressing":
             criteria += (
                 " Judge the visible costume against the saved render prompt and any captured dressed reference. "
                 "For doll dressing, use Character Assembly for identity, proportions and target framing. "

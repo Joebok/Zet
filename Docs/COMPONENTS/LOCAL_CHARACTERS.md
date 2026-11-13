@@ -44,6 +44,11 @@ image makes that saved review obsolete. Selection and prompt edits do not.
 The action is exposed by the
 container view API and its status is included in compact view progress.
 
+Body Reference reviews check heel and forefoot contact on the same floor plane.
+Otherwise suitable flat-footed candidates rank ahead of candidates with a raised
+heel or lifted foot. Assessments describe visible contact and flag occlusion
+when it prevents a judgment.
+
 The replacement workflow is manual: Assets opens one container for Body Reference,
 Head Image Construct, Head Image Edit, Assembly, or a selected Dressing costume.
 Its overview shows the current selected or locked image for each view and holds
