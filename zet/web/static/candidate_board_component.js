@@ -235,11 +235,12 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
     const startError = feedback.get('luna');
     const reviewStatus = startError?.status === 'error' ? 'Failed' : reviewStatusLabels[luna?.status] || 'Not started';
     const reviewNote = startError?.status === 'error' ? startError.message
-      : luna?.status === 'OBSOLETE' ? 'Ranking obsolete: candidate images changed'
+      : luna?.status === 'OBSOLETE' ? (luna?.obsolete_reason || 'Previous review: candidates or prompt changed')
       : luna?.status === 'FAILED' ? luna.error : '';
     patch(status, `${split ? '' : `<p role="status">${escape(controls.promptStatus)}</p>`}<p role="status">${escape(controls.renderStatus)}</p>
       ${luna || actions.some(action => action.group === 'luna' || action.key === 'luna-review')
         ? `<p role="status">Review Status: ${reviewStatus}${reviewNote ? ` · ${escape(reviewNote)}` : ''}</p>` : ''}
+      ${model.lunaReview?.criteria?.includes('Prompt fidelity skipped') ? '<p role="status">Prompt fidelity skipped</p>' : ''}
       ${model.lunaReview?.criteria ? `<details><summary>Review criteria</summary><pre>${escape(model.lunaReview.criteria)}</pre></details>` : ''}
       ${split ? '' : '<div role="status" data-feedback="prompt"></div>'}<div role="status" data-feedback="render"></div>
       <div role="status" data-feedback="bulk"></div>`);

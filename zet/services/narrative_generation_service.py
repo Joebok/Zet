@@ -113,13 +113,34 @@ class NarrativeGenerationService:
         if not _review_id:
             _LUNA_REVIEW_WORKERS.submit(self._run_luna_review_worker, story, scene, target, review_id)
             return {"status": "RUNNING", "active_id": review_id}
-        criteria = (f"Rank all completed Narrative {record.get('kind', 'scene')} images together. Assess fidelity to the saved prompt, "
+        criteria = (f"Rank all completed Narrative {record.get('kind', 'scene')} images together. Assess fidelity to the current prompt, "
                     "story and source continuity, composition, subject readability, and visible image artifacts. "
                     "Give every image a specific full assessment and rank the set from strongest to weakest.")
         review_candidates = [{**candidate, "candidate_id": cid, "image_path": image}
                              for candidate, cid, image in zip(candidates, ids, images)]
+        current_prompt = record.get("prompt", "")
+        if (record.get("kind") == "assembly" and record.get("prompt_provenance", {}).get("assembly_mode", "finish_composite")
+                != record.get("assembly_mode", "finish_composite")):
+            current_prompt = ""
+        try:
+            current_detail = self.author.target(story, scene, target)
+            if current_detail.get("kind") == "assembly":
+                current_references = []
+                if current_detail.get("assembly_mode") == "assemble_references":
+                    manifest = self.assembly.reference_manifest(story, scene, current_detail)
+                    folder = self.repository.folder(story, scene, target)
+                    layer_files = {layer["id"]: layer["source_file"] for layer in current_detail["layers"]}
+                    current_references = [{**item, "path": str(folder / layer_files[item["layer_id"]]),
+                                           "label": item.get("label", ""),
+                                           "sha256": hashlib.sha256((folder / layer_files[item["layer_id"]]).read_bytes()).hexdigest()}
+                                          for item in manifest]
+            else:
+                current_references = self.author.references(current_detail)
+        except (ValueError, OSError, KeyError):
+            current_references = []
         try:
             entries, model, prompt = review_images_with_luna(criteria=criteria, candidates=review_candidates,
+                current_prompt=current_prompt, current_references=current_references,
                 paths=self.author.app.ai_proxy_service.ai_proxy_path_service,
                 owner={"story": story, "scene": scene, "target": target, "luna_review_id": review_id})
             result = {"status": "COMPLETE", "active_id": "", "candidate_ids": ids,

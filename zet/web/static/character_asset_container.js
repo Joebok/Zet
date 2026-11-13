@@ -379,7 +379,11 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
     if(intent.key==="luna-review") {
       state.mutation=true;
       try {
-        const review=await request(api(`/views/${encodeURIComponent(state.view)}/luna-review`),{method:"POST",body:"{}"});
+        const review=await request(api(`/views/${encodeURIComponent(state.view)}/luna-review`),{method:"POST",body:JSON.stringify({
+          apply_phase_change:isHead() && state.view === "FRONT" && $("apply-phase-change").checked,
+          assembly_style_mode:state.detail.sources?.assembly_style_mode || "",
+          costume_settings:savedDressingSettings(),
+        })});
         const board = state.detail.boards[state.view];
         board.luna_review = {...board.luna_review, ...review};
         renderBoard();

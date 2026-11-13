@@ -247,20 +247,21 @@
             <label>Direction<textarea name="notes" rows="3" maxlength="10000"></textarea></label>
             <label>Vision model<button type="button" data-command="model"></button></label>
             <details open><summary>Reference images</summary>
+              <p>Add one to three reference images and describe what Zet should use from each image.</p>
               <label>Reference 1<input name="image1" type="file" accept="image/*"></label>
-              <button type="button" data-paste="1">Paste image here</button>
+              <button type="button" data-paste="1" aria-label="Paste reference 1">Paste image here</button>
               <button type="button" data-clear-reference="1" hidden>Remove reference 1</button>
-              <label>What should Zet use from this image? (optional)<input name="caption1" maxlength="500"></label>
+              <label>Reference 1 caption (optional)<input name="caption1" maxlength="500"></label>
               <img class="costume-wizard-preview" data-preview="1" alt="Reference 1" hidden>
               <label>Reference 2<input name="image2" type="file" accept="image/*"></label>
-              <button type="button" data-paste="2">Paste image here</button>
+              <button type="button" data-paste="2" aria-label="Paste reference 2">Paste image here</button>
               <button type="button" data-clear-reference="2" hidden>Remove reference 2</button>
-              <label>What should Zet use from this image? (optional)<input name="caption2" maxlength="500"></label>
+              <label>Reference 2 caption (optional)<input name="caption2" maxlength="500"></label>
               <img class="costume-wizard-preview" data-preview="2" alt="Reference 2" hidden>
               <label>Reference 3<input name="image3" type="file" accept="image/*"></label>
-              <button type="button" data-paste="3">Paste image here</button>
+              <button type="button" data-paste="3" aria-label="Paste reference 3">Paste image here</button>
               <button type="button" data-clear-reference="3" hidden>Remove reference 3</button>
-              <label>What should Zet use from this image? (optional)<input name="caption3" maxlength="500"></label>
+              <label>Reference 3 caption (optional)<input name="caption3" maxlength="500"></label>
               <img class="costume-wizard-preview" data-preview="3" alt="Reference 3" hidden>
             </details>
             <button type="submit" class="primary-action">Start interview</button>
@@ -750,7 +751,7 @@
           </details>
           <section class="control-panel">
             <h2>Add image</h2>
-            <input id="entity-library-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+            <input id="entity-library-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" aria-label="Import image into library">
             <div id="entity-library-paste" class="paste-zone" tabindex="0" role="button" aria-label="Paste an image to add to the library"><p>Or click here and paste an image</p></div>
             <label>Image name<input id="entity-library-new-label" placeholder="Required"></label>
             <div id="entity-library-generation-prompts" hidden><p><strong>Prompt</strong><br><span id="entity-library-import-prompt"></span></p><p><strong>Negative prompt</strong><br><span id="entity-library-import-negative-prompt"></span></p></div>
@@ -891,7 +892,7 @@
             </div>
             <div id="image-catalog-import-zone" class="paste-zone" tabindex="0">
               <p>Paste or drop an image here</p>
-              <input id="image-catalog-import-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+              <input id="image-catalog-import-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" aria-label="Import image into Image Inventory">
             </div>
             <label>Image label<input id="image-catalog-import-label" placeholder="Reference image"></label>
             <label>Category<select id="image-catalog-import-category"><option>Person</option><option>Place</option><option>Object</option><option>Composite/Scene</option></select></label>
@@ -938,7 +939,7 @@
               <h4>Replace image</h4>
               <div id="image-catalog-replace-zone" class="paste-zone" tabindex="0" role="button" aria-label="Choose or paste a replacement image">
                 <p>Choose a file or paste an image here</p>
-                <input id="image-catalog-replace-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+                <input id="image-catalog-replace-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" aria-label="Choose replacement image">
               </div>
               <div id="image-catalog-replace-status" class="status-text">Choose or paste an image.</div>
               <button id="image-catalog-replace-submit" class="primary-action" type="button" disabled>Replace image</button>
@@ -948,7 +949,7 @@
               <label>Image label<input id="image-catalog-add-label" placeholder="Additional reference image"></label>
               <div id="image-catalog-add-zone" class="paste-zone" tabindex="0" role="button" aria-label="Choose or paste an image to add">
                 <p>Choose a file or paste an image here</p>
-                <input id="image-catalog-add-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+                <input id="image-catalog-add-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" aria-label="Add image to reference set">
               </div>
               <div id="image-catalog-add-status" class="status-text">Choose or paste an image.</div>
               <button id="image-catalog-add-submit" class="primary-action" type="button" disabled>Add image to reference set</button>
@@ -1148,9 +1149,9 @@
           <div class="costume-wizard-resume"><label>Resume a draft<select id="costume-wizard-resume"><option value="">New costume draft</option></select></label><button id="costume-wizard-resume-button" type="button">Resume</button></div>
           <label>Costume name<input id="costume-wizard-name" type="text" placeholder="Ceremonial outfit"></label>
           <div class="costume-wizard-images">
-            <article class="costume-wizard-image-slot" data-slot="1"><h3>Reference image 1</h3><label>Browse<input class="costume-wizard-file" type="file" accept="image/*"></label><label>Reference image 1 caption<input class="costume-wizard-caption" type="text" placeholder="Front of the outfit"></label><div class="costume-wizard-paste" tabindex="0">Click here and paste an image</div><img class="costume-wizard-preview" alt="Reference image preview" hidden></article>
-            <article class="costume-wizard-image-slot" data-slot="2"><h3>Reference image 2</h3><label>Browse<input class="costume-wizard-file" type="file" accept="image/*"></label><label>Reference image 2 caption<input class="costume-wizard-caption" type="text" placeholder="Back of the outfit"></label><div class="costume-wizard-paste" tabindex="0">Click here and paste an image</div><img class="costume-wizard-preview" alt="Reference image preview" hidden></article>
-            <article class="costume-wizard-image-slot" data-slot="3"><h3>Reference image 3</h3><label>Browse<input class="costume-wizard-file" type="file" accept="image/*"></label><label>Reference image 3 caption<input class="costume-wizard-caption" type="text" placeholder="Close-up of the top"></label><div class="costume-wizard-paste" tabindex="0">Click here and paste an image</div><img class="costume-wizard-preview" alt="Reference image preview" hidden></article>
+            <article class="costume-wizard-image-slot" data-slot="1"><h3>Reference image 1</h3><label>Upload reference image 1<input class="costume-wizard-file" type="file" accept="image/*"></label><label>Reference image 1 caption<input class="costume-wizard-caption" type="text" placeholder="Front of the outfit"></label><div class="costume-wizard-paste" tabindex="0" aria-label="Paste reference image 1">Click here and paste an image</div><img class="costume-wizard-preview" alt="Reference image 1 preview" hidden></article>
+            <article class="costume-wizard-image-slot" data-slot="2"><h3>Reference image 2</h3><label>Upload reference image 2<input class="costume-wizard-file" type="file" accept="image/*"></label><label>Reference image 2 caption<input class="costume-wizard-caption" type="text" placeholder="Back of the outfit"></label><div class="costume-wizard-paste" tabindex="0" aria-label="Paste reference image 2">Click here and paste an image</div><img class="costume-wizard-preview" alt="Reference image 2 preview" hidden></article>
+            <article class="costume-wizard-image-slot" data-slot="3"><h3>Reference image 3</h3><label>Upload reference image 3<input class="costume-wizard-file" type="file" accept="image/*"></label><label>Reference image 3 caption<input class="costume-wizard-caption" type="text" placeholder="Close-up of the top"></label><div class="costume-wizard-paste" tabindex="0" aria-label="Paste reference image 3">Click here and paste an image</div><img class="costume-wizard-preview" alt="Reference image 3 preview" hidden></article>
           </div>
           <label>Extra info<textarea id="costume-wizard-extra" rows="4" placeholder="Any other details the references do not show"></textarea></label>
           <button id="costume-wizard-create" class="primary-action" type="button">Create Costume Draft</button>
@@ -1895,9 +1896,10 @@
           <div data-ig-reference-list></div>
         </details>
         <details data-ig-authoring><summary>Reconstruction</summary>
-          <div class="button-row"><button type="button" data-ig-pick>Choose Inventory source</button>
-            <label>Upload source <input type="file" accept="image/*" data-ig-upload></label>
-            <button type="button" data-ig-paste>Focus to paste a source</button></div>
+          <div class="button-row"><button type="button" data-ig-pick aria-label="Choose reconstruction source from Inventory">Choose Inventory source</button>
+            <label>Upload reconstruction source <input type="file" accept="image/*" data-ig-upload aria-label="Upload reconstruction source image"></label>
+            <button type="button" data-ig-paste aria-label="Paste reconstruction source image">Focus to paste a source</button>
+          </div>
           <p data-ig-source></p>
           <label>Analysis model <select data-ig-model></select></label>
           <label>Artistic direction <textarea data-ig-notes></textarea></label>

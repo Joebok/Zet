@@ -66,9 +66,10 @@ published Narrative assemblies and emits their `LIB:ASSET` reference tag.
 ## Save a subscene image to Inventory (2026-10-30)
 
 Narrative target boards offer on-demand **Luna Review** across completed images.
-It assesses saved prompt fidelity, story continuity, composition and visible
-artifacts. The shared review request numbers finished outputs first and maps
-each candidate's own frozen prompt and ordered inputs to deduplicated evidence.
+It assesses current prompt fidelity, story continuity, composition and visible
+artifacts. The shared review request numbers finished outputs first and supplies
+the current prompt with its ordered references. Captured render inputs remain
+historical evidence, and prompt edits obsolete an active or completed review.
 The target record retains rank, full
 per-image review text, the submitted prompt and model. Results remain in slot
 order and become obsolete after a newly generated image lands. The review is

@@ -499,9 +499,10 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
         card.append(image);
       }
       const label = document.createElement("input");
+      const slot = index + 1;
       label.value = ref.label || "";
-      label.placeholder = "Reference " + (index + 1);
-      label.setAttribute("aria-label", label.placeholder + " label");
+      label.placeholder = "Reference " + slot;
+      label.setAttribute("aria-label", "Reference " + slot + " label");
       const edit = patch => {
         const refs = data.inputs.reference_images ||= [];
         while (refs.length <= index) refs.push({});
@@ -513,7 +514,7 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
       const upload = document.createElement("input");
       upload.type = "file";
       upload.accept = "image/*";
-      upload.setAttribute("aria-label", "Upload " + label.placeholder);
+      upload.setAttribute("aria-label", "Upload Reference " + slot);
       const load = async file => {
         const token = scope;
         const image = await readImage(file);
@@ -524,19 +525,19 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
       upload.onchange = () => { if (upload.files[0]) void run(() => load(upload.files[0])); };
       const paste = document.createElement("button");
       paste.type = "button";
-      window.ZetImageCardUI.decorate(paste, "paste", "Focus to paste " + label.placeholder);
+      window.ZetImageCardUI.decorate(paste, "paste", "Paste reference " + slot);
       paste.onpaste = event => {
         const file = [...event.clipboardData.files].find(file => file.type.startsWith("image/"));
         if (file) { event.preventDefault(); void run(() => load(file)); }
       };
       const remove = document.createElement("button");
       remove.type = "button";
-      remove.textContent = "Remove";
+      remove.textContent = "Remove reference " + slot;
       remove.hidden = !ref.image;
       remove.onclick = () => { edit({image:"", metadata:{}}); renderReferences(); };
       const pick = document.createElement("button");
       pick.type = "button";
-      window.ZetImageCardUI.decorate(pick, "inventory", "Choose Inventory image");
+      window.ZetImageCardUI.decorate(pick, "inventory", "Choose Inventory image for reference " + slot);
       pick.onclick = () => {
         const token = scope;
         void run(() => pickImage(item => run(async () => {

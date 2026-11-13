@@ -766,9 +766,12 @@ class MinorCharacterService(QuickCharacterWizardService):
 
     def _set_prompt(self, value, view, body):
         board = self._board(value, view)
+        previous_prompt = board.get("prompt", "")
         basis = self._prompt_basis(value, view) if body.strip() else {}
         prompt = compose_style(body, basis["style"]) if basis.get("style") else body.strip()
         board.update(prompt=prompt, prompt_body=body, prompt_basis=basis)
+        if prompt != previous_prompt:
+            self._obsolete_review(board)
 
     def start_intake(self, sid, data):
         with self._lock(sid):
@@ -834,6 +837,16 @@ class MinorCharacterService(QuickCharacterWizardService):
                     raise QuickCharacterWizardConflict("This action is already running.")
                 job = {"id": uuid4().hex, "status": "RUNNING", "action": action}
                 if action == "luna-review":
+                    job["review_prompt"] = board.get("prompt", "")
+                    try:
+                        reference, label = self._reference(value, view)
+                        reference = Path(reference)
+                        relative = f"interviews/{job['id']}-luna-reference{reference.suffix}"
+                        frozen_reference = self._directory(sid) / relative
+                        write_bytes_atomic(frozen_reference, reference.read_bytes())
+                        job["review_references"] = [{"path": str(frozen_reference), "label": label}]
+                    except (ValueError, OSError):
+                        job["review_references"] = []
                     job["images"] = {cid: row["image_path"] for cid, row in board["candidates"].items()
                                      if row["status"] == "COMPLETE" and row["image"]}
                     if not job["images"]:
@@ -889,7 +902,9 @@ class MinorCharacterService(QuickCharacterWizardService):
                 from zet.services.local_image_ranking_service import review_images_with_luna
                 entries, model, prompt = review_images_with_luna(
                     criteria=self._luna_criteria(view),
-                    candidates=candidates, paths=self.app.ai_proxy_service.ai_proxy_path_service,
+                    candidates=candidates, current_prompt=job.get("review_prompt", ""),
+                    current_references=job.get("review_references", []),
+                    paths=self.app.ai_proxy_service.ai_proxy_path_service,
                     owner={"session_id": sid, "view": view, "luna_review_id": job_id})
                 result = {"entries": entries, "model": model, "prompt": prompt}
             elif field == "intake_job":

@@ -34,8 +34,11 @@ valid. The page refreshes on entry/context change and has no active polling.
 
 Each mixed-quality view board offers an on-demand **Luna Review**. It compares
 all completed Draft and Final images together. The request numbers finished
-outputs first in slot order, then maps each candidate's frozen prompt and
-ordered inputs to deduplicated evidence. For Costume Dressing, the captured
+outputs first in slot order, then supplies the current compiled prompt and maps
+its ordered references to deduplicated evidence. Candidate render inputs remain
+historical evidence and their saved prompts do not govern review. A failed or
+unavailable prompt compilation falls back to visual criteria and labels prompt
+fidelity as skipped. For Costume Dressing, the captured
 roles distinguish the Assembly base or layout guide from a dressed design or
 rotation source. Unavailable evidence is identified without dropping the
 candidate. The board stores rank and full assessment text without changing slot

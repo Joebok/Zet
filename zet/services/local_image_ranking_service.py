@@ -143,7 +143,8 @@ def rank_images_with_luna(
 
 
 def review_images_with_luna(*, criteria: str, candidates: list[dict], paths, owner=None,
-                            comparisons: tuple[dict, ...] = (),
+                            comparisons: tuple[dict, ...] = (), current_prompt: str = "",
+                            current_references: list[dict] | None = None,
                             admission=None) -> tuple[list[dict[str, str]], str, str]:
     """Return a comparative rank and full per-image review from one Luna response."""
     candidate_ids = [item["candidate_id"] for item in candidates]
@@ -168,18 +169,16 @@ def review_images_with_luna(*, criteria: str, candidates: list[dict], paths, own
             evidence_numbers[digest] = len(images)
         return f"attachment {evidence_numbers[digest]}"
 
-    lines = [
-        "Rank only the finished outputs listed below. Attachment numbers are one-based. "
-        "Every other attachment is evidence only. For every candidate ID, describe visible details "
-        "from its assigned output before comparing it with that candidate's evidence. "
-        "Use saved render prompts as descriptions of the intended result. Image numbers inside those "
-        "prompts refer to original render inputs, so use the per-candidate mapping below.",
-        criteria,
-        "Finished outputs to rank:",
-    ]
+    lines = ["Rank only the finished outputs listed below. Attachment numbers are one-based. "
+             "Every other attachment is evidence only. Describe visible details from each output "
+             "before comparing it with the current prompt and references.", criteria]
+    if current_prompt:
+        lines.extend(["Current prompt governing every candidate:", current_prompt])
+    else:
+        lines.append("Prompt fidelity skipped because no current prompt is available. Use the visual criteria and available evidence.")
+    lines.append("Finished outputs to rank:")
     lines.extend(f"Attachment {number}: candidate {item['candidate_id']}, slot {item['slot']}"
                  for number, item in enumerate(candidates, 1))
-    saved_prompts = {}
     for item in candidates:
         request = item.get("render_request") or {}
         lines.append(f"\nEvidence for candidate {item['candidate_id']}:")
@@ -190,16 +189,14 @@ def review_images_with_luna(*, criteria: str, candidates: list[dict], paths, own
             lines.append(f"Render input {number}: {attach_evidence(reference)} ({details or 'captured input'})")
         if not request.get("inputs"):
             lines.append("No captured render inputs.")
-        saved = request.get("prompt") or item.get("prompt")
-        if saved:
-            number = saved_prompts.setdefault(saved, len(saved_prompts) + 1)
-            lines.append(f"Saved render prompt {number} applies to this candidate.")
-        else:
-            lines.append("No saved render prompt.")
+        lines.append("These captured render inputs are historical evidence. The current prompt governs this review.")
+    for reference in current_references or []:
+        number = attach_evidence(reference)
+        details = ", ".join(f"{key}={reference[key]}" for key in
+                             ("role", "prompt_role", "view", "source_view", "label") if reference.get(key))
+        lines.append(f"\nCurrent prompt reference: {number} ({details or 'current prompt input'}).")
     for comparison in comparisons:
         lines.append(f"\nRanking-only comparison: {attach_evidence(comparison)}. {comparison['label']}")
-    for saved, number in saved_prompts.items():
-        lines.append(f"\nSaved render prompt {number}:\n{saved}")
     prompt = "\n".join(lines)
     schema = {"type": "object", "properties": {"ranking": {"type": "array", "items": {
         "type": "object", "properties": {"candidate_id": {"type": "string"}, "review": {"type": "string"}},

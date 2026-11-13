@@ -131,10 +131,11 @@ def create_character_asset_container_router(resolve_app, image_generation_provid
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @router.post("/api/character-containers/{pipeline}/views/{view}/luna-review")
-    def luna_review(pipeline: str, view: str, character: str = Query(...), phase: str = Query(...),
+    def luna_review(pipeline: str, view: str, payload: dict = Body(default={}), character: str = Query(...), phase: str = Query(...),
                     costume: str = Query(""), universe_id: str = Query("")):
         try:
-            return service(universe_id).luna_review(character, phase, pipeline, costume, view)
+            return service(universe_id).luna_review(character, phase, pipeline, costume, view,
+                prompt_options={key: payload[key] for key in ("apply_phase_change", "assembly_style_mode", "costume_settings") if key in payload})
         except (CharacterAssetContainerError, ValueError) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 

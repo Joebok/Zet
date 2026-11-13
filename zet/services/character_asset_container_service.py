@@ -253,7 +253,7 @@ class CharacterAssetContainerService:
                 "luna_review": board.get("luna_review", {})}
 
     def luna_review(self, character: str, phase: str, pipeline: str, costume: str, view: str,
-                    *, _review_id: str = "") -> dict:
+                    *, _review_id: str = "", prompt_options: dict | None = None) -> dict:
         """Rank the current completed mixed-quality board and retain full reviews."""
         import hashlib
         from datetime import datetime, timezone
@@ -287,12 +287,14 @@ class CharacterAssetContainerService:
                 self.save(character, phase, pipeline, costume, value, expected_revision=value["revision"])
             elif previous.get("active_id") != review_id:
                 return previous
+            if not _review_id:
+                board["luna_review"]["prompt_options"] = prompt_options or {}
 
         if not _review_id:
             with _LUNA_REVIEW_ACTIVE_LOCK:
                 _LUNA_REVIEW_ACTIVE.add(review_id)
             _LUNA_REVIEW_WORKERS.submit(self._run_luna_review_worker, character, phase, pipeline, costume,
-                                        view, review_id)
+                                        view, review_id, prompt_options or {})
             return {"status": "RUNNING", "active_id": review_id}
 
         criteria = (f"Compare all completed {pipeline.replace('-', ' ')} images for {view}. Rank Draft and Final images together. "
@@ -308,13 +310,35 @@ class CharacterAssetContainerService:
             )
         elif pipeline == "costume-dressing":
             criteria += (
-                " Judge the visible costume against the saved render prompt and any captured dressed reference. "
+                " Judge the visible costume against the current prompt and any captured dressed reference. "
                 "For doll dressing, use Character Assembly for identity, proportions and target framing. "
                 "Its fitment clothing and bare feet are not the target costume. A batch_view_reference guides "
                 "costume design. When a costume_rotation_source is supplied, use it for costume continuity "
                 "and use the Character Assembly layout reference for target orientation, stance and framing."
             )
         comparisons = ()
+        current_prompt = ""
+        current_references = []
+        try:
+            from tempfile import TemporaryDirectory
+            sources = value.get("sources", {})
+            prompt_options = prompt_options or board.get("luna_review", {}).get("prompt_options", {})
+            phase_change = sources.get("phase_change") or {}
+            if "phase_change_by_mode" in sources:
+                phase_change = (sources.get("phase_change_by_mode") or {}).get(
+                    "final" if candidates[0].get("render_mode") == "final" else "draft", {})
+            with TemporaryDirectory(prefix=".luna-current-prompt-", dir=path.parent) as directory:
+                compiled = self.compile_prompt(character, phase, pipeline, costume, view,
+                    apply_phase_change=prompt_options.get("apply_phase_change", bool(phase_change)),
+                    assembly_style_mode=str(prompt_options.get("assembly_style_mode") or sources.get("assembly_style_mode") or ""),
+                    render_mode=candidates[0].get("render_mode", "draft"),
+                    costume_settings=prompt_options.get("costume_settings") or sources.get("dressing_settings", {}).get(view),
+                    output_directory=Path(directory))
+            current_prompt = compiled.get("prompt", "")
+            current_references = compiled.get("reference_inputs", [])
+        except (OSError, ValueError, KeyError):
+            current_prompt = ""
+            current_references = []
         if pipeline == "character-assembly" and view != "FRONT":
             front_board = value["boards"].get("FRONT", {})
             front = front_board.get("candidates", {}).get(front_board.get("selected_id") or "")
@@ -324,6 +348,7 @@ class CharacterAssetContainerService:
                                          f"proportions while judging the requested {view} view."},)
         try:
             entries, model, prompt = review_images_with_luna(criteria=criteria, candidates=candidates,
+                current_prompt=current_prompt, current_references=current_references,
                 comparisons=comparisons, paths=self.app.ai_proxy_service.ai_proxy_path_service,
                 owner={"container_id": value["container_id"], "pipeline": pipeline, "view": view,
                        "luna_review_id": review_id})
@@ -347,9 +372,10 @@ class CharacterAssetContainerService:
                 self.save(character, phase, pipeline, costume, latest, expected_revision=latest["revision"])
         return result
 
-    def _run_luna_review_worker(self, character, phase, pipeline, costume, view, review_id):
+    def _run_luna_review_worker(self, character, phase, pipeline, costume, view, review_id, prompt_options):
         try:
-            self.luna_review(character, phase, pipeline, costume, view, _review_id=review_id)
+            self.luna_review(character, phase, pipeline, costume, view, _review_id=review_id,
+                             prompt_options=prompt_options)
         finally:
             with _LUNA_REVIEW_ACTIVE_LOCK:
                 _LUNA_REVIEW_ACTIVE.discard(review_id)

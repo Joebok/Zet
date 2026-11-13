@@ -40,6 +40,9 @@ class NarrativeSceneService:
         if NarrativeSceneService._normalize_prompt(record["prompt"]) == NarrativeSceneService._normalize_prompt(previous_prompt):
             return
         NarrativeSceneService.mark_candidate_prompt_differences(record)
+        review = record.get("luna_review", {})
+        if review.get("status") in {"RUNNING", "COMPLETE"}:
+            review.update(status="OBSOLETE", active_id="")
 
     @staticmethod
     def mark_candidate_prompt_differences(record: dict) -> None:
