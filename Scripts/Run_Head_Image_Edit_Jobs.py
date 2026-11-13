@@ -84,7 +84,10 @@ def compile_head_image_edit_job(job, project_root=PROJECT_ROOT, *, prompt_varian
     guidance = ("Image 1 is the character and edit canvas. Preserve identity, skin, style and background while applying the authored phase changes. Frame the authored hair completely; expand below the head into shoulders or back only when needed to show a meaningful hair endpoint. The source crop does not define the hair endpoint. Keep anatomical attachments fixed on the head; never mirror the image."
                 if apply_phase else
                 "Image 1 is the character and edit canvas. Preserve identity, expression, hair asymmetry, skin, style and background while reprojecting the whole head and hairstyle into the requested view. Frame the authored hair completely; expand below the head into shoulders or back only when needed to show a meaningful hair endpoint. The source crop does not define the hair endpoint. Keep anatomical attachments fixed on the head; never mirror the image."
-                if bases else "Establish the character identity from the complete description below.")
+                if bases else
+                "Establish the character identity from the complete description below. Follow the authored age, "
+                "facial proportions (including eye size and shape), and distinctive features where visible. "
+                "Use the rendering style for linework, shading, color, and surface finish.")
     guidance += " Supporting images govern only the explicitly assigned features; exclude their material, identity, hairstyle, neck, shoulders, framing and background. They do not override the target camera."
     output = Path(require_job_field(job, "Output Directory", "output_directory"))
     paths = bundle_output_paths(output, output_files(bundle), {

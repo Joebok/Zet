@@ -321,7 +321,7 @@ class LocalBodyReferenceService:
             "the configured neutral fitment shell, a simplified neutral mannequin head, and a plain neutral studio background. "
             "Keep body proportions, species morphology, head-to-body scale, shoulder and hip structure, limb lengths, "
             "and fitment clothing consistent with the supplied character facts. Keep the mannequin head in scale with "
-            "the body rather than enlarging it for portrait-style anime expression; do not add facial features or hair. "
+            "the body, with a featureless surface and no hair. "
             "Do not add costume details, props, weapons, "
             "dramatic action, cropping, text, shadows, or extra subjects."
         )
@@ -331,7 +331,7 @@ class LocalBodyReferenceService:
                 + instruction.replace("Create one", "Edit the supplied identity anchor into one", 1)
                 + " Preserve the anchor's body proportions while changing only the requested view."
             )
-        return f"{instruction} Character facts: {body}"
+        return f"{instruction} Body reference directions: {body}"
 
     @staticmethod
     def compile_qwen_workflow(

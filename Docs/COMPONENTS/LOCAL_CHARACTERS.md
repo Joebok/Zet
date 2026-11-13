@@ -140,10 +140,13 @@ are advisory. Compact and full views use the same active revision identity.
 ## Costume Wizard test renders and batch creation (2026-11-03)
 
 `CostumeWizardService._render_job` stages a single FRONT Dressing candidate in a
-private per-session library beneath `PipelineCandidates/Character-Pipeline`. It
-copies the draft character and costume templates there, while reading the
-selected universe's locked Assembly source through the real asset store. The
-private candidate is not a normal Dressing batch. The Create New Batch dialog
+private per-session library beneath `PipelineCandidates/Character-Pipeline`. A
+new test resolves the current published Character-Assembly FRONT through the
+universe's local asset source projection and snapshots its bytes, quality,
+candidate and Inventory identities before creating the private run. Draft and
+Final locks are both valid references; the test output remains Draft. Pending
+attempts use the captured reference while a new test resolves the current lock.
+The private candidate is not a normal Dressing batch. The Create New Batch dialog
 enables Create only after its current requirements preview is ready; submission
 still runs the server's authoritative check. The approved S2 scenario covers
 normal Dressing batch creation, while an isolated prepared check staged a wizard
@@ -1027,6 +1030,13 @@ See [ADR 0050](../DECISIONS/0050-minor-character-asset-collections.md) for the
 name-and-source-only offline bootstrap.
 
 ## Character Wizard
+
+The wizard uses universe style as rendering context and asks a focused question
+when an unresolved appearance choice would materially change the character.
+Build and silhouette go in body facts. Eye size and shape go in head facts and
+eye preservation, with essential features carried into the applicable
+Head-Image Edit sections. Existing template sections and view tags govern
+the draft, which the operator reviews before publication.
 
 The Character Overview and New Character menu open the same authoring dialog.
 Create starts with one to three references. Edits start from the current phase

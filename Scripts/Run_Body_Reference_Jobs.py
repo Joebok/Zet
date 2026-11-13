@@ -195,7 +195,8 @@ def compile_body_reference_job(
 
     all_sections, section_sources = load_body_reference_section_data(project_root, template_path)
     selection = select_prompt_sections(
-        project_root, bundle, all_sections, section_sources, view_token, prompt_variant=prompt_variant
+        project_root, bundle, all_sections, section_sources, view_token,
+        prompt_variant=prompt_variant, pipeline_mode=pipeline_mode
     )
 
     paths = bundle_output_paths(output_dir, output_files(bundle), {

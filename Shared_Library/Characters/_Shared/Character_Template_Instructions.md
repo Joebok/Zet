@@ -127,6 +127,12 @@ Used by expression generation. Give concise preservation constraints for the nam
 
 Used by scene building. Provide a compact, complete identity summary sufficient to keep the character recognizable in a multi-character scene. Include phase-defining age and species traits. Exclude camera view, scene action, costume, technical modesty, and pipeline instructions.
 
+## Author character appearance
+
+Use body facts for the character's build, proportions, and silhouette. Describe eye size, shape, and spacing in head facts and preserve those features in the eye preservation section. Carry essential features into Head-Image Edit's front description and preservation sections where applicable. Use view tags for visibility and keep occluded features hidden.
+
+Describe the intended individual, including any deliberate idealization, weathering, or asymmetry. Ask about a consequential ambiguity and accept an unspecified answer. Use universe style as context for rendering technique. Put garment design in the costume template and staging in the individual image direction.
+
 ## Pipeline-specific character requirements
 
 ### `BODY_REFERENCE_CHARACTER_REQUIREMENTS` — required

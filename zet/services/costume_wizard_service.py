@@ -384,11 +384,19 @@ class CostumeWizardService:
         runtime_app.costume_template_status = lambda character, phase, costume: {"template_ready": True, "validation_errors": []}
         pipeline = LocalCharacterAssetPipelineService(runtime_app, self.project_root, "costume-dressing",
                                                       runs_root=work_root / "PipelineCandidates" / "Character-Pipeline")
-        pipeline.asset_store = self.app.local_asset_source_service.store
         run_id = session.get("job", {}).get("render_run_id")
         if not run_id:
+            try:
+                source = self.app.local_asset_source_service.get_category_source(
+                    session["character"], session["phase"], "character-assembly:FRONT")
+            except Exception as exc:
+                raise CostumeWizardError(
+                    "Lock and publish an available Character-Assembly FRONT for this character and phase before testing the costume."
+                ) from exc
+            source["locked"] = True
             run = pipeline.create_run({"character": session["character"], "phase": session["phase"], "costume": name,
-                                       "front_count": 1, "other_count": 1, "front_only": True, "use_front_anchor": False})
+                                       "front_count": 1, "other_count": 1, "front_only": True, "use_front_anchor": False},
+                                      private_front_source=source)
             run_id = run["run_id"]
             with self._lock(session_id):
                 session = self._read(session_id)
@@ -401,6 +409,12 @@ class CostumeWizardService:
         image_path = Path(candidate["image_path"])
         if not image_path.is_file():
             if not candidate.get("ask_id"):
+                from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
+                workflow = LocalImagePipelineWorkflowService(runtime_app, self.project_root, "costume-dressing")
+                workflow.adapter.asset_store = pipeline.asset_store
+                prepared = workflow.slots.prepare_input(
+                    latest, "FRONT", image_path.parent / "inputs", recompile=True, render_mode="draft")
+                pipeline._update(run_id, "F-001", name, render_input=prepared)
                 pipeline.queue_render_candidate(run_id, "F-001", name)
                 latest = pipeline.detail(run_id, name)
                 candidate = next(item for item in latest["candidates"] if item["candidate_id"] == "F-001")

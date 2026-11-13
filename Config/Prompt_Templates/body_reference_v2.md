@@ -36,9 +36,16 @@ Create one new full-body technical body reference for {{CHARACTER_NAME}}, {{CHAR
 {{VIEW_INSTRUCTION}}
 
 <!-- ZET:BEGIN IMAGE_PROMPT_ONLY -->
+<!-- ZET:BEGIN LOCAL_PIPELINE_ONLY -->
+Use the rendering style below for linework, shading, color, and surface finish on the exposed body. Follow the authored body facts for build, proportions, and silhouette. Follow this reference task for pose, framing, mannequin head, and fitment clothing.
+
+{{CANONICAL_ART_STYLE}}
+<!-- ZET:END LOCAL_PIPELINE_ONLY -->
+<!-- ZET:BEGIN TRADITIONAL_PIPELINE_ONLY -->
 Render in the Canonical Art Style: {{CANONICAL_ART_STYLE}}
 
 Give the exposed body dimensional anatomical form, gradual light and shadow, subtle natural skin-color variation, and restrained skin highlights. Keep surface detail legible at full-body scale. The simplified head and simple fitment clothing below are task-specific exceptions, not instructions to flatten or simplify the exposed body.
+<!-- ZET:END TRADITIONAL_PIPELINE_ONLY -->
 <!-- ZET:END IMAGE_PROMPT_ONLY -->
 
 ## Body and stance

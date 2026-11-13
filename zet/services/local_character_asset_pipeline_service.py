@@ -240,8 +240,27 @@ class LocalCharacterAssetPipelineService:
                 "selected": True, "locked": bool(candidate.get("locked")), "render_mode": selected_mode}
 
     def _resolve_view_inputs(self, character: str, phase: str, costume: str, view: str,
-                             source_batches: dict[str, str], head_pipeline: str = "head-image", *, render_mode: str = "draft") -> dict[str, dict[str, Any]]:
+                             source_batches: dict[str, str], head_pipeline: str = "head-image", *,
+                             render_mode: str = "draft", private_front_source: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
         result = {}
+        if private_front_source is not None:
+            if (self.pipeline != "costume-dressing" or view != "FRONT"
+                    or not private_front_source.get("locked")
+                    or private_front_source.get("pipeline") != "Character-Assembly"
+                    or private_front_source.get("view") != "FRONT"):
+                raise LocalCharacterAssetPipelineError("A published Character-Assembly FRONT is required for the private test render.")
+            source = Path(str(private_front_source.get("image_path") or "")).resolve()
+            if not source.is_file() or not source.is_relative_to(self.library_root):
+                raise LocalCharacterAssetPipelineError("The published Character-Assembly FRONT is unavailable.")
+            digest = self._hash(source)
+            if private_front_source.get("image_sha256") and private_front_source["image_sha256"] != digest:
+                raise LocalCharacterAssetPipelineError("The published Character-Assembly FRONT changed before capture.")
+            result["character_assembly"] = {
+                **private_front_source, "pipeline": "Character-Assembly", "view": "FRONT",
+                "qualifier": "", "sha256": digest, "image_sha256": digest,
+                "source_mode": "published_lock", "render_mode": private_front_source.get("render_mode", "draft"),
+            }
+            return result
         for role, pipeline in self._requirements(head_pipeline):
             selected_batch = str(source_batches.get(role) or "").strip()
             if selected_batch and selected_batch != "locked":
@@ -254,7 +273,7 @@ class LocalCharacterAssetPipelineService:
                                 "sha256": record["image_sha256"], "source_mode": "locked"}
         return result
 
-    def preview(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def preview(self, payload: dict[str, Any], *, private_front_source: dict[str, Any] | None = None) -> dict[str, Any]:
         character, phase = str(payload.get("character") or "").strip(), str(payload.get("phase") or "").strip()
         costume = str(payload.get("costume") or "").strip()
         if not character or not phase or (self.definition["qualifies"] and not costume):
@@ -296,7 +315,8 @@ class LocalCharacterAssetPipelineService:
         for view in requested_views:
             resolved = {}
             try:
-                resolved = self._resolve_view_inputs(character, phase, costume, view, source_batches, head_pipeline)
+                resolved = self._resolve_view_inputs(character, phase, costume, view, source_batches, head_pipeline,
+                    private_front_source=private_front_source)
             except LocalCharacterAssetPipelineError as exc:
                 blocking_reasons.append(str(exc))
             if len(resolved) == len(self._requirements(head_pipeline)):
@@ -357,8 +377,12 @@ class LocalCharacterAssetPipelineService:
         spec["costume_sha256"] = self._hash(destination)
         self._write(root / "spec.json", spec)
 
-    def create_run(self, payload: dict[str, Any]) -> dict[str, Any]:
-        plan = self.preview(payload)
+    def create_run(self, payload: dict[str, Any], *, private_front_source: dict[str, Any] | None = None) -> dict[str, Any]:
+        if private_front_source is not None and not (
+                self.pipeline == "costume-dressing" and bool(payload.get("front_only"))
+                and not payload.get("views")):
+            raise LocalCharacterAssetPipelineError("Private published sources are allowed only for a single-view FRONT test.")
+        plan = self.preview(payload, private_front_source=private_front_source)
         if not plan["can_create"]:
             raise LocalCharacterAssetPipelineError("Cannot create this batch: " + " ".join(plan["blocking_reasons"]))
         run_id = uuid4().hex
@@ -368,6 +392,15 @@ class LocalCharacterAssetPipelineService:
         batch_style = freeze_batch_style(root, self.app.config.base_library_path, payload)
 
         sources, costume_path = self._snapshot_inputs(root, plan)
+        if private_front_source is not None:
+            from zet.services.atomic_file_service import write_json_atomic
+            source = sources["FRONT"]["character_assembly"]
+            # The source is an internal wizard handoff; never persist the caller's original path.
+            private_source = {key: source[key] for key in (
+                "pipeline", "view", "candidate_id", "inventory_asset_id", "render_mode", "image_sha256", "sha256")
+                if key in source}
+            private_source["captured_image_path"] = source["image_path"]
+            write_json_atomic(root / "Wizard_Source.json", private_source)
         count = plan["candidate_count"]
         seeds = payload.get("seeds")
         if not isinstance(seeds, list):
@@ -397,6 +430,7 @@ class LocalCharacterAssetPipelineService:
                 "head_pipeline": plan.get("head_pipeline", "head-image"),
                 "use_front_anchor": plan["use_front_anchor"],
                 "costume_path": costume_path, "costume_sha256": self._hash(Path(costume_path)) if costume_path else "",
+                "wizard_private_source": private_front_source is not None,
                 "candidates": candidates, "front_anchor": None, "selected_views": {}, "rankings": {}}
         spec["slots_by_view"] = slot_maps(spec)
         spec["universe_style_variant"] = batch_style["variant"]
@@ -548,6 +582,10 @@ class LocalCharacterAssetPipelineService:
         return self.detail(run_id, costume)
 
     def _locked_view_inputs(self, run: dict[str, Any], view: str, *, render_mode: str = "draft") -> dict[str, dict[str, Any]]:
+        if self.pipeline == "costume-dressing" and run.get("wizard_private_source"):
+            captured = (run.get("sources") or {}).get(view) or {}
+            if captured.get("character_assembly"):
+                return captured
         return self._resolve_view_inputs(run["character"], run["phase"], str(run.get("costume") or ""),
                                          view, run.get("source_batches") or {}, run.get("head_pipeline", "head-image"), render_mode=render_mode)
 

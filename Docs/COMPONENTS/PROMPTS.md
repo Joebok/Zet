@@ -316,6 +316,15 @@ and the [workflow handoff](LOCAL_CHARACTERS.md#long-hair-framing-and-assembly-ha
 
 ## Environmental universe style (2026-10-30)
 
+Universe Settings describes the canonical and environmental fields as shared
+rendering technique. Local Body Reference uses that finish on the exposed body
+and takes proportions from Character.md while keeping technical staging. Local
+Head Construct and text-only Head Edit use authored identity and view visibility
+for facial features and use the style for surface treatment. For dramatic
+lighting, pose, or composition, use the image's scene direction or prompt.
+Narrative targets with saved style overrides keep them. Use Write Prompt when
+an inheriting target should adopt revised universe settings.
+
 The shared universe style reader accepts canonical/environmental variants. Character compilers read the batch-owned `Universe_Style.json` using the declared output directory; subsequent view compilation retains that batch snapshot. Source attribution points to the selected descriptor field.
 
 # Current character master policy (2026-11-02)

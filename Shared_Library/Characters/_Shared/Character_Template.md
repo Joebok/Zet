@@ -292,7 +292,7 @@ Ear preservation rules:
 
 Rendering priorities:
 
-* `[Body-only art style without face or head traits.]`
+* `[Character-specific technical requirements for the body reference.]`
 
 <!-- ZET:END BODY_REFERENCE_CHARACTER_REQUIREMENTS -->
 

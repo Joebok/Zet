@@ -174,6 +174,8 @@ class CharacterRenderSlots:
 
     def _mode_sources(self, run, view, render_mode):
         sources = self.adapter._locked_view_inputs(run, view, render_mode=render_mode)
+        if run.get("wizard_private_source") and self.workflow.pipeline == "costume-dressing":
+            return sources
         for role, source in sources.items():
             if source.get("render_mode", "draft") != render_mode:
                 raise ValueError(f"A {render_mode.title()} {role.replace('_', ' ')} image is required for {view}.")
