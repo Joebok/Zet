@@ -123,6 +123,9 @@ findings with their source, reported views and reason, while valid findings stay
 available for selection. A nonempty response with no valid findings fails with
 those diagnostics; an empty response is a valid no-change review. Head Image Edit
 review instructions and validation confine edits to `HEAD_EDIT_*` sections.
+Ollama Head-Image Edit reviews request up to 12,288 output tokens. If structured
+Ollama output ends at its model output limit, the shared AI job error reports
+the truncation and generated token count.
 
 Costume rename retains the same Dressing container ID and candidate board under
 the new canonical slug, updating saved paths inside its records. It refuses

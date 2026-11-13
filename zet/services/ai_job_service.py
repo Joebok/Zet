@@ -342,6 +342,18 @@ class AIJobService:
         with file_lock(self.lifecycle.lock_path(job_id)):
             return self._result(job_id)
 
+    @staticmethod
+    def _decode_structured_output(contents, answer):
+        try:
+            return json.loads(contents)
+        except json.JSONDecodeError as exc:
+            runtime = answer.get("runtime", answer.get("ollama_runtime", {}))
+            if isinstance(runtime, dict) and runtime.get("done_reason") == "length":
+                count = runtime.get("eval_count")
+                detail = f" after generating {count} tokens" if isinstance(count, (int, float)) else ""
+                raise ValueError(f"Structured AI output was truncated at the model output limit{detail}.") from exc
+            raise
+
     def _result(self, job_id):
         from zet.services.storage_health_service import storage_health
         if not storage_health(self.paths.config).poll()["available"]:
@@ -414,7 +426,7 @@ class AIJobService:
                 raise
             if result is not None:
                 contents, answer = result
-                value = json.loads(contents)
+                value = self._decode_structured_output(contents, answer)
                 if not isinstance(value, dict):
                     raise ValueError("Structured AI output must be an object")
                 # Keep a compact durable response for resumable domain continuation.

@@ -242,10 +242,13 @@ class CharacterContainerTemplateService:
                 f"Compiled prompts: {prompts}")
             model = str(resolve_role_model(self.app.config, "character_prompt_review", record["model"]))
             stage = "model response"
+            request_options = ({"num_predict": 12288}
+                if scope["pipeline"] == "head-image-edit" and not model.startswith("codex:") else None)
             answer, runtime = self.app.ai_proxy_service.ai_proxy_path_service.jobs.generate_json(
                 model, "", prompt, schema, images, task_type="character_template_revision",
                 role="template_revision", render_context={"operation": "mixed", "bindings_owned_by_zet": True},
-                workflow=scope["pipeline"], owner={"container_id": record["container_id"], "proposal_id": proposal_id})
+                workflow=scope["pipeline"], owner={"container_id": record["container_id"], "proposal_id": proposal_id},
+                **({"options": request_options} if request_options else {}))
             if not isinstance(answer, dict) or not isinstance(answer.get("summary"), str) or not isinstance(answer.get("findings"), list):
                 raise ValueError("Template analysis returned an invalid response.")
             stage = "validate findings"

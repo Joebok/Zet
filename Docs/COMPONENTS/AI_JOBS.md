@@ -18,6 +18,9 @@ Persisted `prompt_generator` continuations and Costume-Dressing's historical `po
   verifies identities/inventories, drains answers into the local Inbox, exposes
   results, copies validated artifacts and records completion. Compatibility
   synchronous callers wait here; resumable workflows yield rather than wait.
+  For structured Ollama responses, a JSON parse failure with worker
+  `done_reason=length` is reported as output-limit truncation with the generated
+  token count when available; other parse errors retain their original detail.
 - [AIJobRepository](../../zet/repositories/ai_job_repository.py) stores compact
   request identities under configured `[Storage].Root/AI_Queue/<queue-hash>/<producer>/Jobs/`.
   The shared queue owns execution state. Durable local records/receipts own Zet

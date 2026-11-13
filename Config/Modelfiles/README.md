@@ -7,7 +7,7 @@ These Ollama aliases prepare two vision-capable models from different model fami
 | `Zet-Image-1` | `qwen3.5:9b-q8_0` | Qwen 3.5, Alibaba | 10 GB |
 | `Zet-Image-2` | `gemma4:12b` | Gemma 4, Google DeepMind | 7.6 GB |
 
-Both aliases set a 65,536 token context, 6,144 output tokens, and temperature 0.2. Start live testing at 64K. The configured context may use additional VRAM. AI_Proxy stops its managed ComfyUI process before Ollama work, but confirm actual residency and performance using `ollama ps`. If a model spills to CPU, exhausts memory, or exceeds a job deadline, recreate both aliases at 48K and then 32K until they share a usable setting. Keep comparison trials serial.
+Both aliases set a 65,536 token context, 12,288 output tokens, and temperature 0.2. Start live testing at 64K. The configured context may use additional VRAM. AI_Proxy stops its managed ComfyUI process before Ollama work, but confirm actual residency and performance using `ollama ps`. If a model spills to CPU, exhausts memory, or exceeds a job deadline, recreate both aliases at 48K and then 32K until they share a usable setting. Keep comparison trials serial.
 
 ## Install or refresh the base models
 
@@ -30,7 +30,7 @@ $ollama = (Get-Command ollama).Source
 & $ollama ps
 ```
 
-Check that `ollama show` reports vision capability and that parameters show `num_ctx 65536`, `num_predict 6144`, and `temperature 0.2`. After a representative long request, use `ollama ps` to confirm `CONTEXT` is 65536 and `PROCESSOR` is fully GPU. Record the timestamp, versions, `ollama list` IDs, and digests from `ollama show --verbose` (or the `/api/show` response) for both base models and aliases. Repeat measurements after any base pull because a tag can move.
+Check that `ollama show` reports vision capability and that parameters show `num_ctx 65536`, `num_predict 12288`, and `temperature 0.2`. After a representative long request, use `ollama ps` to confirm `CONTEXT` is 65536 and `PROCESSOR` is fully GPU. Record the timestamp, versions, `ollama list` IDs, and digests from `ollama show --verbose` (or the `/api/show` response) for both base models and aliases. Repeat measurements after any base pull because a tag can move.
 
 ## Make aliases visible to Zet
 
