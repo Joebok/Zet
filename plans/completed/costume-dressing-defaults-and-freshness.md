@@ -1,5 +1,5 @@
 # Costume Dressing defaults and freshness
-Status: active
+Status: complete
 Related issue: Gia/Luna resume run 2026-11-13T19-32-25-242Z-287f661a
 
 ## Goal
@@ -28,7 +28,7 @@ Align unsaved Dressing quarter-view controls and requests, and make Earlier prom
 - Work: Preserve current candidates, add four FRONT LEFT guided candidates in empty slots, review and lock best eligible result, then complete FRONT RIGHT with corresponding Assembly source and dressed FRONT guide.
 - Acceptance: Both quarter views have locked published candidates and recorded report evidence.
 - Validation: approved S2, disposable checks, dashboard workflow and git diff --check.
-- Status: blocked pending dashboard release.
+- Status: not run at user direction; live Dressing follow-through is outside this plan's closure.
 
 ## Constraints
 No schema, dependency or permanent scenario changes. Keep prepared tests isolated. The test dashboard uses ZetTester. Verify selected FRONT and Assembly locks before starting each render.
@@ -36,5 +36,5 @@ No schema, dependency or permanent scenario changes. Keep prepared tests isolate
 ## Results
 The unsaved frontend default now matches the rendered controls and uses FRONT as the design reference. Freshness comparison uses captured Costume-Dressing settings and can clear stale markers after successful comparison. A disposable service fixture passed both unchanged and changed prompt cases. All four approved E2E scenarios passed in 41.8 seconds. Python syntax, JavaScript syntax and `git diff --check` passed.
 
-The tester dashboard reported release `a836628bb5a0e0665e59449dd8ff8745526514de` before and after Restart current version. Its restart action does not activate the workspace source changes. Live FRONT LEFT/RIGHT follow-through remains pending a dashboard running this change. The four existing LEFT candidates remain untouched in slots 1–4; slots 5–8 remain empty.
+The tester dashboard reported release `a836628bb5a0e0665e59449dd8ff8745526514de` before and after Restart current version. Its restart action did not activate workspace source changes during the earlier check. Joe later confirmed that the fix worked. No further live Costume Dressing run was requested; existing candidates were left untouched. The four existing LEFT candidates remain in slots 1–4, slots 5–8 remain empty, and FRONT RIGHT remains unrun in this replay.
 
