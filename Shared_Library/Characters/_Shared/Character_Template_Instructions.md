@@ -143,7 +143,11 @@ Used in the standard path. State character-specific source precedence and preser
 
 ### `HEAD_IMAGE_CHARACTER_REQUIREMENTS` — required
 
-Used in the standard path. Include only character-varying head-output requirements not already captured as head or hair facts. Exclude body, clothing, framing, background, and generic rendering rules.
+Head Image Construct includes this section in text-only jobs and explicit phase
+changes. For same-phase source-backed jobs, the source image governs identity
+and appearance. Include only character-specific head-output requirements beyond
+the head and hair facts. Exclude body, clothing, framing, background, and
+generic rendering rules.
 
 ### `HEAD_IMAGE_EXPRESSION_GUIDANCE` — optional; Head-Image only
 

@@ -136,6 +136,8 @@ def compile_head_image_job(
         sections["HEAD_IMAGE_SOURCE_RULES"] = _local_source_rules(
             sections.get("HEAD_IMAGE_SOURCE_RULES", ""), apply_phase_changes=apply_phase_change,
         )
+        if reference_as_is:
+            sections["HEAD_IMAGE_CHARACTER_REQUIREMENTS"] = ""
     local_phase_changes = ""
     local_phase_changes_source = None
     if pipeline_mode == "local":
