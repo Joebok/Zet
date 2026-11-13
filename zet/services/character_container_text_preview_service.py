@@ -50,11 +50,14 @@ class CharacterContainerTextPreviewService:
                 compiled = compiler(job, self.project_root, pipeline_mode="local",
                     universe_root=self.app.config.base_library_path, text_preview=True)
                 prompt = Path(compiled["final_prompt"]).read_text(encoding="utf-8")
+                review_path = compiled.get("image_review")
+                review = Path(review_path).read_text(encoding="utf-8") if review_path else ""
                 if pipeline == "body-reference":
                     from zet.services.local_body_reference_service import LocalBodyReferenceService
                     prompt = LocalBodyReferenceService._qwen_prompt(
                         prompt, view, anchor=view != "FRONT", anchor_view=PREDECESSORS.get(view, "FRONT"))
                 result.append({"view": view, "prompt": prompt,
+                               "review_criteria": review,
                                "reference_inputs": compiled.get("reference_files", references),
                                "renderable": False})
         return result

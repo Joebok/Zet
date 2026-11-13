@@ -22,6 +22,7 @@ class CharacterContainerTemplateError(ValueError):
 
 class CharacterContainerTemplateService:
     PIPELINES = {"body-reference", "head-image", "head-image-edit", "character-assembly", "costume-dressing"}
+    HEAD_EDIT_LINE_REVIEW_VERSION = 1
 
     def __init__(self, app, project_root: str | Path):
         self.app = app
@@ -137,6 +138,59 @@ class CharacterContainerTemplateService:
                 accepted.append({**finding, "id": str(index), "views": views})
         return accepted, rejected
 
+    @staticmethod
+    def _head_edit_line_candidates(source: dict) -> list[dict]:
+        from Scripts.Compile_Character_Template import parse_template_sections_with_sources
+        sections, metadata = parse_template_sections_with_sources(source["text"], source["source_path"])
+        candidates = []
+        for section, body in sections.items():
+            if not section.startswith("HEAD_EDIT_"):
+                continue
+            line_number = metadata[section]["start_line"]
+            for line in body.splitlines():
+                if line.lstrip().startswith("*"):
+                    candidates.append({"line_id": f"L{len(candidates) + 1:02d}",
+                                       "section": section, "text": line})
+                line_number += 1
+        return [item for item in candidates if source["text"].count(item["text"]) == 1]
+
+    @classmethod
+    def _head_edit_line_finding(cls, answer: dict, record: dict, prompts: list[dict]) -> dict:
+        source = next((item for item in record["sources"]
+                       if item["source_id"] == "Character.md" and item["source_id"] in record["source_ids"]), None)
+        if source is None:
+            raise ValueError("Head-Image Edit text review requires the selected Character.md source.")
+        edits = answer.get("edits")
+        if not isinstance(edits, list) or len(edits) > 1:
+            raise ValueError("Head-Image Edit review must return at most one line edit.")
+        if not edits:
+            return {"summary": answer.get("summary", ""), "findings": []}
+        edit = edits[0]
+        if not isinstance(edit, dict):
+            raise ValueError("Head-Image Edit line edit must be an object.")
+        candidate = next((item for item in cls._head_edit_line_candidates(source)
+                          if item["line_id"] == edit.get("line_id")), None)
+        replacement = edit.get("replacement")
+        if candidate is None or not isinstance(replacement, str) or not replacement.strip():
+            raise ValueError("Head-Image Edit returned an unknown line or empty replacement.")
+        if replacement == candidate["text"]:
+            raise ValueError("Head-Image Edit returned an unchanged line.")
+        from zet.services.character_container_text_preview_service import CharacterContainerTextPreviewService
+        previewer = CharacterContainerTextPreviewService(record["app"], record["project_root"])
+        overlay = dict(source, text=source["text"].replace(candidate["text"], replacement, 1))
+        updated = previewer.compile(record["scope"], Path(record["preview_directory"]) / "edited", [overlay])
+        before_by_view = {item["view"]: (item["prompt"], item.get("review_criteria", ""))
+                          for item in prompts}
+        views = [item["view"] for item in updated
+                 if before_by_view.get(item["view"]) !=
+                 (item["prompt"], item.get("review_criteria", ""))]
+        if not views:
+            raise ValueError("Head-Image Edit replacement does not change any compiled view.")
+        return {"summary": answer.get("summary", ""), "findings": [{
+            "source_id": source["source_id"], "before": candidate["text"], "after": replacement,
+            "rationale": "Focused line update for the requested Head-Image Edit template improvement.",
+            "views": views}]}
+
     def start_review(self, character: str, phase: str, pipeline: str, costume: str,
                      payload: dict) -> dict:
         container = self.containers.detail(character, phase, pipeline, costume)
@@ -181,9 +235,15 @@ class CharacterContainerTemplateService:
             evidence_copy = directory / f"evidence{evidence.suffix.lower()}"
             shutil.copy2(evidence, evidence_copy)
             evidence_path = str(evidence_copy)
+        from zet.services.llm_role_service import resolve_role_model
+        model = str(resolve_role_model(self.app.config, "character_template_line_review",
+                                       str(payload.get("model") or "")))
+        line_review = (mode == "text" and pipeline == "head-image-edit" and bool(direction.strip())
+                       and not model.startswith("codex:"))
         record = {"schema_version": 2, "proposal_id": proposal_id, "container_id": container["container_id"],
                   "scope": scope, "pipeline": pipeline, "mode": mode, "direction": direction,
-                  "model": str(payload.get("model") or ""), "source_ids": selected, "sources": sources,
+                  "model": model, "source_ids": selected, "sources": sources,
+                  "line_review_version": self.HEAD_EDIT_LINE_REVIEW_VERSION if line_review else 0,
                   "view": view, "candidate_id": candidate_id, "candidate_request": candidate.get("render_request") if candidate else None,
                   "render_mode": candidate.get("render_mode", "draft") if candidate else "draft",
                   "evidence_path": evidence_path,
@@ -213,15 +273,28 @@ class CharacterContainerTemplateService:
                 prompts = [{"view": record["view"], "prompt": request.get("prompt", ""),
                             "reference_inputs": request.get("inputs", [])}]
                 images = [Path(record["evidence_path"])]
-            schema = {"type": "object", "properties": {"summary": {"type": "string"},
+            line_review = record.get("line_review_version") == self.HEAD_EDIT_LINE_REVIEW_VERSION
+            schema = ({"type": "object", "properties": {"summary": {"type": "string"},
+                "edits": {"type": "array", "maxItems": 1, "items": {"type": "object", "properties": {
+                    "line_id": {"type": "string"}, "replacement": {"type": "string"}},
+                    "required": ["line_id", "replacement"], "additionalProperties": False}}},
+                "required": ["summary", "edits"], "additionalProperties": False} if line_review else
+                {"type": "object", "properties": {"summary": {"type": "string"},
                 "findings": {"type": "array", "items": {"type": "object", "properties": {
                     "source_id": {"type": "string"}, "before": {"type": "string"},
                     "after": {"type": "string"}, "rationale": {"type": "string"},
                     "views": {"type": "array", "items": {"type": "string", "enum": scope["views"]}}},
                     "required": ["source_id", "before", "after", "rationale", "views"],
                     "additionalProperties": False}}}, "required": ["summary", "findings"],
-                    "additionalProperties": False}
-            prompt = ("Suggest focused, independent exact-text corrections to selected governing templates. "
+                    "additionalProperties": False})
+            if line_review:
+                source = next(item for item in record["sources"] if item["source_id"] == "Character.md")
+                lines = self._head_edit_line_candidates(source)
+                prompt = ("Return one JSON object with summary and edits. Return at most one edit using a listed line_id and a complete replacement line. "
+                    "Preserve the listed line's Markdown and any view annotation. Return an empty edits array when no edit is warranted. "
+                    f"Direction: {record['direction']}\nEditable HEAD_EDIT lines: {json.dumps(lines, ensure_ascii=False)}")
+            else:
+                prompt = ("Suggest focused, independent exact-text corrections to selected governing templates. "
                 "Return no findings when no justified edit exists. Preserve identity, markers, placeholders, "
                 "view annotations and reference order. Do not edit unselected sources. "
                 "Write the summary as one sentence and keep each finding rationale brief. "
@@ -240,15 +313,20 @@ class CharacterContainerTemplateService:
                 f"Editable sources: {record['source_ids']}\n"
                 f"Sources: {[(s['source_id'], s['text']) for s in record['sources']]}\n"
                 f"Compiled prompts: {prompts}")
-            model = str(resolve_role_model(self.app.config, "character_prompt_review", record["model"]))
+            role_key = "character_template_line_review" if line_review else "character_prompt_review"
+            model = str(resolve_role_model(self.app.config, role_key, record["model"]))
             stage = "model response"
-            request_options = ({"num_predict": 12288}
-                if scope["pipeline"] == "head-image-edit" and not model.startswith("codex:") else None)
+            request_options = ({"num_predict": 384} if line_review else
+                {"num_predict": 12288} if scope["pipeline"] == "head-image-edit" and not model.startswith("codex:") else None)
             answer, runtime = self.app.ai_proxy_service.ai_proxy_path_service.jobs.generate_json(
                 model, "", prompt, schema, images, task_type="character_template_revision",
-                role="template_revision", render_context={"operation": "mixed", "bindings_owned_by_zet": True},
+                role="character_template_line_review" if line_review else "template_revision",
+                render_context={"operation": "mixed", "bindings_owned_by_zet": True},
                 workflow=scope["pipeline"], owner={"container_id": record["container_id"], "proposal_id": proposal_id},
                 **({"options": request_options} if request_options else {}))
+            if line_review:
+                answer = self._head_edit_line_finding(answer, {**record, "app": self.app,
+                    "project_root": self.project_root, "preview_directory": path.parent / proposal_id}, prompts)
             if not isinstance(answer, dict) or not isinstance(answer.get("summary"), str) or not isinstance(answer.get("findings"), list):
                 raise ValueError("Template analysis returned an invalid response.")
             stage = "validate findings"

@@ -36,6 +36,7 @@ ROLES = (
     LLMRole("costume_evidence_review", "Costume draft evidence review", "Checks unsupported facts and template structure; does not rewrite.", "ai_costume_wizard_model", capabilities=("vision",)),
     LLMRole("costume_render_review", "Costume render review", "Suggests targeted corrections to a test render.", "ai_costume_wizard_model", "review", ("vision",), prompt_fields=("refinements",)),
     LLMRole("character_prompt_review", "Character governing-template review", "Proposes selectable corrections to source wording and compiled previews.", "codex_default_model", "review", prompt_fields=("findings[].after",)),
+    LLMRole("character_template_line_review", "Character template line review", "Selects one editable template line for a focused correction.", "codex_default_model", "off", prompt_fields=("edits[].replacement",)),
     LLMRole("template_revision", "Historical template revision", "Continues historical image-evidence template proposals.", "codex_default_model", "review", ("vision",), status="compatibility", prompt_fields=("edits[].text",)),
     LLMRole("local_prompt_improvement", "Local prompt improvement", "Diagnoses prompt wording from rendered evidence.", "codex_default_model", "review", ("vision",), ("codex",), prompt_fields=("observations",)),
     LLMRole("post_render_character_prompt", "Post-render Character.md improvement", "Proposes scoped Character.md edits from observations and rendered evidence.", "codex_default_model", "review", ("vision",), ("codex",), prompt_fields=("findings[].after",)),

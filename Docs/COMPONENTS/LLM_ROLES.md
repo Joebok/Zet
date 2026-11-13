@@ -49,3 +49,7 @@ Luna 6 and supports the managed role override and per-session model picker.
 The wizard snapshots the repository Character Template Instructions alongside the
 template and universe style when starting an interview. Pipeline improvement
 roles continue to use their existing task-specific guidance.
+
+`character_template_line_review` is a skill-free text role for compact structured line selection in directed Head-Image Edit template reviews. Zet reconstructs exact source findings and performs ownership, source, and prompt validation after inference.
+
+Five fresh queued Head-Image Edit template review calls per model validated the skill-free `character_template_line_review` path through selection and eight compiled previews. All ten saved findings affected FRONT only.

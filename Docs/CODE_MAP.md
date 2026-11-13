@@ -519,3 +519,5 @@ ordered interview evidence, resumable AI turns, template validation and explicit
 publication. The dashboard controller in character_wizard.js calls
 /api/character-wizard. CharacterOnboardingService owns first-phase scaffolding,
 and SourceEditorService fences existing-master writes.
+
+Directed text-only Ollama Head-Image Edit template review uses the skill-free `character_template_line_review` role and versioned line-ID response in `CharacterContainerTemplateService`; Zet resolves globally unique source lines, derives affected views from compiled prompt and review-criteria differences, then reuses the existing selection and preview flow.
