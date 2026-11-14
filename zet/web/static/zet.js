@@ -3537,6 +3537,7 @@ async function activatePage(page, options = {}) {
     if (storyProductionMenu) storyProductionMenu.value = PRODUCTION_PAGES.has(activePageName()) ? activePageName() : "";
     return false;
   }
+  if (activePageName() === "onboarding" && page !== "onboarding") characterWizard.close();
   const narrativeNavigation = state.navigationRequest;
   if (window.zetNarrativePending) await window.zetNarrativePending.catch(()=>null);
   if (narrativeNavigation !== state.navigationRequest) return false;
@@ -11309,7 +11310,13 @@ const characterWizard = window.mountCharacterWizard({
 document.querySelector("#character-wizard-edit").addEventListener("click", () => characterWizard.open("edit"));
 newCharacterButton.addEventListener("click", () => runGuardedTransition(async () => {
   closeNewMenu();
+  if (activePageName() !== "onboarding") {
+    const navigated = await activatePage("onboarding", {skipAutosave: true});
+    if (!navigated || activePageName() !== "onboarding") return false;
+  }
   await characterWizard.open("create");
+}).catch(error => {
+  showActionMessage(`Unable to open Character intake: ${error.message}`, "error");
 }));
 newPhaseButton.addEventListener("click", () => runGuardedTransition(async () => {
   closeNewMenu();

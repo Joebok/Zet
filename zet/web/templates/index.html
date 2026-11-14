@@ -242,10 +242,8 @@
           <form data-intake>
             <label>Character Name<input name="character" required maxlength="80"></label>
             <label>Character Phase<input name="phase" required maxlength="80"></label>
-            <fieldset data-intake-metadata hidden disabled>
-              <label>Species<select name="species_id" required></select></label>
-              <label>Gender Presentation<select name="gender" required></select></label>
-            </fieldset>
+            <label data-intake-species hidden>Species<select name="species_id" required></select></label>
+            <label data-intake-gender hidden>Gender Presentation<select name="gender" required></select></label>
             <label data-fallback>Art style fallback (optional)<input name="fallback" maxlength="500"></label>
             <label>Direction<textarea name="notes" rows="3" maxlength="10000"></textarea></label>
             <label>Vision model<button type="button" data-command="model"></button></label>
@@ -2330,8 +2328,8 @@ Add prompt language here.
   <script src="/static/template_editor.js?v=20261026"></script>
   <script src="/static/character_hub.js?v=20261107-character-overview"></script>
   <script src="/static/species_settings.js?v=1"></script>
-  <script src="/static/character_wizard.js?v=2"></script>
-  <script src="/static/zet.js?v=20261112-species"></script>
+  <script src="/static/character_wizard.js?v=20261114-intake-fields"></script>
+  <script src="/static/zet.js?v=20261114-character-navigation"></script>
   <script type="module" src="/static/minor_characters.js?v=20261112-queued-cancel"></script>
   <script src="/static/local_template_improvement.js?v=20261102-batch-pages"></script>
   <script src="/static/local_asset_pipeline.js?v=20261103-rerun-rejected"></script>

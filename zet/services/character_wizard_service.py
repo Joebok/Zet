@@ -31,6 +31,20 @@ METADATA = ("Gender Presentation", "Standing Barefoot Height",
             "Eye Height", "Shoulder Width", "Body Depth")
 FORMATS = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp", "GIF": ".gif", "BMP": ".bmp"}
 SECTION_HEADING = re.compile(r"(?m)^#{1,6}[ \t]+(.+?)[ \t]*\s*\Z")
+RETIRED_CONSTRUCT_SECTIONS = frozenset({
+    "HEAD_DESCRIPTION_FACTS", "HEAD_DESCRIPTION_VIEW_OVERRIDES",
+    "HEAD_DESCRIPTION_VIEW_SUPPRESSION", "HAIR_DESCRIPTION_FACTS",
+    "HAIR_DESCRIPTION_VIEW_OVERRIDES", "HEAD_IMAGE_TRANSFORM_INSTRUCTIONS",
+    "HEAD_IMAGE_LOCAL_PHASE_CHANGES", "HEAD_IMAGE_SOURCE_INSTRUCTIONS",
+    "HEAD_IMAGE_SOURCE_RULES", "HEAD_IMAGE_CHARACTER_REQUIREMENTS",
+    "HEAD_IMAGE_EXPRESSION_GUIDANCE", "NEGATIVE_GUIDANCE_HEAD_IMAGE",
+})
+RETIRED_WIZARD_MESSAGE = "This saved interview uses retired Head Image Construct sections. Start a new Character Wizard interview."
+
+
+def retired_construct_sections(markdown):
+    return sorted({match.group(2) for match in MARKER_RE.finditer(markdown or "")
+                   if match.group(1) == "BEGIN" and match.group(2) in RETIRED_CONSTRUCT_SECTIONS})
 
 
 def turn_schema(names, species_ids):
@@ -217,6 +231,11 @@ class CharacterWizardService(CharacterWizardSections):
 
     def detail(self, sid):
         session = self._read(sid)
+        retired = self._retired_session_sections(session)
+        if retired and session.get("status") not in {"ACCEPTED", "ABANDONED"}:
+            session["status"] = "FAILED"
+            session["error"] = RETIRED_WIZARD_MESSAGE
+            self._save(session)
         if session["status"] == "RUNNING":
             self._submit(session)
         public = {key: session[key] for key in (
@@ -243,6 +262,7 @@ class CharacterWizardService(CharacterWizardSections):
         return {key: session[key] for key in ("status", "revision")}
 
     def _submit(self, session):
+        self._require_current_authoring(session)
         workflow = AIWorkflowService(self.app)
         version_two = session.get("version") == 2
         attempt = session["attempt"]["id"] if version_two else session["revision"]
@@ -268,6 +288,8 @@ class CharacterWizardService(CharacterWizardSections):
     def _validate(self, session, markdown):
         baseline = session["baseline"]
         errors = []
+        if session.get("mode") == "create" and retired_construct_sections(markdown):
+            errors.append(RETIRED_WIZARD_MESSAGE)
         if [m[0] for m in MARKER_RE.finditer(markdown)] != [m[0] for m in MARKER_RE.finditer(baseline)]:
             errors.append("Keep the original ZET section markers and their order.")
         for label in FIXED_METADATA:
@@ -284,7 +306,20 @@ class CharacterWizardService(CharacterWizardSections):
                 errors.append(str(exc))
         return errors
 
+    @staticmethod
+    def _retired_session_sections(session):
+        names = set(session.get("section_metadata") or ())
+        names.update((session.get("entries") or {}).keys())
+        names.update(retired_construct_sections(session.get("baseline", "")))
+        return sorted(names & RETIRED_CONSTRUCT_SECTIONS)
+
+    @classmethod
+    def _require_current_authoring(cls, session):
+        if cls._retired_session_sections(session):
+            raise ValueError(RETIRED_WIZARD_MESSAGE)
+
     def _propose(self, session):
+        self._require_current_authoring(session)
         paths = []
         for item in session["images"]:
             path = self.image(session["id"], item["slot"])
@@ -407,6 +442,7 @@ class CharacterWizardService(CharacterWizardSections):
     def act(self, sid, action, data):
         with file_lock(self._folder(sid) / "session.lock"):
             session = self._read(sid)
+            self._require_current_authoring(session)
             status = session["status"]
             if action == "accept" and status == "ACCEPTED":
                 return self.detail(sid)

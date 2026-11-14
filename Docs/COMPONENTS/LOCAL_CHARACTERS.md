@@ -1051,13 +1051,13 @@ name-and-source-only offline bootstrap.
 
 Create begins with one to three reference images. Edit starts from the current
 phase master and accepts optional references. The operator selects a single
-vision model for Body, Head, and Hair, including retries and section refinement.
+vision model for Body and Head and hair, including retries and section refinement.
 Each AI_Proxy request returns plain-text observations. The wizard normalizes
 line formatting, preserves partial results, and shows section status. Apply
 refinement proposals individually or edit the facts directly before preview.
 
 Species and Gender Presentation are operator inputs. New drafts copy reviewed
-Head and Hair facts into the separate Head-Image Edit description and preservation
+Head and hair facts into the separate Head-Image Edit description and preservation
 sections and seed visible review criteria. The operator can edit those starter
 sections directly. Camera-specific instructions can be added during post-render
 refinement. Existing edits preserve specialized sections and route facts containing
@@ -1065,10 +1065,12 @@ view controls to Template Editor.
 
 Private universe state stores reference copies, the selected model, section
 attempts, and the review preview. Accept publishes a staged character and first
-phase, or saves an edit against the captured master revision. Saved legacy
-interviews continue using their original structured workflow. Wizard evidence
-stays private to intake.
+phase, or saves an edit against the captured master revision. Unfinished saved
+interviews that still expose retired Construct sections stop and require a new
+interview. Accepted history remains readable. Wizard evidence stays private to intake.
 
-Directed, text-only Ollama Head-Image Edit template reviews use a compact skill-free line-selection request. Zet offers unique bullet lines inside `HEAD_EDIT_*` sections, maps returned IDs back to the frozen `Character.md`, validates the replacement through the existing finding path, and compiles the overlay to derive affected views. The cap is 384 output tokens and the selected format is versioned on the proposal for resume. Codex and candidate-backed reviews keep the existing request. Disposable replay passed three saved outputs from each Zet-Image model through selection and all eight prompt previews, with FRONT as the affected view. This verifies saved response handling, not fresh API repeatability.
+Directed, text-only Head Image Edit template reviews use section-labelled line IDs from the frozen `Character.md`. Ollama retains its version 1 unique-line response format. Directed Codex reviews use version 2 and may propose multiple bullet replacements, including duplicate text in different `HEAD_EDIT_*` sections. Zet maps each line ID to an exact source range, preserves bullet prefixes and view annotations, validates selected replacements, and compiles the overlay to derive affected views. Candidate-backed and undirected reviews retain the exact-text finding format. Saved reviews retain their recorded format across resume.
+
+Character Wizard authoring uses the Edit sections `HEAD_EDIT_FRONT_DESCRIPTION`, `HEAD_EDIT_PRESERVE`, and `HEAD_EDIT_REVIEW_CRITERIA`. Saved unfinished wizard sessions whose editable schema or baseline contains retired Construct authoring sections are stopped before they can resume inference or publish. Existing Character.md edits keep older sections outside the wizard's editable fields.
 
 The line-selection path was exercised through an isolated Asset Container API and private AI_Proxy queue with five fresh calls each to Zet-Image-1 and Zet-Image-2. All ten produced one selectable FRONT finding and eight compiled previews. Disposable review-criteria and uniquely anchored view-tagged line conversions also passed; the criteria edit affected all eight views and the `[f]` tagged line affected FRONT only. Candidate anchors must be globally unique in the frozen source. The source library was not modified. These checks establish test-dashboard readiness for the directed text review path.

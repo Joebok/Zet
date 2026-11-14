@@ -14,8 +14,9 @@ from uuid import UUID
 
 from zet.repositories.local_pipeline_operation_repository import LocalPipelineOperationRepository
 from zet.services.local_pipeline_operation_context import OperationBlocked, OperationInputsChanged, OperationWaiting
+from zet.services.local_image_pipeline_policy import LOCAL_IMAGE_PIPELINES
 
-PIPELINES = frozenset({"body-reference", "head-image", "head-image-edit", "character-assembly", "costume-dressing"})
+PIPELINES = frozenset(LOCAL_IMAGE_PIPELINES)
 ACTIONS = frozenset({"run_available", "start", "resume", "generate_slots", "regenerate_slot", "retry_render_slot", "rerun_view", "rerun_failed", "retry_candidate", "reevaluate"})
 REQUEST_FIELDS = frozenset({"operation_id", "universe_id", "pipeline", "run_id", "character", "phase", "batch_name", "costume", "action", "render_mode", "view", "slot", "count", "candidate_id", "expected_candidate_id", "aspect_ratio", "scope", "recompile", "expected_context"})
 logger = logging.getLogger(__name__)

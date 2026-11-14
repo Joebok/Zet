@@ -14,6 +14,8 @@ exact-text corrections for Character.md and Dressing's Costume template.
 `CharacterContainerTextPreviewService` builds declared, non-renderable prompts;
 `AIWorkflowService` resumes review continuations. The container controller owns
 the separate disclosure, source/evidence controls, findings and preview actions.
+Directed Head Image Edit Codex reviews identify individual frozen-source bullets
+by section and line ID, allowing duplicated text to be selected independently.
 
 The character container controller renders a pipeline overview or a Candidate
 Board according to the optional route view. The dashboard shell owns header
@@ -525,4 +527,6 @@ publication. The dashboard controller in character_wizard.js calls
 /api/character-wizard. CharacterOnboardingService owns first-phase scaffolding,
 and SourceEditorService fences existing-master writes.
 
-Directed text-only Ollama Head-Image Edit template review uses the skill-free `character_template_line_review` role and versioned line-ID response in `CharacterContainerTemplateService`; Zet resolves globally unique source lines, derives affected views from compiled prompt and review-criteria differences, then reuses the existing selection and preview flow.
+Directed text-only Head Image Edit reviews use `CharacterContainerTemplateService` line IDs. Ollama version 1 reviews retain unique-line mapping, while Codex version 2 reviews resolve exact source occurrences, including repeated bullets across sections. Both derive affected views from compiled prompts and review criteria before the existing selection and preview flow.
+
+Local batch status, run-all discovery, and preparation operation admission derive active pipelines from `LOCAL_IMAGE_PIPELINES` in `local_image_pipeline_policy.py`. Retired pipeline entries in saved campaigns are skipped during recovery.

@@ -10,7 +10,7 @@ const BASE_URL = process.env.ZET_DASHBOARD_URL;
 const REVISION = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim();
 const DIRTY = Boolean(execFileSync("git", ["status", "--porcelain"], { cwd: ROOT, encoding: "utf8" }).trim());
 if (!BASE_URL) throw new Error("Set ZET_DASHBOARD_URL to the isolated fixture dashboard URL before capturing.");
-const PAGES = (process.env.ZET_UI_PAGES || "onboarding,local-body-reference,local-head-image,local-character-assembly,local-costume-dressing,minor-characters,identity-keys,turnarounds,costumes,phase-comparison,auxiliary-resources,image-generation,narrative,scene-candidates,zine,universes,universe-create,universe-settings,template-editor,ai-controls,local-batch-status,local-image-config,pipeline-inspection,pipeline-controls,help").split(",");
+const PAGES = (process.env.ZET_UI_PAGES || "onboarding,local-body-reference,character-asset-container,local-head-image-edit,local-character-assembly,local-costume-dressing,minor-characters,identity-keys,turnarounds,costumes,phase-comparison,auxiliary-resources,image-generation,narrative,scene-candidates,zine,universes,universe-create,universe-settings,template-editor,ai-controls,local-batch-status,local-image-config,pipeline-inspection,pipeline-controls,help").split(",");
 const VIEWPORTS = [
   { folder: "Desktop", width: 1920, height: 911 },
   { folder: "IpadMini", width: 1133, height: 610 },

@@ -1,5 +1,18 @@
 # Local testing
 
+## Head Image Edit line review and Construct retirement cleanup (2026-11-14)
+
+The saved Luna proposal and Codex response were replayed read-only. Both old
+excerpts still fail exact-text validation, while the new line map resolves all
+12 editable bullets, including repeated description and preservation bullets, to
+their exact frozen-source offsets. Current wizard authoring fields and Luna's
+master contain only Head Image Edit sections. Python compilation, JavaScript
+syntax checks, batch-status import, active pipeline registry checks, and
+`git diff --check` passed. `npm run test:e2e` passed all four approved scenarios
+(46.8 seconds). No live inference, render, or edit to Luna's saved proposal,
+master, or candidate board was performed. Fresh model output, preview acceptance,
+and an actual master-revision conflict remain unverified.
+
 ## Container template review diagnostics (2026-11-07)
 
 A disposable read-only replay of the two saved Valindia Head Image Edit model

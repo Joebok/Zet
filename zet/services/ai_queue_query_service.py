@@ -242,7 +242,7 @@ class AIQueueQueryService:
             elif owner.get("local_head_image_edit_run_id"):
                 page, batch = "local-head-image-edit", owner["local_head_image_edit_run_id"]
             elif owner.get("local_head_image_run_id"):
-                page, batch = "local-head-image", owner["local_head_image_run_id"]
+                return ""
             else:
                 page = "local-costume-dressing" if "dressing" in pipeline else "local-character-assembly"
                 batch = owner["local_character_asset_run_id"]

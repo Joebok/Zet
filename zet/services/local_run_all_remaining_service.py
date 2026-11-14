@@ -11,12 +11,12 @@ from typing import Any
 from uuid import uuid4
 
 from zet.services.atomic_file_service import write_json_atomic
-from zet.services.local_image_pipeline_policy import ACTIVE_RUN_STATUSES
+from zet.services.local_image_pipeline_policy import ACTIVE_RUN_STATUSES, LOCAL_IMAGE_PIPELINES
 from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
 from zet.services.workflow_storage import file_lock
 
 
-PIPELINES = ("body-reference", "head-image", "head-image-edit", "character-assembly", "costume-dressing")
+PIPELINES = tuple(LOCAL_IMAGE_PIPELINES)
 _CAMPAIGN_POOL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="zet-run-all-remaining")
 _RENDER_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="zet-local-render-batch")
 _REVIEW_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="zet-local-image-review")
@@ -101,7 +101,23 @@ class LocalRunAllRemainingService:
                     "images_remaining": missing, "result": "QUEUED" if missing else "REVIEW_PENDING",
                     "error": "",
                 })
+        self._skip_retired_campaign_entries()
         return [item for item in batches if item["run_id"]]
+
+    def _skip_retired_campaign_entries(self) -> None:
+        campaign_id = str(self._read(self.active_path).get("campaign_id") or "")
+        if not campaign_id:
+            return
+        path = self._campaign_path(campaign_id)
+        with file_lock(path.with_suffix(".lock")):
+            campaign = self._read(path)
+            changed = False
+            for item in campaign.get("batches") or []:
+                if item.get("pipeline") not in LOCAL_IMAGE_PIPELINES and item.get("result") not in {"COMPLETE", "SKIPPED"}:
+                    item.update(result="SKIPPED", error="Pipeline retired. This saved batch is preserved but cannot resume.")
+                    changed = True
+            if changed:
+                write_json_atomic(path, campaign)
 
     def start(self) -> dict[str, Any]:
         self.root.mkdir(parents=True, exist_ok=True)
@@ -110,6 +126,7 @@ class LocalRunAllRemainingService:
             if active_id:
                 current = self._read(self._campaign_path(active_id))
                 if current.get("status") in {"QUEUED", "RUNNING", "RECOVERING"}:
+                    self._skip_retired_campaign_entries()
                     with _ACTIVE_LOCK:
                         active = active_id in _ACTIVE
                     if not active:
@@ -239,11 +256,14 @@ class LocalRunAllRemainingService:
 
     def _run_locked(self, campaign_id: str) -> None:
         try:
+            self._skip_retired_campaign_entries()
             self._update(campaign_id, lambda item: item.update(status="RUNNING", started_at=item.get("started_at") or self._now()))
             campaign = self._read(self._campaign_path(campaign_id))
             jobs = list(campaign.get("batches") or [])
             futures = {}
             for index, job in enumerate(jobs):
+                if job.get("pipeline") not in LOCAL_IMAGE_PIPELINES or job.get("result") == "SKIPPED":
+                    continue
                 if job.get("result") in {"COMPLETE", "WAITING_FOR_REFERENCE"}:
                     continue
                 future = _RENDER_POOL.submit(self._run_batch, campaign_id, index, dict(job))

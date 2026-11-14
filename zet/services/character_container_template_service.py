@@ -6,6 +6,7 @@ from datetime import datetime
 import hashlib
 import json
 from pathlib import Path
+import re
 import shutil
 from uuid import uuid4
 
@@ -22,7 +23,7 @@ class CharacterContainerTemplateError(ValueError):
 
 class CharacterContainerTemplateService:
     PIPELINES = {"body-reference", "head-image-edit", "character-assembly", "costume-dressing"}
-    HEAD_EDIT_LINE_REVIEW_VERSION = 1
+    HEAD_EDIT_LINE_REVIEW_VERSION = 2
 
     def __init__(self, app, project_root: str | Path):
         self.app = app
@@ -103,18 +104,36 @@ class CharacterContainerTemplateService:
     def _review_findings(cls, answer: dict, record: dict) -> tuple[list[dict], list[dict]]:
         sources = {source["source_id"]: source for source in record["sources"]}
         accepted, rejected = [], []
+        line_version = record.get("line_review_version", 0)
+        line_findings = line_version in {1, cls.HEAD_EDIT_LINE_REVIEW_VERSION}
+        seen_line_ids = set()
         for index, finding in enumerate(answer["findings"], 1):
             source_id = finding.get("source_id") if isinstance(finding, dict) else None
             reasons = []
             source = sources.get(source_id) if isinstance(source_id, str) else None
             if not source or source_id not in record["source_ids"]:
                 reasons.append("Source is not selected for this review.")
+            line_id = finding.get("line_id") if isinstance(finding, dict) else None
             before = finding.get("before") if isinstance(finding, dict) else None
             after = finding.get("after") if isinstance(finding, dict) else None
             rationale = finding.get("rationale") if isinstance(finding, dict) else None
+            if line_findings:
+                candidates = cls._head_edit_line_candidates(source) if source else []
+                if line_version == 1:
+                    candidates = [{**item, "line_id": f"L{index:02d}"} for index, item in enumerate(
+                        (item for item in candidates if source["text"].count(item["text"]) == 1), 1)]
+                candidate = next((item for item in candidates
+                                  if item["line_id"] == line_id), None) if source else None
+                if candidate is None or line_id in seen_line_ids:
+                    reasons.append("Correction must name a unique editable line ID.")
+                else:
+                    seen_line_ids.add(line_id)
+                    before = candidate["text"]
+                    if candidate["section"] != finding.get("section"):
+                        reasons.append("Correction section does not match its line ID.")
             if not isinstance(before, str) or not before or not isinstance(after, str) or before == after or not isinstance(rationale, str):
                 reasons.append("Correction needs distinct nonempty before/after text and a rationale.")
-            elif source:
+            elif source and not line_findings:
                 if source["text"].count(before) != 1:
                     reasons.append("Before text must match exactly one location in the selected source.")
                 else:
@@ -135,7 +154,7 @@ class CharacterContainerTemplateService:
                                  "reported_views": [str(item)[:80] for item in raw_views[:16]] if isinstance(raw_views, list) else [],
                                  "reasons": [reason[:300] for reason in reasons]})
             else:
-                accepted.append({**finding, "id": str(index), "views": views})
+                accepted.append({**finding, "before": before, "id": str(index), "views": views})
         return accepted, rejected
 
     @staticmethod
@@ -143,16 +162,24 @@ class CharacterContainerTemplateService:
         from Scripts.Compile_Character_Template import parse_template_sections_with_sources
         sections, metadata = parse_template_sections_with_sources(source["text"], source["source_path"])
         candidates = []
+        offsets = []
+        offset = 0
+        for value in source["text"].splitlines(keepends=True):
+            offsets.append(offset)
+            offset += len(value)
         for section, body in sections.items():
             if not section.startswith("HEAD_EDIT_"):
                 continue
             line_number = metadata[section]["start_line"]
             for line in body.splitlines():
                 if line.lstrip().startswith("*"):
-                    candidates.append({"line_id": f"L{len(candidates) + 1:02d}",
-                                       "section": section, "text": line})
+                    source_line = line_number
+                    candidates.append({"line_id": f"L{len(candidates) + 1:03d}",
+                                       "section": section, "text": line,
+                                       "start": offsets[source_line - 1],
+                                       "line_number": source_line})
                 line_number += 1
-        return [item for item in candidates if source["text"].count(item["text"]) == 1]
+        return candidates
 
     @classmethod
     def _head_edit_line_finding(cls, answer: dict, record: dict, prompts: list[dict]) -> dict:
@@ -161,23 +188,42 @@ class CharacterContainerTemplateService:
         if source is None:
             raise ValueError("Head-Image Edit text review requires the selected Character.md source.")
         edits = answer.get("edits")
-        if not isinstance(edits, list) or len(edits) > 1:
-            raise ValueError("Head-Image Edit review must return at most one line edit.")
+        if not isinstance(edits, list):
+            raise ValueError("Head-Image Edit review must return a list of line edits.")
         if not edits:
             return {"summary": answer.get("summary", ""), "findings": []}
-        edit = edits[0]
-        if not isinstance(edit, dict):
-            raise ValueError("Head-Image Edit line edit must be an object.")
-        candidate = next((item for item in cls._head_edit_line_candidates(source)
-                          if item["line_id"] == edit.get("line_id")), None)
-        replacement = edit.get("replacement")
-        if candidate is None or not isinstance(replacement, str) or not replacement.strip():
-            raise ValueError("Head-Image Edit returned an unknown line or empty replacement.")
-        if replacement == candidate["text"]:
-            raise ValueError("Head-Image Edit returned an unchanged line.")
+        candidate_lines = cls._head_edit_line_candidates(source)
+        if record.get("line_review_version") == 1:
+            candidate_lines = [{**item, "line_id": f"L{index:02d}"} for index, item in enumerate(
+                (item for item in candidate_lines if source["text"].count(item["text"]) == 1), 1)]
+        candidates = {item["line_id"]: item for item in candidate_lines}
+        replacements = []
+        seen = set()
+        for edit in edits:
+            if not isinstance(edit, dict) or edit.get("line_id") not in candidates or edit["line_id"] in seen:
+                raise ValueError("Head-Image Edit returned an unknown or duplicate line ID.")
+            candidate = candidates[edit["line_id"]]
+            seen.add(edit["line_id"])
+            replacement = edit.get("replacement")
+            if (not isinstance(replacement, str) or not replacement.strip() or
+                    "\n" in replacement or "\r" in replacement or replacement == candidate["text"]):
+                raise ValueError("Head-Image Edit returned an empty, multiline, or unchanged replacement.")
+            prefix = candidate["text"][:len(candidate["text"]) - len(candidate["text"].lstrip())]
+            if not replacement.startswith(prefix) or replacement.lstrip().startswith("<!--"):
+                raise ValueError("Head-Image Edit replacements must preserve the original bullet prefix.")
+            original_tag = re.match(r"^\s*\*\s+(\[[^]]+\])", candidate["text"])
+            replacement_tag = re.match(r"^\s*\*\s+(\[[^]]+\])", replacement)
+            if (original_tag and (not replacement_tag or original_tag.group(1) != replacement_tag.group(1))) or (
+                    not original_tag and replacement_tag):
+                raise ValueError("Head-Image Edit replacements must preserve existing view tags.")
+            replacements.append((candidate, replacement))
         from zet.services.character_container_text_preview_service import CharacterContainerTextPreviewService
         previewer = CharacterContainerTextPreviewService(record["app"], record["project_root"])
-        overlay = dict(source, text=source["text"].replace(candidate["text"], replacement, 1))
+        edited = source["text"]
+        for candidate, replacement in sorted(replacements, key=lambda item: item[0]["start"], reverse=True):
+            start = candidate["start"]
+            edited = edited[:start] + replacement + edited[start + len(candidate["text"]):]
+        overlay = dict(source, text=edited)
         updated = previewer.compile(record["scope"], Path(record["preview_directory"]) / "edited", [overlay])
         before_by_view = {item["view"]: (item["prompt"], item.get("review_criteria", ""))
                           for item in prompts}
@@ -186,10 +232,11 @@ class CharacterContainerTemplateService:
                  (item["prompt"], item.get("review_criteria", ""))]
         if not views:
             raise ValueError("Head-Image Edit replacement does not change any compiled view.")
-        return {"summary": answer.get("summary", ""), "findings": [{
-            "source_id": source["source_id"], "before": candidate["text"], "after": replacement,
-            "rationale": "Focused line update for the requested Head-Image Edit template improvement.",
-            "views": views}]}
+        return {"summary": answer.get("summary", ""), "findings": [
+            {"source_id": source["source_id"], "line_id": candidate["line_id"],
+             "section": candidate["section"], "before": candidate["text"], "after": replacement,
+             "rationale": "Focused line update for the requested Head-Image Edit template improvement.",
+             "views": views} for candidate, replacement in replacements]}
 
     def start_review(self, character: str, phase: str, pipeline: str, costume: str,
                      payload: dict) -> dict:
@@ -243,7 +290,9 @@ class CharacterContainerTemplateService:
         record = {"schema_version": 2, "proposal_id": proposal_id, "container_id": container["container_id"],
                   "scope": scope, "pipeline": pipeline, "mode": mode, "direction": direction,
                   "model": model, "source_ids": selected, "sources": sources,
-                  "line_review_version": self.HEAD_EDIT_LINE_REVIEW_VERSION if line_review else 0,
+                  "line_review_version": (1 if line_review else
+                      self.HEAD_EDIT_LINE_REVIEW_VERSION if mode == "text" and pipeline == "head-image-edit"
+                      and bool(direction.strip()) and model.startswith("codex:") else 0),
                   "view": view, "candidate_id": candidate_id, "candidate_request": candidate.get("render_request") if candidate else None,
                   "render_mode": candidate.get("render_mode", "draft") if candidate else "draft",
                   "evidence_path": evidence_path,
@@ -273,11 +322,14 @@ class CharacterContainerTemplateService:
                 prompts = [{"view": record["view"], "prompt": request.get("prompt", ""),
                             "reference_inputs": request.get("inputs", [])}]
                 images = [Path(record["evidence_path"])]
-            line_review = record.get("line_review_version") == self.HEAD_EDIT_LINE_REVIEW_VERSION
+            line_review = record.get("line_review_version") in {1, self.HEAD_EDIT_LINE_REVIEW_VERSION}
             schema = ({"type": "object", "properties": {"summary": {"type": "string"},
-                "edits": {"type": "array", "maxItems": 1, "items": {"type": "object", "properties": {
-                    "line_id": {"type": "string"}, "replacement": {"type": "string"}},
-                    "required": ["line_id", "replacement"], "additionalProperties": False}}},
+                "edits": {"type": "array", "maxItems": 12, "items": {"type": "object", "properties": {
+                    "line_id": {"type": "string"}, "section": {"type": "string"},
+                    "replacement": {"type": "string"}},
+                    "required": (["line_id", "replacement"] if record.get("line_review_version") == 1
+                                 else ["line_id", "section", "replacement"]),
+                    "additionalProperties": False}}},
                 "required": ["summary", "edits"], "additionalProperties": False} if line_review else
                 {"type": "object", "properties": {"summary": {"type": "string"},
                 "findings": {"type": "array", "items": {"type": "object", "properties": {
@@ -290,9 +342,14 @@ class CharacterContainerTemplateService:
             if line_review:
                 source = next(item for item in record["sources"] if item["source_id"] == "Character.md")
                 lines = self._head_edit_line_candidates(source)
-                prompt = ("Return one JSON object with summary and edits. Return at most one edit using a listed line_id and a complete replacement line. "
-                    "Preserve the listed line's Markdown and any view annotation. Return an empty edits array when no edit is warranted. "
-                    f"Direction: {record['direction']}\nEditable HEAD_EDIT lines: {json.dumps(lines, ensure_ascii=False)}")
+                if record.get("line_review_version") == 1:
+                    lines = [{**item, "line_id": f"L{index:02d}"} for index, item in enumerate(
+                        (item for item in lines if source["text"].count(item["text"]) == 1), 1)]
+                prompt = ("Return one JSON object with summary and edits. Return up to twelve independent edits using listed line IDs, their section names, and complete replacement lines. "
+                    "Preserve each listed line's Markdown bullet prefix and any view annotation. Return an empty edits array when no edit is warranted. "
+                    + ("Use one edit per changed line. Keep age, face shape and eye color when the direction asks to preserve them. "
+                       if record.get("line_review_version") == 2 else "")
+                    + f"Direction: {record['direction']}\nEditable HEAD_EDIT lines: {json.dumps(lines, ensure_ascii=False)}\nCompiled prompts: {prompts}")
             else:
                 prompt = ("Suggest focused, independent exact-text corrections to selected governing templates. "
                 "Return no findings when no justified edit exists. Preserve identity, markers, placeholders, "
@@ -316,7 +373,7 @@ class CharacterContainerTemplateService:
             role_key = "character_template_line_review" if line_review else "character_prompt_review"
             model = str(resolve_role_model(self.app.config, role_key, record["model"]))
             stage = "model response"
-            request_options = ({"num_predict": 384} if line_review else
+            request_options = ({"num_predict": 1536} if line_review and not model.startswith("codex:") else
                 {"num_predict": 12288} if scope["pipeline"] == "head-image-edit" and not model.startswith("codex:") else None)
             answer, runtime = self.app.ai_proxy_service.ai_proxy_path_service.jobs.generate_json(
                 model, "", prompt, schema, images, task_type="character_template_revision",
@@ -476,9 +533,16 @@ class CharacterContainerTemplateService:
                 continue
             source = by_id[finding["source_id"]]
             before = finding["before"]
-            if source["text"].count(before) != 1:
-                raise CharacterContainerTemplateError("A selected correction is no longer unique.")
-            start = source["text"].index(before)
+            if record.get("line_review_version") == 2 and finding.get("line_id"):
+                candidate = next((item for item in self._head_edit_line_candidates(source)
+                                  if item["line_id"] == finding["line_id"]), None)
+                if not candidate or candidate["text"] != before or candidate["section"] != finding.get("section"):
+                    raise CharacterContainerTemplateError("A selected Head Image Edit line changed in the saved review.")
+                start = candidate["start"]
+            else:
+                if source["text"].count(before) != 1:
+                    raise CharacterContainerTemplateError("A selected correction is no longer unique.")
+                start = source["text"].index(before)
             edits.setdefault(source["source_id"], []).append((start, start + len(before), finding["after"]))
         from zet.services.template_validation_service import TemplateValidationService
         for source in sources:

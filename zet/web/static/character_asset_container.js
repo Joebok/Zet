@@ -566,7 +566,7 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
           const check = document.createElement("input"); check.type = "checkbox"; check.value = finding.id;
           check.checked = (proposal.selected_ids || []).includes(finding.id);
           check.disabled = proposal.status === "ACCEPTED";
-          label.append(check, document.createTextNode(`${finding.source_id} · ${finding.views.join(", ")} · ${finding.rationale}`));
+          label.append(check, document.createTextNode(`${finding.source_id}${finding.section ? ` · ${finding.section}` : ""} · ${finding.views.join(", ")} · ${finding.rationale}`));
           const before = document.createElement("pre"); before.textContent = `Before\n${finding.before}`;
           const after = document.createElement("pre"); after.textContent = `After\n${finding.after}`;
           list.append(label, before, after);

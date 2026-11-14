@@ -8,7 +8,7 @@ from zet.services.local_image_workflow_service import LocalImagePipelineWorkflow
 from zet.services.local_image_pipeline_policy import LOCAL_IMAGE_PIPELINES
 
 
-PIPELINES = ("body-reference", "head-image", "head-image-edit", "character-assembly", "costume-dressing")
+PIPELINES = tuple(LOCAL_IMAGE_PIPELINES)
 PIPELINE_LABELS = {key: LOCAL_IMAGE_PIPELINES[key].label for key in PIPELINES}
 
 STATUS_GROUPS = (
