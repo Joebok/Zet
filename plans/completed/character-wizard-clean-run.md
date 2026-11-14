@@ -1,6 +1,6 @@
 # Character Wizard clean run on Zet Test
 
-Status: active. First fix validated locally; waiting for Joe's Test release update.
+Status: complete. Live acceptance passed on Zet Test on 2026-11-14.
 
 ## Goal
 
@@ -31,7 +31,7 @@ Create a fresh character with Luna, publish the wizard's generated text as-is, a
 
 - Dependencies: WP2. Interfaces: [Test release updater](../../Update_Test.ps1), `/api/health`, and the dashboard revision marker. Provide the validated diff or revision and the observed check results. Stop for Joe to make the fix available on `origin/main` and deploy via `./Update_Test.ps1 -Action Deploy`. The script deploys merged `origin/main`; an unmerged local patch is insufficient.
 - Acceptance/validation: after Joe confirms the update, check that port 8082 is ready and serving a revision containing the fix. Recheck `ZetTester`, the fixture and the next available name. Do not run against the old revision or update/restart the release on Joe's behalf.
-- Status: waiting. The patch is local and has not been published or deployed.
+- Status: complete. Joe deployed revision `44108749369fc563f3c099cb946d53953e7374e6`; port 8082 reported ready and the deployed source contained the fix.
 
 ### WP4 - Run the wizard and both FRONT jobs
 
@@ -40,17 +40,19 @@ Create a fresh character with Luna, publish the wizard's generated text as-is, a
 - Open **Assets > Body-Reference > Open FRONT Candidate Board**. Use **Preview Prompt** to verify compilation; run **Draft 1** and wait for one completed candidate with a loadable image and no job or card error.
 - Open **Assets > Head Image Edit > Open FRONT Candidate Board**. Keep **Phase Change** off, with no saved or uploaded FRONT source. Verify **Preview Prompt** shows no reference inputs. Run **Draft 1** and require the same completion evidence. The wizard upload is evidence for Luna only; do not attach it or the Body output to this render.
 - Acceptance/validation: record revision, character and phase, reference hash, wizard session ID and publication outcome, both candidate/job IDs, terminal status, loadability and the Head reference count. Do not evaluate the images or launch quality review, retry, refinement or additional views as part of a passing attempt.
-- Status: pending.
+- Status: complete. The live wizard published the untouched generated sections; both FRONT jobs completed and their PNGs decoded successfully.
 
 ### WP5 - Repeat on failure, or hand off on success
 
 - Dependencies: WP4 outcome. Files/interfaces: this plan and the operator guide; whatever owner WP4 evidence identifies.
 - On failure, record the first failing step, exact error, inputs and IDs. For a wizard failure, compare request/answer filenames and schemas, provider result, proxy result and harvest receipt. For a FRONT failure, trace prompt compilation, frozen reference inputs, submission, provider outcome and owned receipt/candidate. If a service is unavailable, record the blocker and wait for recovery. For a defect, make the smallest fix at the proven boundary, replay it locally, and return to WP3. Wait for Joe after every fix, then rerun the whole journey with the next numbered name. Preserve Test evidence and leave production unchanged.
 - After success, record live results here, verify the guide's labels and steps on the passing release, and move the plan to `plans/completed/`. Hand Zet_Tester the stable guide link and evidence; do not modify Zet_Tester as part of this task.
-- Status: pending.
+- Status: complete. No further fix or retry was needed. The guide's labels were checked against deployed dashboard source, and the live actions ran through the APIs used by those controls.
 
 ## Progress and validation
 
-- Observed: Test release ready at `7c663cb7`; prior receipts and disposable validation confirm the first transport failure. No new live inference or renders have been submitted.
-- Guide drafted from current dashboard source and linked from the tutorial and knowledge index. Verify it against the passing live run before Zet_Tester starts using it.
+- Live run: `ZetTester / Testia 1 / Adult`, Luna (`codex:gpt-6-luna`), session `a72f66649fa74767b2cab180c3396c32`. The saved upload SHA-256 matched the fixture above. Both section receipts were `APPLIED` with no notice, the preview had no errors, and the wizard reached `ACCEPTED` with `Character.md` present.
+- Body Reference FRONT Draft 1: candidate `299503e821cc4eaf9804054ff3e93eda`, job `45732ac2c5c24e05b97803c85a9cf4b7`. `COMPLETE` with no error, zero inputs, HTTP 200, decoded PNG 832 × 1248.
+- Head Image Edit FRONT Draft 1: candidate `6e144ff13a5643d8aef787be893c54ea`, job `7a5ce900cdd749c18076bb2464fc67ab`. Phase Change off; zero reference images in both the preview and frozen render request. `COMPLETE` with no error, HTTP 200, decoded PNG 1024 × 1024.
+- No image quality review, ranking, selection or locking was performed. No separate browser click-through was run.
 - Boundaries: [AI jobs](../../Docs/COMPONENTS/AI_JOBS.md), [invariants](../../Docs/INVARIANTS.md), [test policy](../../Docs/Testing.md), and [Test release setup](../../Docs/DEVELOPMENT.md#isolated-test-release). Keep isolated checks off the live queue; use only Zet Test for the live journey when shared inference is idle. No production updates, dependency changes or coverage expansion.
