@@ -147,6 +147,12 @@ are advisory. Compact and full views use the same active revision identity.
 
 ## Costume Wizard test renders and batch creation (2026-11-03)
 
+New Costume Wizard drafts use four focused interviews. The intake accessory
+toggle determines whether the equipment interview runs. Zet assembles the
+reviewed bullets into the existing costume template and leaves view-specific
+prose for Post Render Adjustments. Earlier sessions keep their original draft
+editor. See the [Costume Wizard guide](../COSTUME_WIZARD_GUIDE.md).
+
 `CostumeWizardService._render_job` stages a single FRONT Dressing candidate in a
 private per-session library beneath `PipelineCandidates/Character-Pipeline`. A
 new test resolves the current published Character-Assembly FRONT through the

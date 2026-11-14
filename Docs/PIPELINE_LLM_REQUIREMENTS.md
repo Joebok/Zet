@@ -36,7 +36,7 @@ This table reconciles all 35 registry entries. “Vision when attached” means 
 | `minor_prompt` | Minor Character prompt writing | STYLE reference or reference plus candidate; vision required | Active |
 | `character_description` | Quick Character reusable appearance description and fragment writing | Ordered references; vision required | Active producer is legacy/compatibility path |
 | `character_review` | Minor/Quick Character visual comparison | Candidate and source/anchor images; vision required | Active for Minor Character; Quick Character service retained |
-| `costume_observation` | Costume Wizard source observation | One reference per call; vision required | Active |
+| `costume_observation` | Costume Wizard section interviews | Ordered source references and optional private test result; earlier sessions use one source per observation call | Active |
 | `costume_template` | Costume Wizard template synthesis and revision | Synthesis text-only; vision required when review attachments are supplied | Active |
 | `costume_evidence_review` | Costume draft evidence check | Session reference images; vision required | Active |
 | `costume_render_review` | Costume test-render corrections | Render then source images; vision required | Active |

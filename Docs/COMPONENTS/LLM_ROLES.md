@@ -53,3 +53,9 @@ its structured response contract. The configured default remains Luna 6.
 `character_template_line_review` is a skill-free text role for compact structured line selection in directed Head-Image Edit template reviews. Zet reconstructs exact source findings and performs ownership, source, and prompt validation after inference.
 
 Five fresh queued Head-Image Edit template review calls per model validated the skill-free `character_template_line_review` path through selection and eight compiled previews. All ten saved findings affected FRONT only.
+
+The Costume Wizard uses `costume_observation` for each enabled interview
+section. Each request receives ordered, captioned source images. Section
+refinement may append the private FRONT result for comparison. Zet assembles
+the saved bullets; the whole-template drafting role remains available to
+earlier sessions.

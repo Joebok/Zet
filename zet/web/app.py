@@ -2385,7 +2385,8 @@ def _create_available_app(
                     continue
                 images.append({"filename": upload["filename"], "caption": caption, "contents": upload["contents"]})
             result = await run_in_threadpool(zet_app.costume_wizard_service.create_session,
-                character, phase, str(form.get("name") or ""), str(form.get("extra_info") or ""), images)
+                character, phase, str(form.get("name") or ""), str(form.get("extra_info") or ""), images,
+                str(form.get("include_equipment", "true")).lower() not in {"false", "no", "0"})
             return {"session": result}
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2403,6 +2404,34 @@ def _create_available_app(
             return FileResponse(_app(app.state.config_path).costume_wizard_service.image_path(session_id, index))
         except Exception as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/costume-wizard/{session_id}/progress")
+    def costume_wizard_progress(session_id: str) -> dict[str, Any]:
+        try:
+            return _app(app.state.config_path).costume_wizard_service.section_progress(session_id)
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.put("/api/costume-wizard/{session_id}/sections")
+    def costume_wizard_sections(session_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            edits = payload.get("edits")
+            if not isinstance(edits, dict):
+                raise ValueError("Provide section edits.")
+            service = _app(app.state.config_path).costume_wizard_service
+            return {"session": service.edit_sections(session_id, str(payload.get("revision_id") or ""), edits)}
+        except Exception as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/costume-wizard/{session_id}/sections/{section}/{action}")
+    def costume_wizard_section_action(session_id: str, section: str, action: str,
+                                      payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            service = _app(app.state.config_path).costume_wizard_service
+            return {"session": service.run_section(session_id, str(payload.get("revision_id") or ""),
+                                                    section, action, str(payload.get("direction") or ""))}
+        except Exception as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.post("/api/costume-wizard/{session_id}/generate")
     def costume_wizard_generate(session_id: str) -> dict[str, Any]:

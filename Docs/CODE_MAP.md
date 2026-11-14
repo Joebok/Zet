@@ -516,6 +516,14 @@ and the Body Reference compiler consume its definitions. The dashboard's
 [Species editor](../zet/web/static/species_settings.js) calls `/api/species`.
 See the [storage contract](DATA_MODEL.md#species-catalog).
 
+## Costume Wizard
+
+`CostumeWizardService` owns saved interviews, revision checks and private
+FRONT renders. `costume_wizard_sections.py` owns section instructions,
+bullet validation and the mapping to the shared template. The dashboard
+uses `/api/costume-wizard` for intake, progress, editing and acceptance.
+See the [Costume Wizard guide](COSTUME_WIZARD_GUIDE.md).
+
 ## Character Wizard
 
 The section interview, prompt assembly, and plain-text result collection live in

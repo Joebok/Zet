@@ -4297,6 +4297,93 @@ function showCostumeWizardMessage(message, kind = "info") {
   costumeWizardMessage.className = `action-message ${kind}`.trim();
 }
 
+const costumeSectionPanel = document.querySelector("#costume-wizard-sections");
+const costumeEquipmentToggle = document.querySelector("#costume-wizard-include-equipment");
+
+function costumeSectionEdits(session) {
+  return Object.fromEntries(Array.from(costumeSectionPanel.querySelectorAll("[data-section]"))
+    .filter((input) => input.value !== session.sections[input.dataset.section].text)
+    .map((input) => [input.dataset.section, input.value]));
+}
+
+function syncCostumeSectionActions(session) {
+  const dirty = Object.keys(costumeSectionEdits(session)).length > 0;
+  const running = session.job?.status === "RUNNING";
+  const blocked = running || dirty || !session.markdown || session.validation_errors.length > 0;
+  costumeWizardSave.disabled = running || !dirty;
+  costumeWizardTest.disabled = blocked;
+  costumeWizardAccept.disabled = blocked;
+  for (const button of costumeSectionPanel.querySelectorAll("button")) button.disabled = running || dirty;
+}
+
+async function costumeSectionAction(session, key, action, direction) {
+  try {
+    const payload = await fetchJson(`/api/costume-wizard/${encodeURIComponent(session.session_id)}/sections/${key}/${action}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ revision_id: session.revision_id, direction }),
+    });
+    setCostumeWizardSession(payload.session);
+  } catch (error) { showCostumeWizardMessage(error.message, "error"); }
+}
+
+function renderCostumeSections(session, running) {
+  costumeSectionPanel.replaceChildren();
+  for (const [key, entry] of Object.entries(session.sections)) {
+    const card = document.createElement("section");
+    card.className = "control-panel";
+    const title = document.createElement("h3");
+    title.textContent = entry.label;
+    const status = document.createElement("p");
+    status.dataset.sectionStatus = key;
+    status.textContent = entry.error || costumeSectionStatus(entry.status);
+    card.append(title, status);
+    costumeSectionPanel.append(card);
+    if (entry.status === "SKIPPED") continue;
+
+    const label = document.createElement("label");
+    label.textContent = `${entry.label} bullets`;
+    const input = document.createElement("textarea");
+    input.rows = 4;
+    input.dataset.section = key;
+    input.value = entry.text;
+    input.disabled = running;
+    input.addEventListener("input", () => syncCostumeSectionActions(session));
+    label.append(input);
+    card.append(label);
+    if (running) continue;
+
+    const directionLabel = document.createElement("label");
+    directionLabel.textContent = `Revision direction for ${entry.label}`;
+    const direction = document.createElement("input");
+    directionLabel.append(direction);
+    card.append(directionLabel);
+    const actions = document.createElement("div");
+    actions.className = "button-row compact";
+    const addAction = (name, action) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = name;
+      button.addEventListener("click", () => costumeSectionAction(session, key, action, direction.value));
+      actions.append(button);
+    };
+    if (entry.status !== "READY") addAction("Retry section", "retry");
+    if (entry.status === "ATTENTION" && key !== "overview") addAction("Leave section empty", "omit");
+    addAction("Refine section", "refine");
+    if (entry.proposal !== null) {
+      const proposal = document.createElement("p");
+      proposal.className = "costume-wizard-review";
+      proposal.textContent = entry.proposal || "Replacement leaves this section empty.";
+      card.append(proposal);
+      addAction("Apply replacement", "apply");
+    }
+    card.append(actions);
+  }
+}
+
+function costumeSectionStatus(status) {
+  return { WAITING: "Waiting", RUNNING: "Drafting", READY: "Ready", SKIPPED: "Skipped", ATTENTION: "Needs attention" }[status] || status;
+}
+
 function setCostumeWizardSession(session) {
   state.costumeWizard = session;
   costumeWizardContext.textContent = `${session.character} / ${session.phase} · ${session.status || "Draft"}`;
@@ -4324,6 +4411,13 @@ function setCostumeWizardSession(session) {
   costumeWizardAnswer.hidden = !questions.length;
   costumeWizardGenerate.hidden = !(session.status === "FAILED" && !session.markdown);
   const running = session.job?.status === "RUNNING";
+  costumeSectionPanel.hidden = !session.sections;
+  document.querySelector("#costume-wizard-legacy-refinement").hidden = Boolean(session.sections);
+  const preview = document.querySelector("#costume-wizard-preview-details");
+  preview.open = !session.sections;
+  preview.hidden = Boolean(session.sections && !session.markdown);
+  costumeWizardMarkdown.readOnly = Boolean(session.sections);
+  if (session.sections) renderCostumeSections(session, running);
   costumeWizardGenerate.disabled = running;
   costumeWizardTestResult.replaceChildren();
   const renders = session.test_renders || [];
@@ -4352,6 +4446,7 @@ function setCostumeWizardSession(session) {
   costumeWizardTest.disabled = running || !session.markdown;
   costumeWizardAccept.disabled = running || !session.markdown || errors.length > 0;
   costumeWizardRefine.disabled = running || !session.markdown;
+  if (session.sections) syncCostumeSectionActions(session);
   costumeWizardAbandon.disabled = session.status === "ACCEPTED" || session.status === "ABANDONED";
   if (running) {
     showCostumeWizardMessage(`${session.job?.kind === "render" ? "Rendering and reviewing" : "Analyzing references and drafting"}…`);
@@ -4369,7 +4464,19 @@ function scheduleCostumeWizardPoll(sessionId) {
   clearTimeout(costumeWizardPollTimer);
   costumeWizardPollTimer = setTimeout(async () => {
     try {
-      const payload = await fetchJson(`/api/costume-wizard/${encodeURIComponent(sessionId)}`);
+      if (!costumeWizardDialog.open || state.costumeWizard?.session_id !== sessionId) return;
+      const base = `/api/costume-wizard/${encodeURIComponent(sessionId)}`;
+      const progress = await fetchJson(`${base}/progress`);
+      if (!costumeWizardDialog.open || state.costumeWizard?.session_id !== sessionId) return;
+      if (progress.job?.status === "RUNNING") {
+        for (const field of costumeSectionPanel.querySelectorAll("[data-section-status]")) {
+          field.textContent = costumeSectionStatus(progress.sections[field.dataset.sectionStatus]);
+        }
+        scheduleCostumeWizardPoll(sessionId);
+        return;
+      }
+      const payload = await fetchJson(base);
+      if (!costumeWizardDialog.open || state.costumeWizard?.session_id !== sessionId) return;
       setCostumeWizardSession(payload.session);
     } catch (error) {
       showCostumeWizardMessage(error.message, "error");
@@ -4389,6 +4496,7 @@ async function loadCostumeWizardSessions() {
 function clearCostumeWizardIntake() {
   costumeWizardName.value = "";
   costumeWizardExtra.value = "";
+  costumeEquipmentToggle.checked = true;
   for (const slot of document.querySelectorAll(".costume-wizard-image-slot")) {
     slot.querySelector(".costume-wizard-file").value = "";
     slot.querySelector(".costume-wizard-caption").value = "";
@@ -4431,6 +4539,7 @@ async function createCostumeWizardDraft() {
   const form = new FormData();
   form.set("name", name);
   form.set("extra_info", costumeWizardExtra.value);
+  form.set("include_equipment", String(costumeEquipmentToggle.checked));
   let count = 0;
   for (const slot of document.querySelectorAll(".costume-wizard-image-slot")) {
     const file = slot.querySelector(".costume-wizard-file").files?.[0];
@@ -4484,9 +4593,11 @@ async function saveCostumeWizardDraft() {
   const session = state.costumeWizard;
   if (!session) return;
   try {
-    const payload = await fetchJson(`/api/costume-wizard/${encodeURIComponent(session.session_id)}/draft`, {
+    const endpoint = session.sections ? "sections" : "draft";
+    const edits = session.sections ? { edits: costumeSectionEdits(session) } : { markdown: costumeWizardMarkdown.value };
+    const payload = await fetchJson(`/api/costume-wizard/${encodeURIComponent(session.session_id)}/${endpoint}`, {
       method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ revision_id: session.revision_id, markdown: costumeWizardMarkdown.value }),
+      body: JSON.stringify({ revision_id: session.revision_id, ...edits }),
     });
     setCostumeWizardSession(payload.session);
     showCostumeWizardMessage("Draft saved.");

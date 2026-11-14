@@ -20,6 +20,7 @@ from Scripts.Compile_Character_Template import load_template_sections_with_sourc
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.local_character_asset_pipeline_service import LocalCharacterAssetPipelineService
 from zet.services.view_conditioning_service import ViewContext, condition_sections
+from zet.services.costume_wizard_sections import SECTIONS, normalize_lines, section_prompt, template_design
 
 
 class CostumeWizardError(ValueError):
@@ -108,7 +109,8 @@ class CostumeWizardService:
         result = []
         for path in self.root.glob("*/session.json"):
             try:
-                value = json.loads(path.read_text(encoding="utf-8"))
+                with self._lock(path.parent.name):
+                    value = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 continue
             if value.get("character") == character and value.get("phase") == phase and value.get("status") not in {"ACCEPTED", "ABANDONED"}:
@@ -116,10 +118,11 @@ class CostumeWizardService:
         return sorted(result, key=lambda item: item.get("updated_at", ""), reverse=True)
 
     def get_session(self, session_id: str) -> dict:
-        return self._public(self._read(session_id))
+        with self._lock(session_id):
+            return self._public(self._read(session_id))
 
     def create_session(self, character: str, phase: str, name: str, extra_info: str,
-                       images: list[dict]) -> dict:
+                       images: list[dict], include_equipment: bool = True) -> dict:
         character, phase, name = str(character or "").strip(), str(phase or "").strip(), str(name or "").strip()
         if not character or not phase:
             raise CostumeWizardError("Character and phase are required.")
@@ -165,6 +168,11 @@ class CostumeWizardService:
                    "test_renders": [],
                    "test_image": "", "status": "DRAFTING", "job": {"kind": "draft", "status": "RUNNING", "error": ""},
                    "created_at": now, "updated_at": now}
+        session.update(include_equipment=include_equipment, sections={
+            key: {"label": label, "status": "SKIPPED" if key == "equipment" and not include_equipment else "WAITING",
+                  "text": "", "error": "", "proposal": None}
+            for key, (label, _) in SECTIONS.items()
+        })
         self._write(session_id, session)
         self._submit(session_id, "draft", self._draft_job, session_id, session["revision_id"])
         return self.get_session(session_id)
@@ -204,7 +212,7 @@ class CostumeWizardService:
             with self._lock(session_id):
                 try:
                     session = self._read(session_id)
-                    if session.get("status") != "ABANDONED":
+                    if session.get("status") != "ABANDONED" and session.get("revision_id") == args[1]:
                         session.update(status="FAILED", job={"kind": kind, "status": "FAILED", "error": str(exc)}, updated_at=self._now())
                         self._write(session_id, session)
                 except Exception:
@@ -216,6 +224,8 @@ class CostumeWizardService:
     def generate_draft(self, session_id: str, answers: list[dict] | None = None) -> dict:
         with self._lock(session_id):
             session = self._read(session_id)
+            if "sections" in session:
+                raise CostumeWizardError("Retry the affected interview section.")
             if answers is not None:
                 answer_map = {str(item.get("question") or ""): str(item.get("answer") or "").strip()
                               for item in session.get("answers", [])}
@@ -243,6 +253,9 @@ class CostumeWizardService:
 
     def _draft_job(self, session_id: str, expected_revision: str) -> None:
         session = self._read(session_id)
+        if "sections" in session:
+            self._section_job(session_id, expected_revision)
+            return
         images = session.get("image_paths") or []
         captions = session.get("images") or []
         observations = []
@@ -290,11 +303,127 @@ class CostumeWizardService:
                            revision_id=uuid4().hex, job={"kind": "draft", "status": "COMPLETE", "error": ""}, updated_at=self._now())
             self._write(session_id, current)
 
+    def section_progress(self, session_id):
+        with self._lock(session_id):
+            session = self._read(session_id)
+        return {
+            "revision_id": session["revision_id"], "status": session["status"], "job": session["job"],
+            "sections": {key: entry["status"] for key, entry in session.get("sections", {}).items()},
+        }
+
+    def _assemble_sections(self, session, *, preserve_revision=False):
+        design = template_design(session["sections"])
+        markdown = self._assemble_template(session["name"], session["character"], session["phase"], design,
+                                           preserve_directives=True)
+        session.update(markdown=markdown, validation_errors=self._validate(markdown), status="DRAFT_READY",
+                       revision_id=session["revision_id"] if preserve_revision else uuid4().hex, updated_at=self._now())
+        if not session["sections"]["overview"]["text"]:
+            session["validation_errors"].append("Add an opening costume summary in Costume at a glance.")
+        for entry in session["sections"].values():
+            if entry["status"] == "ATTENTION" and not entry["text"] and entry["proposal"] is None:
+                session["validation_errors"].append(f"Resolve the {entry['label']} interview.")
+
+    def _section_job(self, session_id, expected_revision, section="", direction=""):
+        from zet.services.storage_health_service import storage_health
+
+        schema = {"type": "object", "properties": {"facts": {"type": "array", "items": {"type": "string"}}},
+                  "required": ["facts"], "additionalProperties": False}
+        for key in (section,) if section else SECTIONS:
+            with self._lock(session_id):
+                session = self._read(session_id)
+                if session["revision_id"] != expected_revision or session["status"] == "ABANDONED":
+                    return
+                entry = session["sections"][key]
+                if entry["status"] not in {"WAITING", "RUNNING"}:
+                    continue
+                entry.update(status="RUNNING", error="")
+                self._write(session_id, session)
+            try:
+                images = [self.image_path(session_id, item["index"]) for item in session["images"]]
+                for path, item in zip(images, session["images"]):
+                    if hashlib.sha256(path.read_bytes()).hexdigest() != item["sha256"]:
+                        raise CostumeWizardError("Saved reference bytes changed. Start a new draft.")
+                latest = Path(session["test_image_path"]) if direction and session.get("test_image_path") else None
+                if latest and latest.is_file():
+                    images.append(latest)
+                result = self._ask(section_prompt(session, key, entry["text"], direction,
+                                                  len(images) > len(session["images"])),
+                                   schema, [str(path) for path in images], role="costume_observation")
+                facts = result.get("facts")
+                if not isinstance(facts, list) or any(not isinstance(line, str) for line in facts):
+                    raise CostumeWizardError("The interview did not return costume bullets.")
+                output = normalize_lines("\n".join(facts), key)
+                if not output and key == "overview":
+                    raise CostumeWizardError("No usable summary. Enter a summary or retry this section.")
+                change = {"status": "READY", "error": "", "proposal": output if direction else None}
+                if not direction:
+                    change["text"] = output
+            except Exception as exc:
+                if storage_health(self.app.config).check_error(exc):
+                    raise
+                change = {"status": "ATTENTION", "error": str(exc)}
+            with self._lock(session_id):
+                session = self._read(session_id)
+                if session["revision_id"] != expected_revision or session["status"] == "ABANDONED":
+                    return
+                session["sections"][key].update(change)
+                self._write(session_id, session)
+        with self._lock(session_id):
+            session = self._read(session_id)
+            if session["revision_id"] != expected_revision or session["status"] == "ABANDONED":
+                return
+            self._assemble_sections(session, preserve_revision=bool(direction))
+            session["job"] = {"kind": "draft", "status": "COMPLETE", "error": ""}
+            self._write(session_id, session)
+
+    def edit_sections(self, session_id, revision, edits):
+        with self._lock(session_id):
+            session = self._read(session_id)
+            self._check_section_edit(session, revision)
+            for key, value in edits.items():
+                entry = session["sections"].get(key)
+                if not entry or entry["status"] == "SKIPPED" or not isinstance(value, str):
+                    raise CostumeWizardError("Only enabled interview sections can be edited.")
+                entry.update(text=normalize_lines(value, key), proposal=None, status="READY", error="")
+            self._assemble_sections(session)
+            self._write(session_id, session)
+        return self.get_session(session_id)
+
+    def _check_section_edit(self, session, revision):
+        if "sections" not in session or session["status"] in {"ABANDONED", "ACCEPTED"}:
+            raise CostumeWizardError("This session does not have editable interviews.")
+        if session["revision_id"] != revision or session["job"]["status"] == "RUNNING":
+            raise CostumeWizardError("Wait for the current task or reload the draft before editing.")
+
+    def run_section(self, session_id, revision, section, action, direction=""):
+        with self._lock(session_id):
+            session = self._read(session_id)
+            self._check_section_edit(session, revision)
+            entry = session["sections"].get(section)
+            if not entry or entry["status"] == "SKIPPED":
+                raise CostumeWizardError("Choose an enabled interview section.")
+            if action == "apply":
+                if entry["proposal"] is None:
+                    raise CostumeWizardError("There is no replacement to apply.")
+                return self.edit_sections(session_id, revision, {section: entry["proposal"]})
+            if action == "omit" and section != "overview":
+                return self.edit_sections(session_id, revision, {section: ""})
+            if action not in {"retry", "refine"} or (action == "refine" and not direction.strip()):
+                raise CostumeWizardError("Enter refinement direction or retry the section.")
+            if self._pending_workflow(session_id):
+                raise CostumeWizardError("The previous task is finishing. Try again shortly.")
+            entry.update(status="WAITING", error="", proposal=None)
+            session.update(status="DRAFTING", job={"kind": "draft", "status": "RUNNING", "error": ""})
+            self._write(session_id, session)
+        self._submit(session_id, "draft", self._section_job, session_id, revision, section,
+                     direction.strip() if action == "refine" else "")
+        return self.get_session(session_id)
+
     @staticmethod
     def _bullets(items) -> str:
         return "\n".join(str(item).strip() for item in items or [] if str(item).strip())
 
-    def _assemble_template(self, name: str, character: str, phase: str, design: dict) -> str:
+    def _assemble_template(self, name: str, character: str, phase: str, design: dict, *, preserve_directives=False) -> str:
         template_path = self.app.path_service.shared_costume_template_path()
         text = template_path.read_text(encoding="utf-8")
         fields = {"COSTUME_DESCRIPTION_FACTS": design.get("facts"),
@@ -310,7 +439,9 @@ class CostumeWizardService:
             match = pattern.search(text)
             if not match:
                 raise CostumeWizardError(f"Shared costume template is missing {section} markers.")
-            content = "\n\n" + self._bullets(values) + "\n\n"
+            directives = [line for line in match.group(2).splitlines()
+                          if line.strip().startswith("<!-- ZET:")] if preserve_directives else []
+            content = "\n\n" + self._bullets([*directives, *(values or [])]) + "\n\n"
             text = text[:match.start()] + match.group(1) + content + match.group(3) + text[match.end():]
         for label, value in {"Costume Name": name, "Character Name": character, "Character Phase": phase,
                              "Costume Role": design.get("costume_role", ""), "Footwear": design.get("footwear", ""),
@@ -338,6 +469,8 @@ class CostumeWizardService:
     def update_draft(self, session_id: str, expected_revision: str, markdown: str) -> dict:
         with self._lock(session_id):
             session = self._read(session_id)
+            if "sections" in session:
+                raise CostumeWizardError("Edit the interview sections to change this draft.")
             if session.get("revision_id") != expected_revision:
                 raise CostumeWizardError("This draft changed. Reload it before saving your edits.")
             errors = self._validate(markdown)
@@ -349,6 +482,12 @@ class CostumeWizardService:
     def render_test(self, session_id: str, expected_revision: str) -> dict:
         with self._lock(session_id):
             session = self._read(session_id)
+            if "sections" in session:
+                self._check_section_edit(session, expected_revision)
+                if session["validation_errors"]:
+                    raise CostumeWizardError("Fix the interview validation errors before testing.")
+                if self._pending_workflow(session_id):
+                    raise CostumeWizardError("The previous task is finishing. Try again shortly.")
             if session.get("revision_id") != expected_revision:
                 raise CostumeWizardError("This draft changed. Save or reload the current revision before testing it.")
             errors = self._validate(session.get("markdown", ""))
@@ -452,9 +591,15 @@ class CostumeWizardService:
                     raise CostumeWizardError(answer.get("error_message", "Costume render failed"))
                 raise AIPending()
         source_images = session.get("image_paths", [])
+        review_scope = (
+            "Suggest changes to general garment facts. Defer view-specific visibility and overlap to Post Render Adjustments. "
+            if "sections" in session else ""
+        )
+        if session.get("include_equipment") is False:
+            review_scope += "Treat omitted jewelry, removable equipment, and props as intentional. "
         review = self._ask("Review this single FRONT Costume Dressing test. Compare it with the costume template and supplied costume references. "
                            "Report visible mismatches and preserve character identity. Do not invent details hidden by the FRONT view. "
-                           "Return a review and actionable refinement suggestions.\nTemplate:\n" + session["markdown"],
+                           + review_scope + "Return a review and actionable refinement suggestions.\nTemplate:\n" + session["markdown"],
                            _REVIEW_SCHEMA, [str(image_path), *source_images], role="costume_render_review")
         with self._lock(session_id):
             current = self._read(session_id)
@@ -488,6 +633,8 @@ class CostumeWizardService:
             raise CostumeWizardError("Enter refinement instructions.")
         with self._lock(session_id):
             session = self._read(session_id)
+            if "sections" in session:
+                raise CostumeWizardError("Refine the affected interview section.")
             if session.get("status") == "ABANDONED":
                 raise CostumeWizardError("An abandoned costume wizard draft cannot be refined.")
             if session.get("revision_id") != expected_revision:
@@ -523,6 +670,10 @@ class CostumeWizardService:
     def accept(self, session_id: str, expected_revision: str):
         with self._lock(session_id):
             session = self._read(session_id)
+            if "sections" in session:
+                self._check_section_edit(session, expected_revision)
+                if session["validation_errors"]:
+                    raise CostumeWizardError("Fix the interview validation errors before accepting.")
             if session.get("status") == "ABANDONED":
                 raise CostumeWizardError("An abandoned costume wizard draft cannot be accepted.")
             if session.get("revision_id") != expected_revision:
