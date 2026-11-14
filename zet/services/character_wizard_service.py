@@ -14,12 +14,12 @@ from zet.services.ai_model_catalog_service import AIModelCatalogService
 from zet.services.ai_workflow_service import AIWorkflowService
 from zet.services.atomic_file_service import write_json_atomic, write_text_atomic
 from zet.services.character_onboarding_service import CharacterOnboardingError
+from zet.services.character_wizard_sections import CharacterWizardSections
 from zet.services.image_usage_service import usage_mutation
 from zet.services.llm_role_service import resolve_role_model
 from zet.services.local_template_revision_service import template_diff_rows
 from zet.services.source_editor_service import SourceEditorService
 from zet.services.species_service import SpeciesError, set_species, species_key, species_value
-from zet.services.template_manual_service import TemplateManualService
 from zet.services.template_validation_service import TemplateValidationService
 from zet.services.universe_style_service import universe_style
 from zet.services.workflow_storage import file_lock
@@ -81,7 +81,7 @@ def set_metadata(markdown, label, value):
     return metadata_line(label).sub(lambda _: f"{label}: `{value}`", markdown, count=1)
 
 
-class CharacterWizardService:
+class CharacterWizardService(CharacterWizardSections):
     def __init__(self, app):
         self.app = app
         self.paths = app.path_service
@@ -151,11 +151,9 @@ class CharacterWizardService:
             raise ValueError("Add one to three images for creation, or up to three for an edit.")
         model = resolve_role_model(self.app.config, ROLE, str(fields.get("model") or ""))
         AIModelCatalogService(self.app.config.base_ai_queue_path, config=self.app.config).validate(
-            model, required=("vision", "structured_json"))
+            model, required=("vision",))
         shared = self.paths.shared_character_path()
         template = (shared / "Character_Template.md").read_text(encoding="utf-8")
-        manual = TemplateManualService(self.paths.project_root).get("character")["markdown"]
-        section_metadata = json.loads((self.paths.project_root / "Config" / "Prompt_Section_Metadata.json").read_text(encoding="utf-8"))["sections"]
         style = universe_style(self.app.config.base_library_path)["text"]
         master = ""
         if mode == "edit":
@@ -184,7 +182,7 @@ class CharacterWizardService:
                 with Image.open(io.BytesIO(data)) as uploaded:
                     suffix = FORMATS.get(uploaded.format)
                     uploaded.verify()
-            except (OSError, ValueError, Image.DecompressionBombError) as exc:
+            except (OSError, SyntaxError, ValueError, Image.DecompressionBombError) as exc:
                 raise ValueError(f"Image {slot} is invalid.") from exc
             if not suffix:
                 raise ValueError(f"Image {slot} uses an unsupported format.")
@@ -195,11 +193,10 @@ class CharacterWizardService:
         for item, data in evidence:
             (folder / item["file"]).write_bytes(data)
         session = {"id": sid, "mode": mode, "character": character, "phase": phase, "model": model,
-                   "style": style, "manual": manual, "baseline": baseline, "master": master,
-                   "section_metadata": {name: section_metadata.get(name, {}) for name in sections},
+                   "style": style, "baseline": baseline, "master": master,
                    "images": [item for item, _ in evidence], "notes": str(fields.get("notes") or "").strip(),
                    "history": [], "questions": [], "markdown": "", "errors": [], "revision": uuid4().hex}
-        return self._start(session)
+        return self._init_sections(session, fields, sections)
 
     def image(self, sid, slot):
         session = self._read(sid)
@@ -218,7 +215,9 @@ class CharacterWizardService:
             "id", "mode", "character", "phase", "model", "style", "status", "revision",
             "history", "questions", "markdown", "errors", "error")}
         public["images"] = [{key: item[key] for key in ("slot", "caption")} for item in session["images"]]
-        if session["status"] == "DRAFT":
+        if session.get("version") == 2:
+            self._section_details(session, public)
+        elif session["status"] == "DRAFT":
             catalog, names, _ = self.species.load()
             public["species"] = [{"id": sid, "label": entry["label"]}
                                  for sid, entry in catalog["species"].items()]
@@ -231,13 +230,17 @@ class CharacterWizardService:
         session = self._read(sid)
         if session["status"] == "RUNNING":
             self._submit(session)
+        if session.get("version") == 2:
+            return self._section_progress(session)
         return {key: session[key] for key in ("status", "revision")}
 
     def _submit(self, session):
         workflow = AIWorkflowService(self.app)
-        key = "character_wizard_" + session["revision"]
+        version_two = session.get("version") == 2
+        attempt = session["attempt"]["id"] if version_two else session["revision"]
+        key = "character_wizard_" + attempt
         if not any((root / f"{key}.json").is_file() for root in (workflow.root, workflow.local_root)):
-            workflow.submit(self.run_turn, [session["id"], session["revision"]],
+            workflow.submit(self.run_turn, [session["id"], attempt],
                             service=ROLE, key=key, owner={"session_id": session["id"]})
 
     def _start(self, session):
@@ -250,6 +253,8 @@ class CharacterWizardService:
             sid, _, _ = self.species.resolve(species_value(markdown))
         except SpeciesError as exc:
             return markdown, [str(exc), *self._validate(session, markdown)]
+        if session.get("version") == 2 and session["mode"] == "edit" and not session["species_value"]:
+            return markdown, self._validate(session, markdown)
         return set_species(markdown, sid), self._validate(session, markdown)
 
     def _validate(self, session, markdown):
@@ -359,6 +364,8 @@ class CharacterWizardService:
 
     def run_turn(self, sid, revision):
         session = self._read(sid)
+        if session.get("version") == 2:
+            return self._run_section(session, revision)
         if (session["status"], session["revision"]) != ("RUNNING", revision):
             return
         try:
@@ -405,6 +412,9 @@ class CharacterWizardService:
                 return self.detail(sid)
             if data.get("revision") != session["revision"] or status in {"ACCEPTED", "ABANDONED"}:
                 raise ValueError("This draft changed. Reload it before continuing.")
+            if session.get("version") == 2:
+                self._act_sections(session, action, data)
+                return self.detail(sid)
             if action == "abandon" and status != "APPLYING":
                 session["status"] = "ABANDONED"
             elif action == "retry" and status == "FAILED":

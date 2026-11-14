@@ -1,4 +1,4 @@
-window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted}) {
+window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted, templateEditor}) {
   const dialog = document.querySelector("#character-wizard");
   const find = (selector) => dialog.querySelector(selector);
   const command = (name) => find(`[data-command="${name}"]`);
@@ -12,6 +12,127 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted}) {
   const previews = new Map();
   let generation = 0;
   let context, mode, session, model, timer;
+  let pending = false;
+  const sectionReview = find("[data-section-review]");
+
+  function sectionEdits() {
+    const data = {sections: {}, head_sections: {}};
+    for (const input of sectionReview.querySelectorAll("[data-draft-field]")) {
+      if (input.value === input.dataset.saved) continue;
+      const group = input.dataset.draftField;
+      if (input.dataset.section) data[group][input.dataset.section] = input.value;
+      else data[group] = input.value;
+    }
+    return data;
+  }
+
+  function draftInput(input, field, value, edits, section) {
+    input.dataset.draftField = field;
+    if (section) input.dataset.section = section;
+    input.dataset.saved = value;
+    input.value = (section ? edits[field]?.[section] : edits[field]) ?? value;
+  }
+
+  function labeledInput(label, input) {
+    const wrapper = document.createElement("label");
+    wrapper.textContent = label;
+    wrapper.append(input);
+    return wrapper;
+  }
+
+  function sectionButton(label, action, section) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+    button.dataset.command = action;
+    button.dataset.section = section;
+    return button;
+  }
+
+  function renderSections(value, edits) {
+    const running = value.status === "RUNNING";
+    const applying = value.status === "APPLYING";
+    sectionReview.hidden = applying;
+    const facts = find("[data-facts]");
+    const directions = Object.fromEntries([...facts.querySelectorAll("[data-section-direction]")]
+      .map(input => [input.dataset.sectionDirection, input.value]));
+    facts.replaceChildren();
+    for (const [name, entry] of Object.entries(value.sections)) {
+      const panel = document.createElement("fieldset");
+      panel.dataset.fact = name;
+      const legend = document.createElement("legend");
+      legend.textContent = entry.label;
+      const state = document.createElement("p");
+      state.dataset.factStatus = "";
+      state.textContent = entry.blocked ? "Edit this section in Template Editor." : stateLabel(entry.status);
+      panel.append(legend, state);
+      if (entry.selected) {
+        const input = document.createElement("textarea");
+        input.rows = 5;
+        draftInput(input, "sections", entry.text, edits, name);
+        panel.append(labeledInput(entry.label + " facts", input));
+        if (entry.notice) {
+          const notice = document.createElement("p");
+          notice.textContent = entry.notice;
+          panel.append(notice);
+        }
+        if (entry.proposal !== null) {
+          const proposal = document.createElement("textarea");
+          proposal.readOnly = true;
+          proposal.rows = 4;
+          proposal.value = entry.proposal;
+          panel.append(labeledInput("Proposed replacement", proposal),
+            sectionButton("Apply replacement", "apply-proposal", name),
+            sectionButton("Dismiss replacement", "dismiss-proposal", name));
+        }
+        const direction = document.createElement("input");
+        direction.dataset.sectionDirection = name;
+        direction.value = directions[name] || "";
+        const refine = sectionButton("Refine section", "refine", name);
+        refine.disabled = running;
+        panel.append(labeledInput("Refinement direction", direction), refine);
+        if (entry.status === "ATTENTION") {
+          const retry = sectionButton("Retry section", "retry-section", name);
+          retry.disabled = running;
+          panel.append(retry);
+        }
+      }
+      facts.append(panel);
+    }
+    command("template-editor").hidden = !value.template_path;
+    const select = find("[data-section-species]");
+    select.replaceChildren(new Option("Choose Species", ""),
+      ...value.species.sort((a, b) => a.label.localeCompare(b.label)).map(item => new Option(item.label, item.id)));
+    draftInput(select, "species_id", value.species_id, edits);
+    const gender = find("[data-gender]");
+    draftInput(gender, "gender", value.gender, edits);
+    gender.disabled = !value.gender_editable;
+    find("[data-head-starter]").hidden = value.mode !== "create";
+    find("[data-head-sections]").replaceChildren(...Object.entries(value.head_sections).map(([name, entry]) => {
+      const input = document.createElement("textarea");
+      input.rows = 4;
+      draftInput(input, "head_sections", entry.text, edits, name);
+      return labeledInput(entry.label, input);
+    }));
+    command("preview").disabled = running;
+    const preview = value.preview_ready || applying;
+    find("[data-review]").hidden = !preview;
+    markdown.readOnly = true;
+    markdown.value = value.markdown;
+    find("[data-errors]").textContent = value.errors.join("\n");
+    for (const name of ["answer", "retry", "save", "revise"]) command(name).hidden = true;
+    command("accept").hidden = !preview;
+    command("abandon").hidden = applying;
+    command("accept").textContent = value.mode === "create" ? "Create character" : "Update Character.md";
+    species.closest("label").hidden = true;
+    find("[data-direction]").closest("label").hidden = true;
+    showDraftActions();
+  }
+
+  function stateLabel(state) {
+    return ({WAITING: "Waiting", QUEUED: "Queued", RUNNING: "Running", READY: "Ready",
+      ATTENTION: "Needs attention", SKIPPED: "Skipped"})[state] || "";
+  }
 
   function current(token) {
     return dialog.open && generation === token && scope().universe === context.universe;
@@ -38,13 +159,20 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted}) {
   }
 
   function showDraftActions() {
+    if (session?.version === 2) {
+      const edits = sectionEdits();
+      const dirty = Object.entries(edits).some(([key, value]) =>
+        ["sections", "head_sections"].includes(key) ? Object.keys(value).length : true);
+      command("accept").disabled = pending || dirty || Boolean(session.errors.length);
+      return;
+    }
     const changed = session && markdown.value !== session.markdown;
     command("save").disabled = !changed && !session?.errors.length;
     command("revise").disabled = changed;
     command("accept").disabled = changed || Boolean(session?.errors.length);
   }
 
-  function render(value) {
+  function render(value, edits = {}) {
     session = value;
     intake.hidden = true;
     find("[data-session]").hidden = false;
@@ -54,10 +182,10 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted}) {
     const questions = value.status === "QUESTIONS";
     dialog.querySelector("h2").textContent = `Character Wizard · ${value.character} / ${value.phase}`;
     find("[data-style]").textContent = [value.style && `Universe style: ${value.style}`, value.model].filter(Boolean).join(" · ");
-    notice(value.error || ({
+    notice(value.error || (value.version === 2 && value.status === "RUNNING" ? "Interview in progress." : ({
       RUNNING: "Waiting for the interview…", QUESTIONS: "Answer the questions to continue.",
       DRAFT: "Review Character.md before accepting.", APPLYING: "Resume saving the approved draft.",
-    }[value.status] || ""), Boolean(value.error));
+    }[value.status] || "")), Boolean(value.error));
     const imageRow = find("[data-images]");
     imageRow.replaceChildren();
     for (const item of value.images) {
@@ -90,6 +218,10 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted}) {
       label.append(document.createElement("textarea"));
       inputs.append(label);
     }
+    sectionReview.hidden = true;
+    species.closest("label").hidden = false;
+    find("[data-direction]").closest("label").hidden = false;
+    markdown.readOnly = false;
     find("[data-review]").hidden = !draft;
     markdown.value = value.markdown;
     species.replaceChildren(new Option("Choose Species", ""), ...(value.species || [])
@@ -108,7 +240,8 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted}) {
       accept: draft || value.status === "APPLYING", abandon: value.status !== "APPLYING",
     })) command(name).hidden = !visible;
     command("accept").textContent = value.mode === "create" ? "Create character" : "Update Character.md";
-    showDraftActions();
+    if (value.version === 2) renderSections(value, edits);
+    else showDraftActions();
     if (running) poll(value.id, generation);
   }
 
@@ -135,10 +268,16 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted}) {
       try {
         const progress = await fetchJson(`${endpoint}/${id}/progress`);
         if (!current(token)) return;
-        if (progress.status === "RUNNING") poll(id, token);
-        else {
+        if (pending) return poll(id, token);
+        if (progress.status === "RUNNING" && progress.revision === session.revision) {
+          for (const [name, state] of Object.entries(progress.section_states || {})) {
+            if (!session.sections[name].blocked) find(`[data-fact="${name}"] [data-fact-status]`).textContent = stateLabel(state);
+          }
+          poll(id, token);
+        } else {
           const value = await fetchJson(`${endpoint}/${id}`);
-          if (current(token)) render(value);
+          if (current(token) && !pending) render(value, sectionEdits());
+          else if (current(token)) poll(id, token);
         }
       } catch (error) {
         if (current(token)) {
@@ -154,7 +293,9 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted}) {
     mode = nextMode;
     context = scope();
     session = null;
+    find("[data-facts]").replaceChildren();
     intake.reset();
+    find("[data-section-choice]").hidden = mode !== "edit";
     for (let slot = 1; slot <= 3; slot++) preview(slot, null);
     intake.elements.character.value = mode === "edit" ? context.character : "";
     intake.elements.phase.value = mode === "edit" ? context.phase : "Adult";
@@ -227,6 +368,8 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted}) {
     }
     form.set("mode", mode);
     form.set("model", model);
+    if (mode === "edit") form.set("sections", [...find("[data-section-choice]")
+      .querySelectorAll("input:checked")].map(input => input.value).join(","));
     event.submitter.disabled = true;
     try {
       const value = await fetchJson(endpoint, {method: "POST", body: form});
@@ -239,6 +382,59 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted}) {
   });
 
   markdown.addEventListener("input", showDraftActions);
+  sectionReview.addEventListener("input", showDraftActions);
+  async function sectionAction(name, button, token) {
+    if (pending) return;
+    const section = button.dataset.section;
+    const edits = sectionEdits();
+    const data = {revision: session.revision};
+    let action = name;
+    if (name === "retry-section" || name === "refine") {
+      action = name === "refine" ? name : "retry";
+      data.section = section;
+      data.text = edits.sections[section] ?? session.sections[section].text;
+      data.direction = find(`[data-section-direction="${section}"]`).value;
+    } else if (name === "apply-proposal" || name === "dismiss-proposal") {
+      action = "save-sections";
+      data.dismiss = [section];
+      if (name === "apply-proposal") data.sections = {[section]: session.sections[section].proposal};
+    } else if (name === "save-sections" || name === "preview") {
+      Object.assign(data, edits);
+    }
+    pending = true;
+    button.disabled = true;
+    try {
+      const value = await fetchJson(`${endpoint}/${session.id}/${action}`, {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data),
+      });
+      if (!current(token)) return;
+      if (value.status === "ACCEPTED") {
+        dialog.close();
+        await accepted(value);
+      } else if (value.status === "ABANDONED") await open(mode);
+      else {
+        const remaining = sectionEdits();
+        for (const group of ["sections", "head_sections"]) {
+          for (const [key, saved] of Object.entries(data[group] || {})) {
+            if (edits[group][key] === remaining[group][key] || remaining[group][key] === saved) delete remaining[group][key];
+          }
+        }
+        for (const field of ["species_id", "gender"]) {
+          if (Object.hasOwn(data, field) && remaining[field] === data[field]) delete remaining[field];
+        }
+        render(value, remaining);
+      }
+    } catch (error) {
+      if (current(token)) notice(error.message, true);
+    } finally {
+      pending = false;
+      if (current(token)) {
+        button.disabled = false;
+        showDraftActions();
+      }
+    }
+  }
+
   dialog.addEventListener("click", async (event) => {
     const name = event.target.closest("[data-command]")?.dataset.command;
     if (!name) return;
@@ -249,9 +445,16 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted}) {
     }
     const token = generation;
     if (name === "model") {
-      const value = await window.ZetModelPicker.open({value: model, required: ["vision", "structured_json"]});
+      const value = await window.ZetModelPicker.open({value: model, required: ["vision"]});
       if (current(token) && value) command("model").textContent = model = value;
       return;
+    }
+    if (session?.version === 2) {
+      if (name === "template-editor") {
+        dialog.close();
+        return templateEditor(session.template_path);
+      }
+      return sectionAction(name, event.target.closest("[data-command]"), token);
     }
     const action = ["answer", "revise"].includes(name) ? "continue" : name;
     const data = {revision: session.revision};

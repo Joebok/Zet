@@ -266,7 +266,7 @@ class CharacterOnboardingService:
                 if name not in shared_sections:
                     continue
                 value = str(template_sections.get(name) or "").strip()
-                if not value:
+                if not re.sub(r"<!--.*?-->", "", value, flags=re.S).strip():
                     errors.append(f"{name} must be filled in.")
                 elif value == str(shared_sections.get(name) or "").strip():
                     errors.append(f"{name} still contains shared template placeholder text.")

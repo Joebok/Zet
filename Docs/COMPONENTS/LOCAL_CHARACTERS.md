@@ -1045,42 +1045,25 @@ name-and-source-only offline bootstrap.
 
 ## Character Wizard
 
-The wizard uses universe style as rendering context and asks a focused question
-when an unresolved appearance choice would materially change the character.
-Build and silhouette go in body facts. Eye size and shape go in head facts and
-eye preservation, with essential features carried into the applicable
-Head-Image Edit sections. Existing template sections and view tags govern
-the draft, which the operator reviews before publication.
+Create begins with one to three reference images. Edit starts from the current
+phase master and accepts optional references. The operator selects a single
+vision model for Body, Head, and Hair, including retries and section refinement.
+Each AI_Proxy request returns plain-text observations. The wizard normalizes
+line formatting, preserves partial results, and shows section status. Apply
+refinement proposals individually or edit the facts directly before preview.
 
-The Character Overview and New Character menu open the same authoring dialog.
-Create starts with one to three references. Edits start from the current phase
-master and may include up to three references. The wizard uses the current
-Character Template Instructions and section metadata. Canonical style comes from
-the universe. Interview turns, evidence, answers and editable drafts are saved
-under the universe's private CharacterWizard state.
+Species and Gender Presentation are operator inputs. New drafts copy reviewed
+Head and Hair facts into the separate Head-Image Edit description and preservation
+sections and seed visible review criteria. The operator can edit those starter
+sections directly. Camera-specific instructions can be added during post-render
+refinement. Existing edits preserve specialized sections and route facts containing
+view controls to Template Editor.
 
-Interview responses use ZET marker IDs and editable metadata labels from the
-session. An unambiguous template heading or section label also resolves to its
-marker ID. Duplicate edits to the same section are rejected.
-
-The Wizard proposes a Species ID from the universe's catalog and can ask about
-ambiguous evidence. Choose or correct the species in draft review. Both draft
-review and acceptance validate the value. Manual Setup reads the same catalog.
-Manage definitions in Universe Settings under Species.
-
-New drafts and edits that explicitly request head framing specify a crop based
-on the evidenced hairstyle. Head Image Construct reads it from
-`HAIR_DESCRIPTION_VIEW_OVERRIDES`. Head Image Edit reads the shared crop and
-view exceptions from `HEAD_EDIT_VIEW_OVERRIDES`, with matching checks in
-`HEAD_EDIT_REVIEW_CRITERIA`. Candidate Board Luna Review receives the crop in
-each candidate's saved render prompt. The
-[Character Template Instructions](../../Shared_Library/Characters/_Shared/Character_Template_Instructions.md#head-reference-framing)
-define the short-hair crop and the rules for long or uncertain endpoints.
-
-Approval publishes a staged character and first phase, or saves a reviewed edit
-against the captured master revision. Concurrent master edits require a fresh
-interview. Wizard images serve as interview evidence and have no role in render
-bindings or Inventory publication.
+Private universe state stores reference copies, the selected model, section
+attempts, and the review preview. Accept publishes a staged character and first
+phase, or saves an edit against the captured master revision. Saved legacy
+interviews continue using their original structured workflow. Wizard evidence
+stays private to intake.
 
 Directed, text-only Ollama Head-Image Edit template reviews use a compact skill-free line-selection request. Zet offers unique bullet lines inside `HEAD_EDIT_*` sections, maps returned IDs back to the frozen `Character.md`, validates the replacement through the existing finding path, and compiles the overlay to derive affected views. The cap is 384 output tokens and the selected format is versioned on the proposal for resume. Codex and candidate-backed reviews keep the existing request. Disposable replay passed three saved outputs from each Zet-Image model through selection and all eight prompt previews, with FRONT as the affected view. This verifies saved response handling, not fresh API repeatability.
 

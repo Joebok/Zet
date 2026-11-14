@@ -514,6 +514,9 @@ See the [storage contract](DATA_MODEL.md#species-catalog).
 
 ## Character Wizard
 
+The section interview, prompt assembly, and plain-text result collection live in
+[character_wizard_sections.py](../zet/services/character_wizard_sections.py).
+
 [CharacterWizardService](../zet/services/character_wizard_service.py) owns
 ordered interview evidence, resumable AI turns, template validation and explicit
 publication. The dashboard controller in character_wizard.js calls

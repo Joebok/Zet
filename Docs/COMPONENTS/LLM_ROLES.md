@@ -44,11 +44,11 @@ The four approved E2E scenarios remain unchanged in purpose; the shared queue fi
 
 ## Character Wizard
 
-The Character Wizard role requires vision and structured JSON. It defaults to
-Luna 6 and supports the managed role override and per-session model picker.
-The wizard snapshots the repository Character Template Instructions alongside the
-template and universe style when starting an interview. Pipeline improvement
-roles continue to use their existing task-specific guidance.
+The Character Wizard selects one vision-capable Codex or Ollama model at
+intake and retains it for Body, Head, and Hair requests, retries, and section
+refinement. New requests return plain text. Ollama starts with temperature 0.2,
+thinking disabled, and a 768-token output cap. A saved legacy interview keeps
+its structured response contract. The configured default remains Luna 6.
 
 `character_template_line_review` is a skill-free text role for compact structured line selection in directed Head-Image Edit template reviews. Zet reconstructs exact source findings and performs ownership, source, and prompt validation after inference.
 

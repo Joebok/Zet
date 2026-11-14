@@ -34,7 +34,9 @@ source-mapped operation wording in [head_image_edit_operations.md](../../Config/
 It does not merge legacy Head-Image view/gaze instructions or head/hair sections.
 
 HEAD_EDIT_* sections are optional for existing onboarding; the new compiler
-requires authored FRONT_DESCRIPTION, PRESERVE, VIEW_OVERRIDES and REVIEW_CRITERIA.
+requires authored FRONT_DESCRIPTION, PRESERVE, and REVIEW_CRITERIA.
+VIEW_OVERRIDES can start empty. The Character Wizard seeds general head and hair
+facts for the first render and leaves view authoring to later refinement.
 Reference, expression and opt-in FRONT phase guidance remain optional.
 Existing head-domain tags, supplemental-image resolution and schema-2 contracts
 apply. Source-backed FRONT edits retain `FRONT_DESCRIPTION` so authored crop and

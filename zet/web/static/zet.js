@@ -11372,6 +11372,7 @@ const characterWizard = window.mountCharacterWizard({
   fetchJson,
   scope: () => ({universe: state.universeId, character: state.character, phase: state.phase}),
   manual: startNewCharacter,
+  templateEditor: (path) => openSourceEditorForSource({source_path: path, source_label: "Character.md", editable: true}),
   accepted: async (session) => {
     state.character = session.character;
     state.phase = session.phase;

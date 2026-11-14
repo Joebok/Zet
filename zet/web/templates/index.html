@@ -246,6 +246,12 @@
             <label data-fallback>Art style fallback (optional)<input name="fallback" maxlength="500"></label>
             <label>Direction<textarea name="notes" rows="3" maxlength="10000"></textarea></label>
             <label>Vision model<button type="button" data-command="model"></button></label>
+            <fieldset data-section-choice hidden>
+              <legend>Sections to review</legend>
+              <label><input type="checkbox" value="BODY_DESCRIPTION_FACTS" checked> Body</label>
+              <label><input type="checkbox" value="HEAD_DESCRIPTION_FACTS" checked> Head</label>
+              <label><input type="checkbox" value="HAIR_DESCRIPTION_FACTS" checked> Hair</label>
+            </fieldset>
             <details open><summary>Reference images</summary>
               <p>Add one to three reference images and describe what Zet should use from each image.</p>
               <label>Reference 1<input name="image1" type="file" accept="image/*"></label>
@@ -271,6 +277,15 @@
             <div data-images class="button-row"></div>
             <div data-history></div>
             <div data-questions></div>
+            <section data-section-review hidden>
+              <div data-facts></div>
+              <button type="button" data-command="template-editor" hidden>Open Template Editor</button>
+              <label>Species<select data-section-species></select></label>
+              <label>Gender Presentation<input data-gender></label>
+              <details data-head-starter><summary>Head-Image Edit starter sections</summary><div data-head-sections></div></details>
+              <button type="button" data-command="save-sections">Save draft edits</button>
+              <button type="button" data-command="preview">Preview Character.md</button>
+            </section>
             <section data-review hidden>
               <label>Species<select data-wizard-species></select></label>
               <label>Character.md<textarea data-markdown rows="15"></textarea></label>

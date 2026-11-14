@@ -47,12 +47,22 @@ class AIJobCoordinator:
             "zet-narrative-scenes": self._narrative,
             "zet-character-containers": self._character_container,
             "zet-image-generation": self._images,
+            "zet-character-wizard": self._wizard,
             "zet-structured": self._structured,
             "zet_ollama_model_service": self._structured,
         }
 
     def register_handler(self, consumer, handler):
         self.handlers[consumer] = handler
+
+    @staticmethod
+    def _wizard(app, record, jobs):
+        ask = record["manifest"]
+        wizard = app.character_wizard_service
+        session = wizard._read(ask["session_id"])
+        if session["status"] == "ABANDONED":
+            jobs.finish(record["ask_id"], status="SUPERSEDED", message="Wizard draft was abandoned.")
+        # The workflow continuation, resumed after this sweep, applies active answers.
 
     @staticmethod
     def _narrative(app, record, jobs):

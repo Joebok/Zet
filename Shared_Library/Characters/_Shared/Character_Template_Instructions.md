@@ -53,7 +53,7 @@ Enter optional body measurements as feet and inches (for example, `5 ft 8 in` or
 
 Used by body-reference. Record stable build, proportions, height impression, torso, shoulders, waist, hips, limbs, hands, feet, skin, and silhouette. Exclude face, hair, costume, pose, camera direction, and fitment clothing.
 
-### `BODY_DESCRIPTION_VIEW_OVERRIDES` — required for all eight views
+### `BODY_DESCRIPTION_VIEW_OVERRIDES` - optional per-view refinements
 
 Used by body-reference. Add tagged bullets only where body visibility, overlap, or silhouette changes by view. Keep positive construction details in `*_VIEW_OVERRIDES`; reserve `BODY_DESCRIPTION_VIEW_SUPPRESSION` for anti-drift guidance.
 
@@ -67,7 +67,7 @@ geometry. Follow with the remaining stable head-only facts, including skin,
 eyes, brows, nose, mouth, ears, and markings. Use view overrides for details
 needed only at particular camera angles. Do not add body, clothing, or framing.
 
-### `HEAD_DESCRIPTION_VIEW_OVERRIDES` — required for all eight views
+### `HEAD_DESCRIPTION_VIEW_OVERRIDES` - optional per-view refinements
 
 Used by head-image. Add tagged bullets for visible facial planes, ear visibility, occlusion, and asymmetry. Keep it head-only; place anti-drift guidance in `HEAD_DESCRIPTION_VIEW_SUPPRESSION`.
 
@@ -82,7 +82,7 @@ establish its endpoint while retaining usable head detail. Exceptionally long ha
 may continue beyond the crop without a false shorter hem. Do not force hidden
 lower hair into view or change head/neck proportions to expose it.
 
-### `HAIR_DESCRIPTION_VIEW_OVERRIDES` — required for all eight views
+### `HAIR_DESCRIPTION_VIEW_OVERRIDES` - optional per-view refinements
 
 Used by Head Image Construct. Add tagged bullets for visible layers, overlaps,
 concealed areas, and view-specific silhouette. Include the head-reference crop
@@ -90,8 +90,8 @@ boundary from the framing rules below. Use body landmarks only as framing contex
 
 ### Head-reference framing
 
-Write a concrete crop for both head pipelines when creating a character or
-when asked to revise head framing. Follow the pipeline's requested camera,
+When refining framing, write a concrete crop for the relevant head pipeline.
+Follow the pipeline's requested camera,
 head alignment, and gaze. Keep incidental costume, scenery, and body pose out
 of the instructions.
 
@@ -111,19 +111,19 @@ of the instructions.
 
 ## Expression and identity sections
 
-### `EXPRESSION_DESCRIPTION_FACTS` — required
+### `EXPRESSION_DESCRIPTION_FACTS` - optional for starter templates
 
 Used by expression generation. Describe how expressions appear on this face: normal intensity, crease behavior, mouth range, eyebrow behavior, and features that must remain recognizable. Do not prescribe one specific expression.
 
-### `IDENTITY_PRESERVATION_CORE` — required
+### `IDENTITY_PRESERVATION_CORE` - optional for starter templates
 
 Used by expression and character-source workflows. List the few highest-priority traits whose loss would make the result a different person.
 
-### `IDENTITY_PRESERVATION_FACE`, `IDENTITY_PRESERVATION_EYES`, `IDENTITY_PRESERVATION_HAIR`, `IDENTITY_PRESERVATION_EARS` — required
+### `IDENTITY_PRESERVATION_FACE`, `IDENTITY_PRESERVATION_EYES`, `IDENTITY_PRESERVATION_HAIR`, `IDENTITY_PRESERVATION_EARS` - optional for starter templates
 
 Used by expression generation. Give concise preservation constraints for the named feature only. Avoid repeating the full description; state what must not drift when expression changes.
 
-### `SCENE_CHARACTER_IDENTITY` — required
+### `SCENE_CHARACTER_IDENTITY` - optional for starter templates
 
 Used by scene building. Provide a compact, complete identity summary sufficient to keep the character recognizable in a multi-character scene. Include phase-defining age and species traits. Exclude camera view, scene action, costume, technical modesty, and pipeline instructions.
 
@@ -135,7 +135,7 @@ Describe the intended individual, including any deliberate idealization, weather
 
 ## Pipeline-specific character requirements
 
-### `BODY_REFERENCE_CHARACTER_REQUIREMENTS` — required
+### `BODY_REFERENCE_CHARACTER_REQUIREMENTS` - optional for starter templates
 
 Used only by body-reference. Include character-varying technical requirements that are not body facts, such as species-specific mannequin anatomy. Do not repeat global stance, background, fitment clothing, framing, or view instructions.
 
@@ -151,7 +151,7 @@ Used when `HEAD_IMAGE_TRANSFORM_INSTRUCTIONS` is empty. State how the attached s
 
 Used in the standard path. State character-specific source precedence and preservation constraints. Do not repeat general source handling.
 
-### `HEAD_IMAGE_CHARACTER_REQUIREMENTS` — required
+### `HEAD_IMAGE_CHARACTER_REQUIREMENTS` - optional for starter templates
 
 Head Image Construct includes this section in text-only jobs and explicit phase
 changes. For same-phase source-backed jobs, the source image governs identity
@@ -175,7 +175,7 @@ Used by character-assembly. Include only character-specific join or preservation
 
   Use these only for assembly changes extending beyond the head reference, especially long hair. Keep general instructions limited to the authored lower-hair silhouette and body landmark. In view instructions use `<!-- ZET:VIEW_DOMAIN body -->` and tagged bullets such as `[f]`, `[fl,fr]`, `[pl,pr]`, `[bl,br]`, and `[b]`. State visible results directly. The head image supplies face and hairstyle identity; the body image supplies pose, anatomy, and clothing.
 
-  ### `NEGATIVE_GUIDANCE_EXPRESSION` — required
+  ### `NEGATIVE_GUIDANCE_EXPRESSION` - optional for starter templates
 
 Used by expression generation. List character- or phase-specific identity drift to prevent while changing expression. Keep costume rules in the costume template.
 
