@@ -14,7 +14,7 @@ Persisted `prompt_generator` continuations and Costume-Dressing's historical `po
 
 ## Ownership and entry points
 
-- [AIJobService](../../zet/services/ai_job_service.py) submits structured requests,
+- [AIJobService](../../zet/services/ai_job_service.py) submits text and structured requests,
   verifies identities/inventories, drains answers into the local Inbox, exposes
   results, copies validated artifacts and records completion. Compatibility
   synchronous callers wait here; resumable workflows yield rather than wait.
@@ -50,6 +50,11 @@ the preparation service and proxy `file_proxy/ai_worker.py` for the authoritativ
 fields. New envelopes use trusted `ai_codex`, `ai_ollama` and `ai_comfyui` workers.
 AI_Proxy owns invocation, upstream configuration, settlement and terminal output.
 Zet retains prompt composition, reference preparation, provenance and application.
+
+New text requests without a schema use `answer.txt`; structured requests use
+`answer.json`. Zet advertises the same filename in the ask and request envelopes
+and collects the filename advertised for that attempt. AI_Proxy validates `.json`
+files as JSON, so plain text must use a different extension.
 
 The proxy keeps old `ollama`/`local_image` registrations for published envelopes
 without the new request payload. New submissions never use those registrations.

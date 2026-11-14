@@ -14,13 +14,13 @@ Use **Tools > To Do** for a small project-wide scratch list.
 
 ### Character Overview
 
-Create a character through the onboarding interview. Save a draft as you work, copy the generated ChatGPT prompt when you want help developing the character, and upload the completed character template. Zet validates the result and recommends the next action.
+Choose **New > Character** to open the Character Wizard. Add reference images, choose a vision model, and preview the generated `Character.md` before creating the character. See [Create a character and run its first Body and Head jobs](Docs/CHARACTER_WIZARD_GUIDE.md) for the complete workflow.
 
 A phase represents a distinct version of a character, such as a different age or era. Create another phase when the character's visual identity needs its own development workflow.
 
 ### Assets
 
-Open **Assets** for Batch Status or choose Body-Reference, Head-Image, Character-Assembly, or Costume-Dressing. Review local candidates within the selected pipeline and lock the image you want downstream workflows to use. Traditional character-generation pipelines are retired; their files remain available for historical references.
+Open **Assets** and choose Body-Reference, Head Image Edit, Character-Assembly, or Costume-Dressing. Open the desired view's Candidate Board to generate and review candidates. Select and lock the image you want downstream workflows to use.
 
 ### Identity Keys
 

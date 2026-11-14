@@ -163,6 +163,7 @@ class AIJobService:
             raise StorageUnavailable("AI submission paused until storage returns")
         model = str(model).strip()
         provider = "codex" if model.startswith("codex:") else "ollama"
+        output = "answer.txt" if schema is None else "answer.json"
         job_id = job_id or "AI_" + uuid4().hex
         self.validate_id(job_id)
         with (admission() if admission else nullcontext()), file_lock(self.lifecycle.lock_path(job_id)):
@@ -185,13 +186,13 @@ class AIJobService:
             ask = {"version": 1, "ask_id": job_id, "consumer": consumer, "worker_type": worker,
                    "universe_id": self.paths.config.universe_id, "model": model, "provider": provider,
                    "ollama_model": model, "ollama_attempt_id": job_id, "prompt_file": "prompt.md",
-                   "image_files": files, "response_schema": schema, "expected_output": "answer.json",
+                   "image_files": files, "response_schema": schema, "expected_output": output,
                    "task_type": task_type, **(owner or {})}
             ask["llm_role"] = role
             ask["llm_context"] = render_context or {}
             ask["workflow"] = workflow or (owner or {}).get("pipeline") or task_type
             request = {"version": 1, "provider": provider, "model": model, "system": system,
-                       "prompt": prompt, "images": files, "schema": schema, "output": "answer.json",
+                       "prompt": prompt, "images": files, "schema": schema, "output": output,
                        "options": options or {}, "owner": {"universe_id": self.paths.config.universe_id, **(owner or {})}}
             (staging / "prompt.md").write_text(prompt, encoding="utf-8")
             write_json_atomic(staging / "ai_request.json", request)

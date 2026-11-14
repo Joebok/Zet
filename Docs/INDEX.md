@@ -16,6 +16,7 @@ The V5 history recovery on 2026-10-11 restored the approved fast E2E suite and r
 | Find a feature, its callers, and regression tests | [Code map](CODE_MAP.md) | Matching component and source |
 | Change identifiers, storage, or configuration | [Data model](DATA_MODEL.md) | [Invariants](INVARIANTS.md), [library](COMPONENTS/LIBRARY.md) |
 | Change character or scene prompts | [Prompts](COMPONENTS/PROMPTS.md) | [Narrative](COMPONENTS/NARRATIVE.md); [Scene Builder](COMPONENTS/SCENE_BUILDER.md) for historical structured-workflow context |
+| Create a character and run its first Body and Head jobs | [Character Wizard operator guide](CHARACTER_WIZARD_GUIDE.md) | [Local characters](COMPONENTS/LOCAL_CHARACTERS.md) |
 | Change local character generation/review | [Local characters](COMPONENTS/LOCAL_CHARACTERS.md) | [Queues](COMPONENTS/QUEUES.md), invariants |
 | Debug jobs, restart recovery, or missing images | [Queues](COMPONENTS/QUEUES.md) | [Development](DEVELOPMENT.md), owning workflow |
 | Troubleshoot LAN/Tailscale HTTPS, DNS, certificates, or Caddy | [HTTPS troubleshooting](LAN_HTTPS.md) | [Development](DEVELOPMENT.md), deployment plans |
