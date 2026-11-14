@@ -5,12 +5,14 @@ The Character Wizard uses reference images to draft Body and Head and hair obser
 ## Create the character
 
 1. Open **Character Overview** and confirm the universe in the dashboard header. For testing, use [Zet Test](http://localhost:8082/?page=onboarding) with `ZetTester` selected.
-2. Choose **New > Character**. For a clean run, leave **Resume draft** on **Start a new interview**. Enter the **Character Name** and **Character Phase**. Use a name that is free in this universe.
+2. Choose **New > Character**. For a clean run, leave **Resume draft** on **Start a new interview**. Enter the **Character Name** and **Character Phase**, then choose **Species** and **Gender Presentation**. Use a name that is free in this universe. Choose **Androgynous** when that is the intended presentation. Choose **Undecided** to describe the visible traits without assigning a gender. You can still create the character and render images with **Undecided**.
 3. Choose a **Vision model**, such as Luna (`codex:gpt-6-luna`). Add one to three **Reference images** using the file controls or **Paste image here**. You can use captions to describe what each image should contribute and **Direction** for any additional instructions. Click **Start interview**.
-4. Wait for **Body** and **Head and hair** to show **Ready**. Choose a defined **Species** and fill in **Gender Presentation** for the character. The wizard also prepares Head-Image Edit starter sections. To accept the generated work as-is, leave the observations and starter sections unchanged.
+4. Wait for **Body** and **Head and hair** to show **Ready**. Both sections use the starting choices. The wizard also prepares Head-Image Edit starter sections. To accept the generated work as-is, leave the observations and starter sections unchanged.
 5. Click **Preview Character.md** and check for validation errors. Click **Create character**. Wait for **Character created.** on **Character Overview**, then verify the new character and phase in the header.
 
-If a section shows **Needs attention**, read its notice. For ordinary authoring you can resume the draft and use **Retry section**, or use **Refine section** with a direction to request a replacement. Preview again after any edits. For an as-is acceptance test, record the first error and stop that attempt. Manual edits or using another model would skip the path under test.
+To revise the intended species or presentation, change **Species** or **Gender Presentation** in draft review and click **Save draft edits**. Then enter a direction and click **Refine section** in each description you want to update. Use **Apply replacement** to keep the new text, then preview again. Saving metadata alone leaves the existing descriptions in place.
+
+If a section shows **Needs attention**, read its notice. For ordinary authoring you can resume the draft and use **Retry section**. For an as-is acceptance test, record the first error and stop that attempt. Manual edits or using another model would skip the path under test.
 
 ## Run Body Reference FRONT
 

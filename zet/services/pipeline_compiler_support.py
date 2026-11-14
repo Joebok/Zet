@@ -240,6 +240,8 @@ def _race_key(value: str) -> str:
 def character_gender(template_path: Path) -> str:
     value = extract_template_field(template_path, ["Character Gender", "Gender Presentation", "Gender"])
     key = _race_key(value)
+    if key == "undecided":
+        return "character"
     terms = set(key.split())
     if terms.intersection({"female", "feminine", "woman", "girl"}):
         return "female"

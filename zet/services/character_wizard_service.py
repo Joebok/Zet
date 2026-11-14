@@ -139,7 +139,11 @@ class CharacterWizardService(CharacterWizardSections):
                 continue
             if mode == "create" or (character, phase) == (session["character"], session["phase"]):
                 sessions.append({key: session[key] for key in ("id", "character", "phase", "status")})
-        return {"model": model, "style": style, "sessions": sessions}
+        options = {"model": model, "style": style, "sessions": sessions}
+        if mode == "create":
+            options.update(species=self._species_options(self.species.load()[0]),
+                           gender_options=list(self.INTAKE_GENDERS))
+        return options
 
     def create(self, fields, images):
         mode = fields.get("mode")
@@ -165,10 +169,12 @@ class CharacterWizardService(CharacterWizardSections):
         else:
             if self._collision(character):
                 raise ValueError("This character name already exists.")
+            species_id, gender = self._intake_metadata(fields)
             baseline = set_species(template, "")
             labels = {"Character Name": character, "Character Phase": phase,
                       "Canonical Art Style": "" if style else str(fields.get("fallback") or "").strip(),
                       **dict.fromkeys(METADATA, "")}
+            labels["Gender Presentation"] = gender
             for label, value in labels.items():
                 baseline = set_metadata(baseline, label, value)
         sections, _ = parse_template_sections_with_sources(baseline, target)
@@ -196,6 +202,8 @@ class CharacterWizardService(CharacterWizardSections):
                    "style": style, "baseline": baseline, "master": master,
                    "images": [item for item, _ in evidence], "notes": str(fields.get("notes") or "").strip(),
                    "history": [], "questions": [], "markdown": "", "errors": [], "revision": uuid4().hex}
+        if mode == "create":
+            session["species_value"] = species_id
         return self._init_sections(session, fields, sections)
 
     def image(self, sid, slot):

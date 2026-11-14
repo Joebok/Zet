@@ -314,6 +314,14 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted, tem
       if (!current(token)) return;
       model = options.model;
       command("model").textContent = model;
+      const metadata = find("[data-intake-metadata]");
+      metadata.hidden = metadata.disabled = mode !== "create";
+      if (mode === "create") {
+        intake.elements.species_id.replaceChildren(new Option("Choose Species", ""),
+          ...options.species.sort((a, b) => a.label.localeCompare(b.label)).map(item => new Option(item.label, item.id)));
+        intake.elements.gender.replaceChildren(new Option("Choose Gender Presentation", ""),
+          ...options.gender_options.map(value => new Option(value, value)));
+      }
       find("[data-fallback]").hidden = mode !== "create" || Boolean(options.style);
       find("[data-style]").textContent = options.style ? `Universe style: ${options.style}` : "";
       resume.replaceChildren(new Option("Start a new interview", ""), ...options.sessions.map(

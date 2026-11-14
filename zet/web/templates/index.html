@@ -242,6 +242,10 @@
           <form data-intake>
             <label>Character Name<input name="character" required maxlength="80"></label>
             <label>Character Phase<input name="phase" required maxlength="80"></label>
+            <fieldset data-intake-metadata hidden disabled>
+              <label>Species<select name="species_id" required></select></label>
+              <label>Gender Presentation<select name="gender" required></select></label>
+            </fieldset>
             <label data-fallback>Art style fallback (optional)<input name="fallback" maxlength="500"></label>
             <label>Direction<textarea name="notes" rows="3" maxlength="10000"></textarea></label>
             <label>Vision model<button type="button" data-command="model"></button></label>
