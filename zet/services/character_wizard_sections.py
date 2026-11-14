@@ -12,8 +12,8 @@ from zet.services.workflow_storage import file_lock
 
 
 FACTS = {
-    "BODY_DESCRIPTION_FACTS": ("Body", "Describe build and silhouette. Consider apparent stature, limb-to-torso proportions, shoulders, torso and waist, hips and legs, arms and hands, feet, and habitual posture where supported. Describe relative proportions without guessing measurements."),
-    "HEAD_EDIT_FRONT_DESCRIPTION": ("Head and hair", "Describe recognizable facial features. Consider face shape, jaw and chin, cheekbones, nose, lips, eye size and shape relative to the face, eye color if clear, brows, skin tone, ear shape, and neck. For hair, describe color, texture, volume, hairline, part, fringe, and overall shape. Describe length using a visible body landmark. Include supported anatomical asymmetry. Omit the endpoint if the reference crops it out."),
+    "BODY_DESCRIPTION_FACTS": ("Body", "Describe build and silhouette. Consider apparent stature, limb-to-torso proportions, shoulders, torso and waist, hips and legs, arms and hands, feet, skin tone when clear, and habitual posture where supported. Describe relative proportions without guessing measurements. Omit unclear or hidden details."),
+    "HEAD_EDIT_FRONT_DESCRIPTION": ("Head and hair", "Describe recognizable facial features. Consider face shape, jaw and chin, cheekbones, nose, lips, eye size and shape relative to the face, eye color if clear, brows, skin tone when clear, ear shape, and neck. For hair, describe color, texture, volume, hairline, part, fringe, and overall shape. Describe length using a visible body landmark. Include supported anatomical asymmetry. Omit the endpoint if the reference crops it out."),
 }
 HEAD_SECTIONS = {
     "HEAD_EDIT_PRESERVE": "Head-Image Edit preservation",
