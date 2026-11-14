@@ -184,7 +184,8 @@ class CharacterOnboardingService:
     def _upload_template(self, character: str, phase: str, contents: str, create_only: bool) -> CharacterOnboardingStatus:
         # Uploads can arrive with CRLF already present. Normalize before text-mode
         # writing so Windows does not expand each existing CR into CRCRLF.
-        contents = contents.replace("\r\r\n", "\n").replace("\r\n", "\n").replace("\r", "\n")
+        from zet.services.template_formatting_service import format_template, template_bytes
+        contents = format_template(contents)
         if not contents.strip():
             raise CharacterOnboardingError("Uploaded template is empty.")
         character = self._clean_folder_name(character, "Character")
@@ -204,7 +205,8 @@ class CharacterOnboardingService:
             shutil.copy2(template_path, backup_dir / f"Character.backup.{stamp}.md")
         from zet.services.image_usage_service import usage_mutation
         with usage_mutation(self.path_service, template_path):
-            template_path.write_text(contents, encoding="utf-8")
+            from zet.services.atomic_file_service import write_bytes_atomic
+            write_bytes_atomic(template_path, template_bytes(contents))
         errors = self.validate_template(template_path)
         if errors:
             return self.status(character, phase)

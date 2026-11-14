@@ -288,7 +288,8 @@ class CostumeWizardService:
                                job={"kind": "draft", "status": "COMPLETE", "error": ""}, updated_at=self._now())
                 self._write(session_id, current)
             return
-        markdown = self._assemble_template(session["name"], session["character"], session["phase"], design)
+        from zet.services.template_formatting_service import format_template
+        markdown = format_template(self._assemble_template(session["name"], session["character"], session["phase"], design))
         errors = self._validate(markdown)
         review = self._ask("Review the draft against this source evidence and instructions. Identify only unsupported claims, contradictions, "
                            "missing essential details, incorrect line tags, or duplicated item inventory. Do not rewrite. Evidence: " + evidence
@@ -312,9 +313,10 @@ class CostumeWizardService:
         }
 
     def _assemble_sections(self, session, *, preserve_revision=False):
+        from zet.services.template_formatting_service import format_template
         design = template_design(session["sections"])
-        markdown = self._assemble_template(session["name"], session["character"], session["phase"], design,
-                                           preserve_directives=True)
+        markdown = format_template(self._assemble_template(session["name"], session["character"], session["phase"], design,
+                                           preserve_directives=True))
         session.update(markdown=markdown, validation_errors=self._validate(markdown), status="DRAFT_READY",
                        revision_id=session["revision_id"] if preserve_revision else uuid4().hex, updated_at=self._now())
         if not session["sections"]["overview"]["text"]:

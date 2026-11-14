@@ -463,6 +463,8 @@ class CharacterContainerTemplateService:
                     for key in ("summary", "rationale", "replacement")):
                 raise ValueError("Template review returned an invalid proposal.")
             replacement = answer["replacement"]
+            from zet.services.template_formatting_service import format_template
+            replacement = format_template(replacement)
             LocalTemplateRevisionService._validate_text(before, replacement)
             LocalTemplateRevisionService._validate_owned(pipeline,
                 {"source_path": str(source)}, before, replacement)
@@ -553,6 +555,8 @@ class CharacterContainerTemplateService:
             for start, end, after in reversed(ranges):
                 replacement = replacement[:start] + after + replacement[end:]
             if replacement != source["text"]:
+                from zet.services.template_formatting_service import format_template
+                replacement = format_template(replacement)
                 LocalTemplateRevisionService._validate_text(source["text"], replacement)
                 LocalTemplateRevisionService._validate_owned(record["pipeline"], source, source["text"], replacement)
                 diagnostics = TemplateValidationService(self.app).analyze(

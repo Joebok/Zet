@@ -28,10 +28,12 @@ BULLET = re.compile(r"^(?:[-*+•]\s+|\d+[.)]\s+)")
 
 
 def bullets(value):
+    from zet.services.template_formatting_service import format_bullet_list
     lines = value.strip().splitlines()
     if len(lines) > 1 and lines[0].strip().startswith("```") and lines[-1].strip() == "```":
         lines = lines[1:-1]
-    content = [BULLET.sub("", line.strip()).strip() for line in lines if line.strip()]
+    value = format_bullet_list("\n".join(lines))
+    content = [BULLET.sub("", line.strip()).strip() for line in value.splitlines() if line.strip()]
     return "\n".join("* " + line for line in content
                      if line and line.rstrip(".").casefold() != "no usable observations")
 

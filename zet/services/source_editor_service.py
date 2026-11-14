@@ -41,7 +41,8 @@ class SourceEditorService:
         kind = self.template_kind(path)
         if not kind:
             raise ValueError("Analysis is available for character and costume templates only.")
-        text = str(payload.get("text") or "").replace("\r\n", "\n")
+        from zet.services.template_formatting_service import normalize_newlines
+        text = normalize_newlines(str(payload.get("text") or ""))
         from zet.services.template_validation_service import TemplateValidationService
         result = {"path": str(path), "draft_revision": payload.get("draft_revision"),
                   **TemplateValidationService(self.zet_app).analyze(path, text, kind)}
@@ -173,6 +174,7 @@ class SourceEditorService:
 
     def _save_template(self, path: Path, payload: dict[str, Any]) -> dict[str, Any]:
         from zet.services.atomic_file_service import write_bytes_atomic
+        from zet.services.template_formatting_service import format_template, template_bytes
         from zet.services.image_usage_service import usage_mutation
         from zet.services.template_publication_core import change_lock
         from zet.services.workflow_storage import file_lock
@@ -180,7 +182,7 @@ class SourceEditorService:
 
         runtime = self.zet_app.config.runtime_root
         fence = change_lock(Path(runtime) / "state") if runtime else nullcontext()
-        text = str(payload.get("text") or "").replace("\r\n", "\n")
+        text = format_template(str(payload.get("text") or ""))
         with fence, file_lock(Path(self.zet_app.config.base_ai_queue_path) / "template_promotion.lock"):
             kind = self.template_kind(self.resolve_path(str(path)))
             raw, master, revision = self._master(path)
@@ -193,9 +195,8 @@ class SourceEditorService:
             with usage_mutation(self.zet_app.path_service, path):
                 if self._master(path)[2] != revision:
                     return {"status": "CONFLICT", "message": "Master changed while validating. Your edits are retained."}
-                if text != master:
-                    newline = "\r\n" if b"\r\n" in raw and b"\n" not in raw.replace(b"\r\n", b"") else "\n"
-                    write_bytes_atomic(path, text.replace("\n", newline).encode("utf-8"))
+                if text != master or raw != template_bytes(text):
+                    write_bytes_atomic(path, template_bytes(text))
                 result = {"status": "SAVED", "path": str(path), "editor_type": "markdown_file",
                           "master_revision": self._master(path)[2], "text": text}
             self._record(payload, result)

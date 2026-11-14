@@ -8907,6 +8907,9 @@ async function saveSourceEditor() {
       return false;
     }
     showSourceEditorMessage(`Saved ${result.path}.`);
+    if (submitted === sourceEditorText.value && typeof result.text === "string") {
+      sourceEditorText.value = result.text;
+    }
     state.savedBaselines.sourceEditor = JSON.stringify({path: target.path, text: result.text ?? submitted});
     window.ZetTemplateEditor.saved(result);
     setSaveState(sourceEditorSaveState, "Saved", "saved");

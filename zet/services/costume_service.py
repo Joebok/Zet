@@ -547,7 +547,8 @@ class CostumeService:
         costume_path = self.path_service.costume_template_path(character, phase, display_name)
         if costume_path.exists():
             raise CostumeServiceError(f"Costume template already exists: {costume_path.name}")
-        uploaded_markdown = str(markdown or "").strip()
+        from zet.services.template_formatting_service import format_template
+        uploaded_markdown = format_template(str(markdown or "")).strip()
         source_markdown = uploaded_markdown or self._default_costume_markdown()
         if uploaded_markdown:
             self._validate_costume_markdown(source_markdown)

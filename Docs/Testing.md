@@ -1163,3 +1163,6 @@ syntax and `git diff --check` passed. The ZetTester browser remained on release
 `a836628bb5a0e0665e59449dd8ff8745526514de` after its current-version restart,
 so the revised controls were not active there and no live Dressing renders were
 queued. No permanent test scenario or live AI/render call was added.
+## Template input formatting (2026-11-14)
+
+A disposable replay confirmed the formatter splits Gemma's packed Character.md sections into 7 Body Facts bullets and 10 bullets in each Head Edit description and preservation section. It also verified idempotence, explicit view-tag separation, literal inline asterisk preservation, newline normalization including legacy CRCRLF, platform CRLF serialization, and wizard response splitting. Python compilation, JavaScript syntax and git diff checks passed. The approved four-scenario E2E suite passed (46.5 seconds). No library templates, permanent tests, frozen prompts, live inference or renders were changed. The E2E suite did not directly exercise packed-bullet save/proposal acceptance or master conflict handling.
