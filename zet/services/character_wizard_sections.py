@@ -83,6 +83,20 @@ def section_prompt(session, name, attempt, species_label):
     if attempt["kind"] == "refine":
         request += (f"\n\nSection feedback: {attempt['direction']}\n"
                     "Return the complete replacement list. Apply the feedback and preserve other supported traits.")
+    if name == "BODY_DESCRIPTION_FACTS":
+        request += (
+            "\n\nSection boundary for every bullet, including the opening summary: describe the body "
+            "from the shoulders down. Keep head, face, eyes, ears, hair, and neck traits out of Body, "
+            "even when prominent. Describe skin tone here only when visible on the body."
+        )
+    else:
+        request += (
+            "\n\nSection boundary for every bullet, including the opening summary: describe the head, "
+            "face, eyes, ears, hair, and neck. Keep body build, proportions, shoulders, torso, and limbs "
+            "out of Head and hair. A body landmark may locate the ends of the hair. Describe skin tone "
+            "here only when visible on the head or neck."
+        )
+    request += "\n\nBefore returning, remove any out-of-section detail and keep the remaining in-section facts."
     return request
 
 
