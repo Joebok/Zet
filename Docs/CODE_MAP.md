@@ -1,5 +1,7 @@
 # Capability code map
 
+Character Asset Containers expose Head Image Edit as the sole head pipeline. Assembly resolves the matching published Edit view, and cross-phase Edit sources resolve the other phase’s published FRONT. See [ADR 0054](DECISIONS/0054-edit-only-head-images.md).
+
 Character Asset Container template improvement is owned by
 `CharacterContainerTemplateService`: it stores finished-candidate-backed
 Character.md proposals and text-only reviews, validates and compiles previews, and

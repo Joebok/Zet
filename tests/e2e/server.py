@@ -206,7 +206,7 @@ def build_app(config: Path, index_root: Path):
 
     zet_app = ZetApp.from_config(config, validate_catalog=False, universe_id="Test")
     prerequisite_image = config.parent / "Library" / "Test" / "images" / "traveler-reference.png"
-    for pipeline in ("body-reference", "head-image"):
+    for pipeline in ("body-reference", "head-image-edit"):
         seed_character_container(zet_app, pipeline, "", prerequisite_image)
     author = zet_app.narrative_scene_service
     asset = zet_app.entity_library_service.import_asset(
@@ -372,7 +372,7 @@ def main() -> int:
         scenario_number += 1
         ids = seed_narrative(runtime.narrative_scene_service, previous["asset"])
         app.state.test_ids = {**previous, **ids}
-        for pipeline in ("body-reference", "head-image"):
+        for pipeline in ("body-reference", "head-image-edit"):
             seed_character_container(runtime, pipeline, "", test_root / "images" / "traveler-reference.png")
         app.state.ai_job_coordinator.start()
         return {"reset": True, "scenario": scenario_number}

@@ -472,10 +472,9 @@
       front_count: Number($("front-count").value),
       other_count: Number($("other-count").value),
       use_front_anchor: state.pipeline === "character-assembly" ? false : hasSharedAssetRouter() ? $("use-anchor").checked : state.pipeline === "body-reference" || ["head-image", "head-image-edit"].includes(state.pipeline),
-      head_pipeline: state.pipeline === "character-assembly" ? $("head-pipeline").value : "head-image",
       front_source_path: lockedPhaseSource ? "" : state.frontSourcePath,
       front_source_phase: lockedPhaseSource ? $("source-phase").value : "",
-      front_source_pipeline: $("source-pipeline").value,
+      front_source_pipeline: "head-image-edit",
       apply_phase_change: state.pipeline === "head-image-edit" ? $("apply-phase-change").checked
         : state.pipeline === "head-image" && Boolean(state.frontSourcePath || lockedPhaseSource) && $("apply-phase-change").checked,
       source_batches: hasSharedAssetRouter() ? Object.fromEntries(Array.from($("source-batches").querySelectorAll("select[data-source-role]"), (select) => [select.dataset.sourceRole, select.value])) : {},
@@ -517,16 +516,16 @@
     try {
       const result = await request(`/api/local/assets?${new URLSearchParams({ character, phase })}`);
       if (generation !== state.sourcePreviewGeneration || !lockedPhaseSourceSelected() || $("source-phase").value !== phase) return;
-      const asset = (result.assets || []).find(item => item.pipeline?.toLowerCase() === $("source-pipeline").value
+      const asset = (result.assets || []).find(item => item.pipeline?.toLowerCase() === "head-image-edit"
         && item.view === "FRONT" && !item.qualifier && (item.render_mode || "draft") === "draft");
       host.replaceChildren();
       if (asset) {
         const image = document.createElement("img");
         image.src = universeImageUrl(`/api/local/assets/${encodeURIComponent(asset.key)}/image?${new URLSearchParams({ character, phase, v: asset.image_sha256 || "" })}`);
-        image.alt = `Locked FRONT ${window.ZetPipelineLabel($("source-pipeline").value)} image from ${phase}`;
+        image.alt = `Locked FRONT ${window.ZetPipelineLabel("head-image-edit")} image from ${phase}`;
         host.append(image);
       } else {
-        host.append(`No locked FRONT ${window.ZetPipelineLabel($("source-pipeline").value)} image in ${phase}. `);
+        host.append(`No locked FRONT ${window.ZetPipelineLabel("head-image-edit")} image in ${phase}. `);
         const link = document.createElement("a");
         link.href = `/?${new URLSearchParams({ page: "local-head-image-edit", character, phase })}`;
         link.textContent = `Go to ${phase} and lock FRONT first`;
@@ -1689,7 +1688,7 @@
   let phaseSourcePreviewGeneration = 0;
   async function previewModeSource() {
     const generation = ++phaseSourcePreviewGeneration, run = state.run, mode = state.renderMode;
-    const host = $("mode-source-preview"), phase = $("mode-source-phase").value, pipeline = $("mode-source-pipeline").value;
+    const host = $("mode-source-preview"), phase = $("mode-source-phase").value, pipeline = "head-image-edit";
     host.replaceChildren();
     if (!run || $("mode-source-kind").value !== "locked" || !phase) return;
     host.textContent = "Checking locked FRONT image…";
@@ -1739,7 +1738,6 @@
       }
       selector.dataset.context = key;
       selector.value = phaseSourceDrafts[key]?.phase || previous || "";
-      $("mode-source-pipeline").value = phaseSourceDrafts[key]?.pipeline || "head-image-edit";
       $("mode-source-kind").value = phaseSourceDrafts[key]?.kind || "locked";
       $("mode-source-status").textContent = "";
       void previewModeSource();
@@ -1807,7 +1805,7 @@
     const phaseChangeSummary = ["head-image", "head-image-edit"].includes(state.pipeline) && run.apply_phase_change ? " · Phase change rules applied" : "";
     const modeProgress = run.progress_by_mode?.[state.renderMode];
     const modeAnchor = modeRun(run)?.front_anchor;
-    $("summary").textContent = `${run.character} · ${run.phase}${run.costume ? ` · ${run.costume}` : ""}${phaseChangeSummary}${state.pipeline === "character-assembly" ? ` · Heads: ${window.ZetPipelineLabel(run.head_pipeline || "head-image")}` : ""} · ${run.run_id} · ${state.renderMode === "final" ? "Final" : "Draft"} · ${modeProgress ? `${modeProgress.complete_count}/${modeProgress.candidate_count}` : `${completed}/${run.candidate_count || (run.candidates || []).length}`} images · ${statusLabels[modeProgress?.status || run.status] || modeProgress?.status || run.status}${modeAnchor ? ` · FRONT ${modeAnchor}` : ""}${progress.stale_selections?.length ? ` · stale selections ${progress.stale_selections.join(", ")}` : ""}`;
+    $("summary").textContent = `${run.character} · ${run.phase}${run.costume ? ` · ${run.costume}` : ""}${phaseChangeSummary} · ${run.run_id} · ${state.renderMode === "final" ? "Final" : "Draft"} · ${modeProgress ? `${modeProgress.complete_count}/${modeProgress.candidate_count}` : `${completed}/${run.candidate_count || (run.candidates || []).length}`} images · ${statusLabels[modeProgress?.status || run.status] || modeProgress?.status || run.status}${modeAnchor ? ` · FRONT ${modeAnchor}` : ""}${progress.stale_selections?.length ? ` · stale selections ${progress.stale_selections.join(", ")}` : ""}`;
     if (document.activeElement !== $("batch-name")) $("batch-name").value = run.batch_name || "";
     setBusyControls();
     if (state.view) {
@@ -1859,11 +1857,6 @@
       state.runState = "selected";
       state.polledRun = null;
       if (!sameRun) {
-        if (state.pipeline === "character-assembly" && $("head-pipeline").value !== (loaded.head_pipeline || "head-image")) {
-          $("head-pipeline").value = loaded.head_pipeline || "head-image";
-          $("source-batches").replaceChildren();
-          void readiness();
-        }
         render();
       }
     } catch (error) {
@@ -2082,8 +2075,6 @@
     $("costume-label").hidden = !isCostume();
     $("anchor-option").hidden = state.pipeline === "character-assembly" || !hasSharedAssetRouter();
     $("source-batches").hidden = !hasSharedAssetRouter();
-    $("head-pipeline-label").hidden = pipeline !== "character-assembly";
-    $("head-pipeline").value = "head-image";
     if (hasSharedAssetRouter()) $("use-anchor").checked = false;
     $("source-option").hidden = !["head-image", "head-image-edit"].includes(pipeline);
     $("source-remove").hidden = true;
@@ -2928,7 +2919,6 @@
     $("other-count").addEventListener("change", scheduleReadiness);
     $("use-anchor").addEventListener("change", scheduleReadiness);
     $("source-batches").addEventListener("change", scheduleReadiness);
-    $("head-pipeline").addEventListener("change", () => { $("source-batches").replaceChildren(); scheduleReadiness(); });
     $("start").addEventListener("click", () => void perform(["INTERRUPTED", "STOPPED"].includes(state.run?.status)
       || (state.run?.status === "CANCELLED" && state.run?.created_by_autogenerate) || state.run?.slot_paused ? "resume" : "start").catch((error) => setStatus(error.message, true)));
     $("stop").addEventListener("click", () => void perform("stop").catch((error) => setStatus(error.message, true)));
@@ -2956,11 +2946,10 @@
     $("source-phase").addEventListener("change", () => {
       void readiness();
     });
-    $("source-pipeline").addEventListener("change", () => void readiness());
-    for (const field of ["mode-source-phase", "mode-source-pipeline", "mode-source-kind"]) $(field).addEventListener("change", () => {
+    for (const field of ["mode-source-phase", "mode-source-kind"]) $(field).addEventListener("change", () => {
       if (!state.run) return;
       const key = `${state.pipeline}:${state.run.run_id}:${state.renderMode}`;
-      phaseSourceDrafts[key] = {...phaseSourceDrafts[key], phase: $("mode-source-phase").value, pipeline: $("mode-source-pipeline").value, kind: $("mode-source-kind").value};
+      phaseSourceDrafts[key] = {...phaseSourceDrafts[key], phase: $("mode-source-phase").value, pipeline: "head-image-edit", kind: $("mode-source-kind").value};
       void previewModeSource();
     });
     async function stageModeSource(file) {
@@ -2987,7 +2976,7 @@
       const run = state.run, mode = state.renderMode, pipeline = state.pipeline;
       const key = `${pipeline}:${run.run_id}:${mode}`, draft = phaseSourceDrafts[key] || {};
       const body = $("mode-source-kind").value === "locked"
-        ? {render_mode: mode, front_source_phase: $("mode-source-phase").value, front_source_pipeline: $("mode-source-pipeline").value}
+        ? {render_mode: mode, front_source_phase: $("mode-source-phase").value, front_source_pipeline: "head-image-edit"}
         : {render_mode: mode, source_path: draft.path || ""};
       try {
         await request(`${baseUrl()}/runs/${encodeURIComponent(run.run_id)}/source`, {method: "PUT", body: JSON.stringify(body)});

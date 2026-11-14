@@ -87,8 +87,7 @@
         <button id="local-assets-button" class="tab workflow-tab" type="button" aria-expanded="false" aria-controls="local-assets-menu">Assets ▾</button>
         <div id="local-assets-menu" class="toolbar-settings-menu" hidden>
           <button class="tab workflow-tab" data-page="character-asset-container" data-container-pipeline="body-reference">Body-Reference</button>
-          <button class="tab workflow-tab" data-page="character-asset-container" data-container-pipeline="head-image-edit">Head-Image (Edit)</button>
-          <button class="tab workflow-tab" data-page="character-asset-container" data-container-pipeline="head-image">Head-Image (Construct)</button>
+          <button class="tab workflow-tab" data-page="character-asset-container" data-container-pipeline="head-image-edit">Head Image Edit</button>
           <button class="tab workflow-tab" data-page="character-asset-container" data-container-pipeline="character-assembly">Character-Assembly</button>
           <button class="tab workflow-tab" data-page="character-asset-container" data-container-pipeline="costume-dressing">Costume-Dressing</button>
         </div>
@@ -248,9 +247,8 @@
             <label>Vision model<button type="button" data-command="model"></button></label>
             <fieldset data-section-choice hidden>
               <legend>Sections to review</legend>
-              <label><input type="checkbox" value="BODY_DESCRIPTION_FACTS" checked> Body</label>
-              <label><input type="checkbox" value="HEAD_DESCRIPTION_FACTS" checked> Head</label>
-              <label><input type="checkbox" value="HAIR_DESCRIPTION_FACTS" checked> Hair</label>
+              <label><input type="checkbox" value="HEAD_EDIT_FRONT_DESCRIPTION" checked> Head and hair</label>
+            <label><input type="checkbox" value="BODY_DESCRIPTION_FACTS" checked> Body</label>
             </fieldset>
             <details open><summary>Reference images</summary>
               <p>Add one to three reference images and describe what Zet should use from each image.</p>
@@ -346,7 +344,6 @@
               <input id="onboarding-template-file" type="file" accept=".md,text/markdown,text/plain">
             </label>
             <button id="onboarding-upload-template" type="button">Upload Template</button>
-            <button id="onboarding-add-head-images" type="button">Add Missing Head Images</button>
           </div>
           <dl id="onboarding-status-list" class="status-list"></dl>
           <section>
@@ -424,9 +421,6 @@
             <label id="local-pipeline-style-choice">Batch universe style<select id="local-pipeline-style-variant"><option value="canonical">Canonical</option><option value="environmental">Environmental</option></select></label><label>FRONT candidates<input id="local-pipeline-front-count" type="number" min="1" max="8" value="8"></label>
             <label>Other candidates per view<input id="local-pipeline-other-count" type="number" min="1" max="8" value="4"></label>
             <label id="local-pipeline-anchor-option" hidden><span>Use FRONT anchor for other views</span><input id="local-pipeline-use-anchor" type="checkbox"></label>
-            <label id="local-pipeline-head-pipeline-label" hidden>Head pipeline
-              <select id="local-pipeline-head-pipeline"><option value="head-image">Head-Image (Construct)</option><option value="head-image-edit">Head-Image (Edit)</option></select>
-            </label>
             <div id="local-pipeline-source-batches" class="local-pipeline-source-batches" hidden></div>
             <div id="local-pipeline-source-option" hidden>
               <label id="local-pipeline-apply-phase-change-option" class="local-pipeline-recompile-option"><span>Apply Phase Change</span><input id="local-pipeline-apply-phase-change" type="checkbox" disabled></label>
@@ -441,7 +435,6 @@
               </div>
               <div id="local-pipeline-locked-source" hidden>
                 <label>Source phase<select id="local-pipeline-source-phase"></select></label>
-                <label>Source pipeline<select id="local-pipeline-source-pipeline"><option value="head-image">Head-Image (Construct)</option><option value="head-image-edit" selected>Head-Image (Edit)</option></select></label>
                 <div id="local-pipeline-locked-preview" class="muted">Choose a source phase.</div>
               </div>
             </div>
@@ -460,7 +453,6 @@
           <div id="local-pipeline-mode-source-current"></div>
           <label>Source type<select id="local-pipeline-mode-source-kind"><option value="locked">Locked FRONT from another phase</option><option value="upload">Upload or paste FRONT</option></select></label>
           <label>Source phase<select id="local-pipeline-mode-source-phase"></select></label>
-          <label>Source pipeline<select id="local-pipeline-mode-source-pipeline"><option value="head-image">Head-Image (Construct)</option><option value="head-image-edit">Head-Image (Edit)</option></select></label>
           <div id="local-pipeline-mode-source-preview" class="muted"></div>
           <label>Upload FRONT<input id="local-pipeline-mode-source-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
           <div id="local-pipeline-mode-source-paste" contenteditable="true" role="textbox" aria-label="Paste FRONT source">Paste a FRONT image here</div>
@@ -483,24 +475,19 @@
         <button id="character-container-edit-template" type="button">Edit governing Character.md</button>
         <button id="character-container-edit-costume-template" type="button" hidden>Edit governing Costume template</button>
         <div id="character-container-phase-source" class="head-source-settings" hidden>
-          <p class="muted">FRONT reference for new requests at both qualities. A locked source follows the current locked FRONT in the chosen phase and pipeline.</p>
+          <p class="muted">FRONT reference for new requests at both qualities. A locked source follows the current locked FRONT in the chosen phase.</p>
           <label>Upload FRONT<input id="character-container-phase-source-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
           <div id="character-container-phase-source-paste" class="head-source-paste" contenteditable="true" role="textbox" aria-label="Paste FRONT reference">Click here, then paste a FRONT image</div>
           <button id="character-container-upload-phase-source" type="button">Upload</button>
           <label class="head-phase-change-toggle"><input id="character-container-apply-phase-change" type="checkbox"> Phase Change</label>
           <div id="character-container-source-lock" class="head-source-lock-settings" hidden>
             <label>Source phase<select id="character-container-source-phase"></select></label>
-            <label>Source pipeline<select id="character-container-source-pipeline"><option value="head-image">Head Image Construct</option><option value="head-image-edit">Head Image Edit</option></select></label>
           </div>
           <div class="head-source-actions">
             <button id="character-container-save-phase-source" class="primary-action" type="button">Save source</button>
             <button id="character-container-clear-phase-source" class="clear-source-action" type="button">Clear source</button>
           </div>
           <p id="character-container-phase-source-status" class="muted" role="status"></p>
-        </div>
-        <div id="character-container-assembly-source" class="button-row compact" hidden>
-          <label>Head family<select id="character-container-head-pipeline"><option value="head-image">Head Image Construct</option><option value="head-image-edit">Head Image Edit</option></select></label>
-          <button id="character-container-save-head-pipeline" type="button">Save head family</button>
         </div>
       </details>
       <details id="character-container-template-improvement" class="control-panel template-improvement" hidden>
@@ -597,7 +584,6 @@
               <select id="asset-filter-pipeline">
                 <option value="">All</option>
                 <option value="Body-Reference">Body-Reference</option>
-                <option value="Head-Image">Head-Image (Construct)</option>
                 <option value="Character-Assembly">Character-Assembly</option>
                 <option value="Costume-Dressing">Costume-Dressing</option>
                 <option value="Expression">Expression</option>

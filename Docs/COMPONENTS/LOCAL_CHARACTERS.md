@@ -1,5 +1,7 @@
 # Local character assets
 
+Head Image Edit is the only head workflow. Character Assembly uses matching published Body Reference and Edit views automatically. For a cross-phase FRONT reference, select a source phase or upload an image. The saved phase resolves its published Edit FRONT. See [ADR 0054](../DECISIONS/0054-edit-only-head-images.md).
+
 ## Character Asset Container current outputs (2026-11-06)
 
 `CharacterAssetContainerService` owns the current per-view board lock. A locked
@@ -17,7 +19,7 @@ unlock. The accepted boundary is recorded in [ADR 0048](../DECISIONS/0048-charac
 ## Character Overview Hub
 
 `LocalCharacterOverviewService` returns the selected phase's current published
-Body, Head Edit, Head Construct, Assembly and Costume Dressing locks in display
+Body, Head Edit, Assembly and Costume Dressing locks in display
 order: front, front left/right 3/4, left/right profile, back left/right 3/4, back.
 The Character Asset Container view selector uses the same display order; prompt
 conditioning retains its separate orientation order.
@@ -53,7 +55,7 @@ heel or lifted foot. Assessments describe visible contact and flag occlusion
 when it prevents a judgment.
 
 The replacement workflow is manual: Assets opens one container for Body Reference,
-Head Image Construct, Head Image Edit, Assembly, or a selected Dressing costume.
+Head Image Edit, Assembly, or a selected Dressing costume.
 Its overview shows the current selected or locked image for each view and holds
 container-wide authoring and source settings. Open a view card to reach its
 mixed-quality eight-slot Candidate Board. The operator prepares, generates,
@@ -225,7 +227,7 @@ The durable behavior is recorded in [ADR 0042](../DECISIONS/0042-character-mode-
 
 Head Image and Head Image Edit use one FRONT reference source across Draft and Final. A phase/pipeline choice follows the current locked FRONT, without pinning a candidate or matching its quality; a managed upload is an alternative. Legacy mode-specific records prefer Final when present. See the [active phase-source plan](../../plans/active/phase-change-mode-sources.md) for source storage and migration status.
 
-In Container settings, FRONT can render in three modes: no reference, reference without Phase Change, or reference with Phase Change. The shared Phase Change checkbox controls prompt intent; source phase/pipeline selectors are enabled while selected. Upload accepts file selection or clipboard paste. Phase Change without an available reference is rejected during prompt compilation and render preparation. The FRONT mode caption appears above render actions. Non-FRONT Head Image Construct and Head Image Edit default to the selected FRONT candidate as their reference; each view can save another selected view as its guide. A missing selected reference blocks prompt compilation and rendering. These settings affect new requests; prepared requests retain frozen inputs.
+In Container settings, FRONT can render in three modes: no reference, reference without Phase Change, or reference with Phase Change. The shared Phase Change checkbox controls prompt intent; the source phase selector is enabled while selected. Upload accepts file selection or clipboard paste. Phase Change without an available reference is rejected during prompt compilation and render preparation. The FRONT mode caption appears above render actions. Non-FRONT Head Image Edit views default to the selected FRONT candidate as their reference; each view can save another selected view as its guide. A missing selected reference blocks prompt compilation and rendering. These settings affect new requests; prepared requests retain frozen inputs.
 
 Shared slot recovery reattaches current candidates affected by the historical render-wait timeout to their original queued requests, or restores successful harvested images to review eligibility. It checks slot membership, request identity and receipts before changing state.
 
@@ -337,7 +339,7 @@ Character setup exposes **Edit character template**; Costumes retains its **Open
 
 `CostumeRenderModeService` owns per-view settings, availability and ordered input preparation for slots, previews and Image Generator staging. FRONT retains its Assembly-based Doll-dressing behavior. Other views choose Doll-dressing (w/ Ref), Doll-dressing (no Ref), or Rotate. The first edits the matching Assembly with a selected same-batch costume view as design guidance; no Ref omits prior dressed views but retains authored resource images; Rotate edits the selected dressed view with Assembly second for target orientation, stance and framing. Sources are explicit: an unavailable chosen source blocks new work without nearest-view fallback. Rotation wording includes source, target, angular distance and direction.
 
-Character Asset Container Candidate Boards expose the same three modes for non-FRONT views. Mode and reference view are saved per costume and target view, then captured with each prepared request. An unsaved view defaults to Doll-dressing with reference view FRONT, matching the controls, preview and render request; the page identifies this as a default until saved. Existing candidate prompts retain their captured settings. FRONT continues to use its matching published Assembly image. Head Image Construct and Head Image Edit share the saved cross-phase FRONT reference, while Apply phase change remains a per-request option. Head Edit selects its reference-capable FRONT render profile when the compiler attaches image inputs. Aspect ratio is saved per character, phase, and pipeline, with Dressing scoped to each costume. Head pipelines default to 1:1. Body Reference, Assembly, and Dressing default to 2:3. New render requests capture resolved dimensions, while existing candidates keep their captured settings.
+Character Asset Container Candidate Boards expose the same three modes for non-FRONT views. Mode and reference view are saved per costume and target view, then captured with each prepared request. An unsaved view defaults to Doll-dressing with reference view FRONT, matching the controls, preview and render request; the page identifies this as a default until saved. Existing candidate prompts retain their captured settings. FRONT continues to use its matching published Assembly image. Head Image Edit uses the saved cross-phase FRONT reference, while Apply phase change remains a per-request option. Head Edit selects its reference-capable FRONT render profile when the compiler attaches image inputs. Aspect ratio is saved per character, phase, and pipeline, with Dressing scoped to each costume. Head pipelines default to 1:1. Body Reference, Assembly, and Dressing default to 2:3. New render requests capture resolved dimensions, while existing candidates keep their captured settings.
 
 When a finished candidate is inspected, its Earlier prompt marker compares the captured prompt with current masters using the candidate's captured render mode and Costume-Dressing settings. The marker is recalculated when comparison succeeds, so an old marker clears when the prompt matches again. Compilation failures retain the existing marker until a comparison can be made.
 
@@ -354,6 +356,8 @@ Suggestions now address an eligible-line catalog by section, line number and ori
 Character.md adjustments remain available for the other pipelines. Historical Costume-Dressing Character.md sessions are read-only. Prompt Generator Pilot pages/services/actions have been retired from Costume-Dressing and Head-Image Edit; stored images/session records and adopted-image publication provenance remain. Old continuations terminalize without dispatch. See [ADR 0033](../DECISIONS/0033-costume-post-render-adjustments.md), [Prompts](PROMPTS.md#costume-render-mode-conditioning-2026-10-26) and [Testing](../Testing.md).
 
 ## Independent Head-Image Edit (2026-10-22)
+
+Historical batch design. See ADR 0054 for the current Edit-only workflow.
 
 **Head-Image Edit** (`head-image-edit`, page `local-head-image-edit`) runs beside
 Head-Image. [LocalHeadImageEditService](../../zet/services/local_head_image_edit_service.py)

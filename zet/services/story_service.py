@@ -145,7 +145,7 @@ class StoryService:
             assets = self.asset_repository.list_assets(character, phase)
         except Exception:
             return []
-        return [asset for asset in assets if asset.asset_state == "LOCKED" and asset.pipeline_stage == "LOCKED"]
+        return [asset for asset in assets if asset.pipeline != "Head-Image" and asset.asset_state == "LOCKED" and asset.pipeline_stage == "LOCKED"]
 
 
     def _identity_keys(self, character: str, phase: str) -> list[IdentityKey]:
@@ -249,7 +249,7 @@ class StoryService:
         """Return the short pipeline label used in scene reference tags."""
         return {
             "Body-Reference": "Body",
-            "Head-Image": "Head",
+            "Head-Image-Edit": "Head",
             "Character-Assembly": "Character",
             "Costume-Dressing": "Costume",
             "Scene-Appearance": "Scene Appearance",

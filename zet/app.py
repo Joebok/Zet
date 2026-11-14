@@ -47,7 +47,6 @@ from zet.services.prompt_review_service import PromptReviewContext, PromptReview
 from zet.services.prompt_artifact_service import PromptArtifactService
 from zet.services.production_work_summary_service import ProductionWorkSummaryService
 from zet.services.discovery_context import DiscoveryContext
-from zet.services.reference_service import ReferenceService
 from zet.services.scene_appearance_service import (
     SceneAppearanceCreateResult,
     SceneAppearanceService,
@@ -161,7 +160,6 @@ class ZetApp:
         pipeline_repository: PipelineRepository,
         asset_service: AssetService,
         prompt_review_service: PromptReviewService,
-        reference_service: ReferenceService,
         housekeeping_service: HousekeepingService,
         path_service: PathService,
         turnaround_service: TurnaroundService,
@@ -191,7 +189,6 @@ class ZetApp:
         self.ai_proxy_service = asset_service.ai_proxy_service
         self.ai_queue_lifecycle_service = asset_service.ai_answer_harvester.ai_proxy_path_service.lifecycle
         self.prompt_review_service = prompt_review_service
-        self.reference_service = reference_service
         self.housekeeping_service = housekeeping_service
         self.path_service = path_service
         self.local_asset_source_service = LocalAssetSourceService(
@@ -343,7 +340,6 @@ class ZetApp:
             worker_service,
             path_service,
         )
-        reference_service = ReferenceService(asset_repository, path_service)
         local_asset_sources = LocalAssetSourceService(LocalAssetStoreService(config.base_library_path))
         turnaround_service = TurnaroundService(
             asset_repository,
@@ -400,7 +396,6 @@ class ZetApp:
             pipeline_repository,
             asset_service,
             prompt_review_service,
-            reference_service,
             housekeeping_service,
             path_service,
             turnaround_service,
@@ -1035,9 +1030,6 @@ class ZetApp:
         """Create foundation assets for a validated character phase."""
         self.character_onboarding_service.initialize_foundation(character, phase)
 
-    def add_missing_head_image_foundation(self, character: str, phase: str):
-        return self.character_onboarding_service.add_missing_head_image_foundation(character, phase)
-
     def asset(self, character: str, phase: str, asset_id: int) -> AssetRef:
         return AssetRef(self, character, phase, asset_id)
 
@@ -1272,34 +1264,6 @@ class ZetApp:
 
     def save_automation_settings(self, settings: AutomationSettings) -> None:
         self.pipeline_control_service.save_automation_settings(settings)
-
-    def head_image_reference_context(self, character: str, phase: str, asset_id: int):
-        return self.reference_service.head_image_context(character, phase, asset_id)
-
-    def character_assembly_reference_context(self, character: str, phase: str, asset_id: int):
-        return self.reference_service.character_assembly_context(character, phase, asset_id)
-
-    def save_head_image_source(self, character: str, phase: str, asset_id: int, source_path: str):
-        return self.reference_service.save_head_image_source(character, phase, asset_id, source_path)
-
-    def upload_head_image_source(self, character: str, phase: str, filename: str, contents: bytes):
-        return self.reference_service.upload_head_image_source(character, phase, filename, contents)
-
-    def save_character_assembly_references(
-        self,
-        character: str,
-        phase: str,
-        asset_id: int,
-        body_reference_path: str,
-        head_image_path: str,
-    ) -> Asset:
-        return self.reference_service.save_character_assembly_references(
-            character,
-            phase,
-            asset_id,
-            body_reference_path,
-            head_image_path,
-        )
 
     def list_turnaround_rows(self, character: str, phase: str) -> list[TurnaroundRow]:
         """List dashboard rows for turnaround sheet generation."""

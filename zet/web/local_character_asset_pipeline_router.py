@@ -77,21 +77,13 @@ def create_local_character_asset_pipeline_router(
     def run_all_remaining_status(campaign_id: str):
         return call(lambda: run_all_service().status(campaign_id), missing=404)
 
-    @router.post("/api/local/head-image/sources")
-    async def upload_head_image_source(request: Request, filename: str = Query(...),
-                                       character: str = Query(...), phase: str = Query(...)):
-        request_body = await request.body()
-        return await run_in_threadpool(call, lambda: service("head-image").adapter.upload_source(
-            character, phase, filename, request_body
-        ))
-
     @router.post("/api/local/head-image-edit/sources")
     async def upload_head_edit_source(request: Request, filename: str = Query(...),
                                       character: str = Query(...), phase: str = Query(...)):
         contents = await request.body()
         return await run_in_threadpool(call, lambda: service("head-image-edit").adapter.upload_source(character, phase, filename, contents))
 
-    for pipeline in ("body-reference", "head-image", "head-image-edit", "character-assembly", "costume-dressing"):
+    for pipeline in ("body-reference", "head-image-edit", "character-assembly", "costume-dressing"):
         prefix = f"/api/local/{pipeline}"
         shared_sources = pipeline in {"character-assembly", "costume-dressing"}
 
@@ -297,7 +289,7 @@ def create_local_character_asset_pipeline_router(
                 path = call(lambda: LocalPipelineThumbnailService(instance).source(run_id, view, role,
                     costume=costume, render_mode=render_mode, version=v), missing=404)
                 return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, no-cache"})
-        elif pipeline in {"head-image", "head-image-edit"}:
+        elif pipeline == "head-image-edit":
             @router.get(f"{prefix}/runs/{{run_id}}/source")
             def front_source(run_id: str, render_mode: str = Query("draft"), _pipeline: str = pipeline):
                 path = call(lambda: service(_pipeline).adapter.front_source_path(run_id, render_mode), missing=404)

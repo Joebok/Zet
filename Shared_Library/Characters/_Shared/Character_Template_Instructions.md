@@ -59,38 +59,9 @@ Used by body-reference. Add tagged bullets only where body visibility, overlap, 
 
 ## Head and hair sections
 
-### `HEAD_DESCRIPTION_FACTS` — required
-
-Used by Head Image Construct. Start with one concise sentence combining the
-supported apparent age, species, gender presentation, and distinctive facial
-geometry. Follow with the remaining stable head-only facts, including skin,
-eyes, brows, nose, mouth, ears, and markings. Use view overrides for details
-needed only at particular camera angles. Do not add body, clothing, or framing.
-
-### `HEAD_DESCRIPTION_VIEW_OVERRIDES` - optional per-view refinements
-
-Used by head-image. Add tagged bullets for visible facial planes, ear visibility, occlusion, and asymmetry. Keep it head-only; place anti-drift guidance in `HEAD_DESCRIPTION_VIEW_SUPPRESSION`.
-
-### `HAIR_DESCRIPTION_FACTS` — required
-
-Used by head-image and expression work. Record color, texture, density, hairline, part, length, arrangement, and stable silhouette.
-
-Describe length using body landmarks, such as mid-back below the shoulder blades,
-and distinguish the actual hem from a crop edge. Head references show the complete
-hairstyle where practical, including enough shoulder/back or torso context to
-establish its endpoint while retaining usable head detail. Exceptionally long hair
-may continue beyond the crop without a false shorter hem. Do not force hidden
-lower hair into view or change head/neck proportions to expose it.
-
-### `HAIR_DESCRIPTION_VIEW_OVERRIDES` - optional per-view refinements
-
-Used by Head Image Construct. Add tagged bullets for visible layers, overlaps,
-concealed areas, and view-specific silhouette. Include the head-reference crop
-boundary from the framing rules below. Use body landmarks only as framing context.
-
 ### Head-reference framing
 
-When refining framing, write a concrete crop for the relevant head pipeline.
+When refining framing, write a concrete crop for the Head-Image Edit.
 Follow the pipeline's requested camera,
 head alignment, and gaze. Keep incidental costume, scenery, and body pose out
 of the instructions.
@@ -139,34 +110,6 @@ Describe the intended individual, including any deliberate idealization, weather
 
 Used only by body-reference. Include character-varying technical requirements that are not body facts, such as species-specific mannequin anatomy. Do not repeat global stance, background, fitment clothing, framing, or view instructions.
 
-### `HEAD_IMAGE_TRANSFORM_INSTRUCTIONS` — optional alternative path
-
-Used when the supplied source depicts a different phase or presentation and the job must transform that same person. Write one complete source-to-target transformation contract. When this section is filled, Zet uses it instead of `HEAD_IMAGE_SOURCE_INSTRUCTIONS`, the head and hair fact/view sections, `HEAD_IMAGE_SOURCE_RULES`, and `HEAD_IMAGE_CHARACTER_REQUIREMENTS`. Include every identity anchor, intentional change, source precedence rule, and output requirement needed for the transformation. Do not duplicate this text into the standard sections.
-
-### `HEAD_IMAGE_SOURCE_INSTRUCTIONS` — optional; standard path
-
-Used when `HEAD_IMAGE_TRANSFORM_INSTRUCTIONS` is empty. State how the attached source should be interpreted as identity evidence. Keep it head-only. A Head-Image job always has exactly one source image.
-
-### `HEAD_IMAGE_SOURCE_RULES` — optional; source image only
-
-Used in the standard path. State character-specific source precedence and preservation constraints. Do not repeat general source handling.
-
-### `HEAD_IMAGE_CHARACTER_REQUIREMENTS` - optional for starter templates
-
-Head Image Construct includes this section in text-only jobs and explicit phase
-changes. For same-phase source-backed jobs, the source image governs identity
-and appearance. Include only character-specific head-output requirements beyond
-the head and hair facts. Exclude body, clothing, framing, background, and
-generic rendering rules.
-
-### `HEAD_IMAGE_EXPRESSION_GUIDANCE` — optional; Head-Image only
-
-Used only by Head-Image jobs. Add view-conditioned facial-expression guidance here, using `<!-- ZET:VIEW_DOMAIN head -->` and tags such as `[head:frontish,profiles]` to limit it to front-facing, three-quarter front, and profile views. This section does not affect expression-image jobs or other pipelines.
-
-### `NEGATIVE_GUIDANCE_HEAD_IMAGE` — optional
-
-Used by head-image. List likely character-specific head or hair failure modes as direct prohibitions. Do not include body or costume negatives.
-
 ### `CHARACTER_ASSEMBLY_CHARACTER_REQUIREMENTS` — optional
 
 Used by character-assembly. Include only character-specific join or preservation exceptions. For lower-hair completion, explicitly name the endpoint on the assembled body (for example, mid-back below the shoulder blades), arrangement and silhouette. Assembly may extend cropped or prematurely terminated source hair to that endpoint with natural overlap over shoulders, back and clothing; it preserves underlying body geometry and clothing design. Without an explicitly authored endpoint, it preserves the supplied length, including short hairstyles. Do not author view names or orientation rules; assembly orientation comes exclusively from Zet's view configuration.
@@ -186,7 +129,7 @@ Verify that metadata is filled, every required section contains useful content, 
 
 ## Independent Head-Image Edit authoring
 
-The optional HEAD_EDIT_* family belongs only to Head-Image Edit. Keep existing head/hair sections unchanged when comparing pipelines. FRONT_DESCRIPTION establishes identity from text; PRESERVE contains concise geometry, hair attachment/length and material constraints that also reach source-backed edits. VIEW_OVERRIDES uses the existing head-domain view tags for anatomical sides and intentional visibility. REFERENCE_GUIDANCE binds only applicable universe LIB:REF images and explains the feature transferred and excluded material, identity, camera and background. Never assume a tag name proves anatomy is correct. EXPRESSION_GUIDANCE applies only to visible features. PHASE_CHANGES is opt-in for uploaded FRONT inputs. REVIEW_CRITERIA describes visible acceptance, including intentional eye concealment.
+Head-Image Edit uses the HEAD_EDIT_* sections. FRONT description, preservation and review criteria are required. FRONT_DESCRIPTION establishes identity from text; PRESERVE contains concise geometry, hair attachment/length and material constraints that also reach source-backed edits. VIEW_OVERRIDES uses the existing head-domain view tags for anatomical sides and intentional visibility. REFERENCE_GUIDANCE binds only applicable universe LIB:REF images and explains the feature transferred and excluded material, identity, camera and background. Never assume a tag name proves anatomy is correct. EXPRESSION_GUIDANCE applies only to visible features. PHASE_CHANGES is opt-in for uploaded FRONT inputs. REVIEW_CRITERIA describes visible acceptance, including intentional eye concealment.
 
 Put the shared crop boundary in an untagged bullet in `HEAD_EDIT_VIEW_OVERRIDES`
 so it reaches FRONT and derived renders. Use head-domain tags for view-specific

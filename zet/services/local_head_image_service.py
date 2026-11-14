@@ -16,7 +16,6 @@ from uuid import uuid4
 
 from PIL import Image
 
-from Scripts.Run_Head_Image_Jobs import compile_head_image_job
 from zet.services.local_candidate_review_contract import adjust_candidate_ranking, normalize_human_decision
 from zet.services.local_image_ranking_service import rank_images_with_luna, supplied_ranking_references
 from zet.services.local_asset_store_service import LocalAssetStoreService
@@ -66,14 +65,6 @@ GAZE_RULES = {
 class LocalHeadImageService:
     """Manage one local Head-Image workspace per character and phase."""
 
-    pipeline_id = "head-image"
-    asset_pipeline = "Head-Image"
-    run_kind = "local_head_image"
-    queue_pipeline = "Local-Head-Image"
-    ask_prefix = "LocalHeadImage"
-    compiler = staticmethod(compile_head_image_job)
-    edit_preset = "comfyui-qwen-head-image-edit"
-    text_preset = "comfyui-qwen-head-image-text"
 
     _active: set[str] = set()
     _active_lock = threading.Lock()

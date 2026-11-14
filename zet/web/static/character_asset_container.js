@@ -3,7 +3,7 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
 (() => {
   const $ = (id) => document.getElementById(`character-container-${id}`);
   const pipelineLabels = {
-    "body-reference": "Body Reference", "head-image": "Head Image Construct",
+    "body-reference": "Body Reference",
     "head-image-edit": "Head Image Edit", "character-assembly": "Character Assembly",
     "costume-dressing": "Costume Dressing",
   };
@@ -171,7 +171,7 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
     return activate(state.pipeline, {view, costume: state.costume, scope: state.scope, guidance: $("template-guidance").value});
   }
 
-  function isHead() { return ["head-image", "head-image-edit"].includes(state.pipeline); }
+  function isHead() { return state.pipeline === "head-image-edit"; }
 
   function render() {
     const {scope, boards} = state.detail;
@@ -256,7 +256,7 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
   function savedRenderSettings(view, request, inputs) {
     const saved = request.provenance || {};
     const pipeline = saved.pipeline || state.pipeline;
-    const head = pipeline === 'head-image' || pipeline === 'head-image-edit';
+    const head = pipeline === 'head-image-edit';
     const dressing = pipeline === 'costume-dressing';
     const costume = saved.costume_settings || {};
     const costumeReference = inputs.find(input => ['batch_view_reference', 'costume_rotation_source', 'front_costume'].includes(input.role));
@@ -322,7 +322,7 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
     const renderBlock = phaseChangeBlock();
     const actions=[{key:"luna-review",label:"Luna Review",group:"luna",placement:["controls"]},
       {key:"stage-image-generation",label:"Stage in Image Generator",placement:["settings"],disabledReason:renderBlock}];
-    if(["body-reference","head-image","head-image-edit"].includes(state.pipeline)&&state.view!=="FRONT") {
+    if(["body-reference","head-image-edit"].includes(state.pipeline)&&state.view!=="FRONT") {
       const views=state.detail.scope.views.filter(view=>view!==state.view);
       fields.push({key:"reference_view",label:"Reference view",type:"select",value:$("source-view").value,options:views.map(view=>({value:view,label:view.replaceAll("_"," ")}))});
       actions.push({key:"save-view-source",label:"Save view recipe",group:"render",placement:["settings"]});
@@ -440,8 +440,7 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
     $("template-improvement").hidden = Boolean(state.view);
     $("edit-costume-template").hidden = state.pipeline !== "costume-dressing";
     renderTemplateChoices();
-    $("phase-source").hidden = !["head-image", "head-image-edit"].includes(state.pipeline);
-    $("assembly-source").hidden = state.pipeline !== "character-assembly";
+    $("phase-source").hidden = state.pipeline !== "head-image-edit";
     $("view-source").hidden = true;
     const phaseSelect = $("source-phase");
     const phases = Array.from(document.querySelector("#phase-select").options)
@@ -449,12 +448,9 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
     phaseSelect.replaceChildren(...phases.map((phase) => new Option(phase.textContent, phase.value)));
     phaseSelect.value = phases.some((phase) => phase.value === phaseSource.phase)
       ? phaseSource.phase : (phases[0]?.value || "");
-    $("source-pipeline").value = phaseSource.pipeline || "head-image";
     $("source-lock").hidden = !$("apply-phase-change").checked;
     $("source-phase").disabled = !$("apply-phase-change").checked;
-    $("source-pipeline").disabled = !$("apply-phase-change").checked;
     $("save-phase-source").disabled = !$("apply-phase-change").checked;
-    $("head-pipeline").value = sources.head_pipeline || "head-image";
 
     const recipe = {...(sources.views || {})};
     const sourceView = $("source-view");
@@ -467,7 +463,7 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
   async function loadPhaseSourceCandidates() {
     const sequence = ++state.sourceRequest;
     const phase = $("source-phase").value;
-    const pipeline = $("source-pipeline").value;
+    const pipeline = "head-image-edit";
     if (!phase) {
       $("phase-source-status").textContent = "Choose a source phase.";
       return;
@@ -906,12 +902,10 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
     followViewLink(event, link, link?.dataset.containerView);
   });
   $("source-phase").addEventListener("change", () => void loadPhaseSourceCandidates());
-  $("source-pipeline").addEventListener("change", () => void loadPhaseSourceCandidates());
   $("apply-phase-change").addEventListener("change", () => {
     state.phaseChange = $("apply-phase-change").checked;
     $("source-lock").hidden = !$("apply-phase-change").checked;
     $("source-phase").disabled = !$("apply-phase-change").checked;
-    $("source-pipeline").disabled = !$("apply-phase-change").checked;
     $("save-phase-source").disabled = !$("apply-phase-change").checked;
     if ($("apply-phase-change").checked) void loadPhaseSourceCandidates();
     if (state.view === "FRONT") renderBoard();
@@ -956,7 +950,7 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
   });
   $("save-phase-source").addEventListener("click", () => {
     if (!$("apply-phase-change").checked) return;
-    const source = {phase: $("source-phase").value, pipeline: $("source-pipeline").value};
+    const source = {phase: $("source-phase").value};
     if (!source.phase) { $("phase-source-status").textContent = "Choose a source phase first."; return; }
     void saveSource("phase_change", source);
   });
@@ -978,7 +972,6 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
       $("phase-source-status").textContent = "Managed upload saved for new FRONT requests.";
     } catch (error) { if (error.name !== "AbortError") $("phase-source-status").textContent = error.message; }
   });
-  $("save-head-pipeline").addEventListener("click", () => void saveSource("head_pipeline", $("head-pipeline").value));
   $("save-view-source").addEventListener("click", () => {
     const views = {...(state.detail.sources?.views || {}), [state.view]: $("source-view").value};
     void saveSource("views", views);

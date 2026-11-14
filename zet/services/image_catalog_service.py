@@ -20,7 +20,7 @@ from zet.services.local_asset_store_service import LocalAssetStoreService
 
 SEMANTIC_CATEGORIES = {"Person", "Place", "Object", "Composite/Scene"}
 SECTION_MODES = {"inherit", "override", "not_applicable"}
-BASE_PIPELINES = {"Body-Reference", "Head-Image", "Character-Assembly"}
+BASE_PIPELINES = {"Body-Reference", "Head-Image-Edit", "Character-Assembly"}
 
 
 class ImageCatalogServiceError(Exception):
@@ -177,8 +177,10 @@ class ImageCatalogService:
         rows = []
         for character, phase in self._character_phases() or []:
             for asset in self.local_asset_store.locked_assets(character, phase, render_mode=None):
+                if asset.get("pipeline") == "head-image":
+                    continue
                 image_path = Path(asset["image_path"])
-                pipeline = {"body-reference": "Body-Reference", "head-image": "Head-Image",
+                pipeline = {"body-reference": "Body-Reference", "head-image-edit": "Head-Image-Edit",
                             "character-assembly": "Character-Assembly", "costume-dressing": "Costume-Dressing"}.get(
                                 str(asset.get("pipeline") or "").lower(), str(asset.get("pipeline") or "Local"))
                 identity, costume_text = self._canonical_character_sections(character, phase, asset.get("qualifier") or "")
@@ -196,7 +198,7 @@ class ImageCatalogService:
             except Exception:
                 assets = []
             for asset in assets:
-                if asset.asset_state != "LOCKED" or asset.pipeline_stage != "LOCKED":
+                if asset.pipeline == "Head-Image" or asset.asset_state != "LOCKED" or asset.pipeline_stage != "LOCKED":
                     continue
                 image_path = self.path_service.locked_image_path(asset)
                 if not image_path.is_file():

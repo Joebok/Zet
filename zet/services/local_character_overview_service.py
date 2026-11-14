@@ -17,7 +17,6 @@ class LocalCharacterOverviewService:
     PIPELINES = (
         ("body-reference", "Body-Reference"),
         ("head-image-edit", "Head-Image (Edit)"),
-        ("head-image", "Head-Image (Construct)"),
         ("character-assembly", "Character Assembly"),
     )
 

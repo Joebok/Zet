@@ -32,7 +32,7 @@ class LocalAssetSourceService:
         catalog = EntityLibraryRepository(database)
         output = []
         for pipeline_dir in phase_dir.iterdir():
-            if not pipeline_dir.is_dir() or (pipeline and pipeline_dir.name.casefold() != pipeline.casefold()):
+            if not pipeline_dir.is_dir() or pipeline_dir.name == "head-image" or (pipeline and pipeline_dir.name.casefold() != pipeline.casefold()):
                 continue
             if pipeline_dir.resolve().parent != phase_dir:
                 continue
@@ -119,6 +119,8 @@ class LocalAssetSourceService:
         # Include legacy lock rows only for saved old keys and migration diagnostics.
         sources = []
         for record in self.store.locked_assets(character, phase, pipeline=pipeline, render_mode=None):
+            if record.get("pipeline") == "head-image":
+                continue
             asset_id = record.get("entity_library_asset_id")
             if asset_id:
                 row = self.store._ensure_entity_library().repository.fetchone(
@@ -152,7 +154,7 @@ class LocalAssetSourceService:
                 origin_key = str(asset.get("origin_key") or "")
                 origin_parts = origin_key.split(":", 4)
                 if (asset.get("origin") != "pipeline" or len(origin_parts) < 5
-                        or origin_parts[0] != "local" or origin_parts[2] != character
+                        or origin_parts[1] == "head-image" or origin_parts[0] != "local" or origin_parts[2] != character
                         or origin_parts[3] != phase):
                     raise ValueError("Inventory asset is outside this character phase's pipeline sources.")
                 image = Path(asset["image_path"]).resolve()

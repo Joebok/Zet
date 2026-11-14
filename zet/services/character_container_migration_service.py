@@ -18,7 +18,6 @@ from zet.services.workflow_storage import file_lock
 
 PIPELINES = {
     "body-reference": "Body-Reference",
-    "head-image": "Head-Image",
     "head-image-edit": "Head-Image-Edit",
     "character-assembly": "Character-Assembly",
     "costume-dressing": "Costume-Dressing",
@@ -137,7 +136,7 @@ class CharacterContainerMigrationService:
         choices = []
         work_root = self.library_root / "PipelineCandidates" / "Character-Pipeline"
         for scope in scopes:
-            if scope["pipeline"] not in {"head-image", "head-image-edit"}:
+            if scope["pipeline"] != "head-image-edit":
                 continue
             latest: dict[str, tuple[int, dict]] = {}
             for spec_path in self._legacy_work_files():
@@ -171,7 +170,7 @@ class CharacterContainerMigrationService:
                 origin = record.get("origin") or {}
                 source_phase = str(origin.get("phase") or "").strip()
                 source_pipeline = str(origin.get("pipeline") or "").strip().lower()
-                if source_pipeline not in {"head-image", "head-image-edit"}:
+                if source_pipeline != "head-image-edit":
                     source_pipeline = scope["pipeline"]
                 source_inventory_id = str(origin.get("asset_id") or "")
                 source_key = str(origin.get("source_key") or "")
@@ -424,7 +423,7 @@ class CharacterContainerMigrationService:
                             or self._import_candidate_id(source_decision) != choice.get("candidate_id")):
                         raise CharacterContainerMigrationError("The reviewed phase-change source identity is inconsistent.")
                     value.setdefault("sources", {})["phase_change"] = {
-                        "phase": choice["source_phase"], "pipeline": choice["source_pipeline"]}
+                        "phase": choice["source_phase"]}
                 else:
                     # Choices are applied Draft then Final, so an unavailable saved
                     # Final source intentionally prevents fallback to Draft.

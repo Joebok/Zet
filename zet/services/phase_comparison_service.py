@@ -15,13 +15,12 @@ from zet.services.local_asset_source_service import LocalAssetSourceService
 
 COMPARABLE_PIPELINES = [
     "Body-Reference",
-    "Head-Image",
     "Character-Assembly",
     "Costume-Dressing",
     "Scene-Appearance",
     "Expression",
 ]
-LOCAL_COMPARABLE_PIPELINES = ["Body-Reference", "Head-Image", "Head-Image-Edit", "Character-Assembly", "Costume-Dressing"]
+LOCAL_COMPARABLE_PIPELINES = ["Body-Reference", "Head-Image-Edit", "Character-Assembly", "Costume-Dressing"]
 
 
 @dataclass(frozen=True)
@@ -150,7 +149,7 @@ class PhaseComparisonService:
         if self.local_sources is not None:
             names = {str(item["pipeline"]).lower() for phase in (left_phase, right_phase)
                      for item in self.local_sources.list_sources(character, phase)}
-            canonical = {"body-reference": "Body-Reference", "head-image": "Head-Image",
+            canonical = {"body-reference": "Body-Reference",
                          "head-image-edit": "Head-Image-Edit",
                          "character-assembly": "Character-Assembly", "costume-dressing": "Costume-Dressing"}
             return [label for key, label in canonical.items() if key in names]
@@ -165,7 +164,7 @@ class PhaseComparisonService:
     def _locked_assets(self, character: str, phase: str, pipeline: str) -> list[Asset]:
         """Return locked assets with existing locked images for one phase pipeline."""
         if self.local_sources is not None:
-            keys = {"Body-Reference": "body-reference", "Head-Image": "head-image",
+            keys = {"Body-Reference": "body-reference",
                     "Head-Image-Edit": "head-image-edit",
                     "Character-Assembly": "character-assembly", "Costume-Dressing": "costume-dressing"}
             from types import SimpleNamespace
@@ -250,7 +249,7 @@ class PhaseComparisonService:
     def _slot_key(self, pipeline: str, asset: Asset) -> str:
         """Return the normalized matching key for an asset."""
         parts = [self._normalize_slot_part(asset.body_view)]
-        if pipeline in {"Head-Image", "Head-Image-Edit", "Character-Assembly", "Costume-Dressing", "Scene-Appearance", "Expression"}:
+        if pipeline in {"Head-Image-Edit", "Character-Assembly", "Costume-Dressing", "Scene-Appearance", "Expression"}:
             parts.append(self._normalize_slot_part(asset.head_view))
         if pipeline == "Scene-Appearance":
             parts.append(self._normalize_slot_part(asset.scene_appearance_id))
@@ -263,7 +262,7 @@ class PhaseComparisonService:
         if asset is None:
             return "Unknown slot"
         parts = [str(asset.body_view or "")]
-        if pipeline in {"Head-Image", "Head-Image-Edit", "Character-Assembly", "Costume-Dressing", "Scene-Appearance", "Expression"} and asset.head_view:
+        if pipeline in {"Head-Image-Edit", "Character-Assembly", "Costume-Dressing", "Scene-Appearance", "Expression"} and asset.head_view:
             parts.append(str(asset.head_view))
         if pipeline == "Scene-Appearance" and asset.scene_appearance:
             parts.append(str(asset.scene_appearance))

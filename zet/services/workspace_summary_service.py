@@ -53,7 +53,7 @@ class WorkspaceSummaryService:
         status = self.onboarding_service.status(character, phase)
         assets = self.local_asset_store.locked_assets(character, phase, render_mode=None) if self.local_asset_store else []
         reference_locked = len({item.get("view") for item in assets if str(item.get("pipeline") or "").lower() == "body-reference"})
-        head_image_locked = len({item.get("view") for item in assets if str(item.get("pipeline") or "").lower() == "head-image"})
+        head_image_locked = len({item.get("view") for item in assets if str(item.get("pipeline") or "").lower() == "head-image-edit"})
         assembly_locked = len({item.get("view") for item in assets if str(item.get("pipeline") or "").lower() == "character-assembly"})
         reference_total = head_image_total = assembly_total = 8
         identity_count = len(self.identity_key_service.list_identity_keys(character, phase))
@@ -71,7 +71,7 @@ class WorkspaceSummaryService:
             WorkspaceStep("setup", "Setup", status.complete, int(status.complete), 1, "onboarding"),
             WorkspaceStep("references", "References", reference_complete, reference_locked, reference_total, "local-body-reference"),
         ]
-        steps.append(WorkspaceStep("head-images", "Head Images", head_image_complete, head_image_locked, head_image_total, "local-head-image"))
+        steps.append(WorkspaceStep("head-images", "Head Images", head_image_complete, head_image_locked, head_image_total, "local-head-image-edit"))
         steps.extend([
             WorkspaceStep("assembly", "Assembly", assembly_complete, assembly_locked, assembly_total, "local-character-assembly"),
             WorkspaceStep("identity", "Identity", identity_count > 0, identity_count, 1, "identity-keys"),

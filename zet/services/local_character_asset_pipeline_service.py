@@ -166,10 +166,10 @@ class LocalCharacterAssetPipelineService:
             raise LocalCharacterAssetPipelineError(f"A locked {pipeline} file is required for {view}.")
         return record
 
-    def _requirements(self, head_pipeline: str = "head-image") -> tuple[tuple[str, str], ...]:
+    def _requirements(self) -> tuple[tuple[str, str], ...]:
         source_pipeline = {
             "body_reference": "Body-Reference",
-            "head_image": "Head-Image-Edit" if head_pipeline == "head-image-edit" else "Head-Image",
+            "head_image": "Head-Image-Edit",
             "character_assembly": "Character-Assembly",
         }
         return tuple((role, source_pipeline[role])
@@ -183,9 +183,6 @@ class LocalCharacterAssetPipelineService:
         if pipeline == "Head-Image-Edit":
             from zet.services.local_head_image_edit_service import LocalHeadImageEditService
             return LocalHeadImageEditService(self.app, self.project_root)
-        if pipeline == "Head-Image":
-            from zet.services.local_head_image_service import LocalHeadImageService
-            return LocalHeadImageService(self.app, self.project_root)
         return LocalCharacterAssetPipelineService(self.app, self.project_root, "character-assembly")
 
     @staticmethod
@@ -194,9 +191,9 @@ class LocalCharacterAssetPipelineService:
         created = str(run.get("created_at") or "")
         return f"{name} · {created.replace('T', ' ')}" if created else name
 
-    def _source_batch_options(self, character: str, phase: str, costume: str, head_pipeline: str = "head-image") -> dict[str, list[dict[str, Any]]]:
+    def _source_batch_options(self, character: str, phase: str, costume: str) -> dict[str, list[dict[str, Any]]]:
         options: dict[str, list[dict[str, Any]]] = {}
-        for role, pipeline in self._requirements(head_pipeline):
+        for role, pipeline in self._requirements():
             adapter = self._source_adapter(pipeline)
             runs = adapter.list_run_summaries(character, phase)
             values = []
@@ -240,7 +237,7 @@ class LocalCharacterAssetPipelineService:
                 "selected": True, "locked": bool(candidate.get("locked")), "render_mode": selected_mode}
 
     def _resolve_view_inputs(self, character: str, phase: str, costume: str, view: str,
-                             source_batches: dict[str, str], head_pipeline: str = "head-image", *,
+                             source_batches: dict[str, str], *,
                              render_mode: str = "draft", private_front_source: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
         result = {}
         if private_front_source is not None:
@@ -261,7 +258,7 @@ class LocalCharacterAssetPipelineService:
                 "source_mode": "published_lock", "render_mode": private_front_source.get("render_mode", "draft"),
             }
             return result
-        for role, pipeline in self._requirements(head_pipeline):
+        for role, pipeline in self._requirements():
             selected_batch = str(source_batches.get(role) or "").strip()
             if selected_batch and selected_batch != "locked":
                 result[role] = {**self._selected_batch_input(character, phase, pipeline, selected_batch, view, costume, render_mode=render_mode),
@@ -306,20 +303,17 @@ class LocalCharacterAssetPipelineService:
         if front_count < 1 or other_count < 1 or total > 256:
             raise LocalCharacterAssetPipelineError("Candidate counts must be positive and the run cannot exceed 256 candidates.")
         inputs, blocking_reasons = {}, []
-        head_pipeline = str(payload.get("head_pipeline") or "head-image")
-        if head_pipeline not in {"head-image", "head-image-edit"}:
-            raise LocalCharacterAssetPipelineError("Choose Head-Image (Construct) or Head-Image (Edit) as the head pipeline.")
         source_batches = payload.get("source_batches") or {}
         if not isinstance(source_batches, dict):
             raise LocalCharacterAssetPipelineError("Source batch choices must be an object keyed by source role.")
         for view in requested_views:
             resolved = {}
             try:
-                resolved = self._resolve_view_inputs(character, phase, costume, view, source_batches, head_pipeline,
+                resolved = self._resolve_view_inputs(character, phase, costume, view, source_batches,
                     private_front_source=private_front_source)
             except LocalCharacterAssetPipelineError as exc:
                 blocking_reasons.append(str(exc))
-            if len(resolved) == len(self._requirements(head_pipeline)):
+            if len(resolved) == len(self._requirements()):
                 inputs[view] = resolved
         costume_path = self._costume_path(character, phase, costume) if costume else None
         if costume_path and not costume_path.is_file():
@@ -330,9 +324,8 @@ class LocalCharacterAssetPipelineService:
                 "candidate_count": total, "inputs": inputs, "front_only": bool(payload.get("front_only")),
                 "use_front_anchor": self.pipeline != "character-assembly" and bool(payload.get("use_front_anchor", True)),
                 "front_anchor_required_for_other_views": self.pipeline != "character-assembly" and bool(payload.get("use_front_anchor", True)),
-                "source_batches": {role: str(source_batches.get(role) or "locked") for role, _ in self._requirements(head_pipeline)},
-                "head_pipeline": head_pipeline,
-                "source_batch_options": self._source_batch_options(character, phase, costume, head_pipeline),
+                "source_batches": {role: str(source_batches.get(role) or "locked") for role, _ in self._requirements()},
+                "source_batch_options": self._source_batch_options(character, phase, costume),
                 "can_create": not blocking_reasons, "blocking_reasons": list(dict.fromkeys(blocking_reasons))}
 
     def _requires_front_anchor(self, run: dict[str, Any]) -> bool:
@@ -427,7 +420,6 @@ class LocalCharacterAssetPipelineService:
                 "costume": plan["costume"], "views": plan["views"], "front_count": plan["front_count"],
                 "other_count": plan["other_count"], "candidate_count": count, "sources": sources,
                 "source_batches": plan.get("source_batches") or {},
-                "head_pipeline": plan.get("head_pipeline", "head-image"),
                 "use_front_anchor": plan["use_front_anchor"],
                 "costume_path": costume_path, "costume_sha256": self._hash(Path(costume_path)) if costume_path else "",
                 "wizard_private_source": private_front_source is not None,
@@ -587,7 +579,7 @@ class LocalCharacterAssetPipelineService:
             if captured.get("character_assembly"):
                 return captured
         return self._resolve_view_inputs(run["character"], run["phase"], str(run.get("costume") or ""),
-                                         view, run.get("source_batches") or {}, run.get("head_pipeline", "head-image"), render_mode=render_mode)
+                                         view, run.get("source_batches") or {}, render_mode=render_mode)
 
     def _snapshot_view_inputs(self, run: dict[str, Any], view: str,
                               locked: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -1265,7 +1257,7 @@ class LocalCharacterAssetPipelineService:
         self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], self.definition["asset_pipeline"], view, qualifier)
         dependencies = []
         if self.pipeline == "character-assembly":
-            for pipeline in ("Body-Reference", "Head-Image"):
+            for pipeline in ("Body-Reference", "Head-Image-Edit"):
                 source = run["sources"][view]["body_reference" if pipeline == "Body-Reference" else "head_image"]
                 dependencies.append({"key": source["key"], "image_sha256": source["sha256"]})
         else:

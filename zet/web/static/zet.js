@@ -196,12 +196,12 @@ const CHARACTER_PAGES = new Set(["onboarding", "minor-characters", "identity-key
 const STORY_PAGES = new Set(["narrative", "scene-candidates", "zine"]);
 const LOCAL_PAGES = new Set([
   "character-asset-container",
-  "local-body-reference", "local-head-image", "local-head-image-edit", "local-character-assembly",
+  "local-body-reference", "local-head-image-edit", "local-character-assembly",
   "local-costume-dressing", "local-identity-keys", "local-turnarounds", "local-costumes",
   "local-scene-appearances", "local-expressions", "local-comparison",
 ]);
 const LOCAL_ASSET_PAGES = new Set([
-  "local-body-reference", "local-head-image", "local-head-image-edit", "local-character-assembly", "local-costume-dressing",
+  "local-body-reference", "local-head-image-edit", "local-character-assembly", "local-costume-dressing",
 ]);
 const PRODUCTION_PAGES = new Set(["prompt-review"]);
 let entityLibraryImportGeneration = null;
@@ -258,7 +258,6 @@ const onboardingSaveDraft = document.querySelector("#onboarding-save-draft");
 const onboardingDownloadTemplate = document.querySelector("#onboarding-download-template");
 const onboardingTemplateFile = document.querySelector("#onboarding-template-file");
 const onboardingUploadTemplate = document.querySelector("#onboarding-upload-template");
-const onboardingAddHeadImages = document.querySelector("#onboarding-add-head-images");
 const onboardingTitle = document.querySelector("#onboarding-title");
 const onboardingStatusList = document.querySelector("#onboarding-status-list");
 const onboardingValidation = document.querySelector("#onboarding-validation");
@@ -493,8 +492,6 @@ const manifestBodySection = document.querySelector("#manifest-body-section");
 const manifestHeadHeading = document.querySelector("#manifest-head-heading");
 const bodyReferenceSelect = document.querySelector("#body-reference-select");
 const headshotReferenceSelect = document.querySelector("#headshot-reference-select");
-const headshotUpload = document.querySelector("#headshot-upload");
-const headshotPasteZone = document.querySelector("#headshot-paste-zone");
 const bodyReferencePreview = document.querySelector("#body-reference-preview");
 const headshotReferencePreview = document.querySelector("#headshot-reference-preview");
 const manifestReferenceJson = document.querySelector("#manifest-reference-json");
@@ -2142,7 +2139,7 @@ function pageWorkspace(page) {
 
 function canonicalDashboardPage(page) {
   const legacyCharacterPipelines = {
-    "local-body-reference": "body-reference", "local-head-image": "head-image",
+    "local-body-reference": "body-reference",
     "local-head-image-edit": "head-image-edit", "local-character-assembly": "character-assembly",
     "local-costume-dressing": "costume-dressing",
   };
@@ -2174,7 +2171,6 @@ const RESPONSIVE_WORKSPACE_PAGES = {
     ["onboarding", "Character Overview"],
     ["character-asset-container:body-reference", "Assets · Body Reference"],
     ["character-asset-container:head-image-edit", "Assets · Head Image Edit"],
-    ["character-asset-container:head-image", "Assets · Head Image Construct"],
     ["character-asset-container:character-assembly", "Assets · Character Assembly"],
     ["character-asset-container:costume-dressing", "Assets · Costume Dressing"],
     ["identity-keys", "Identity Keys"],
@@ -2568,7 +2564,6 @@ function renderOnboarding() {
   onboardingDownloadTemplate.hidden = !status?.template_path;
   document.querySelector("#character-wizard-edit").hidden = isDraft || !status?.template_path;
   document.querySelector("#onboarding-edit-template").hidden = isDraft || !status?.template_path;
-  onboardingAddHeadImages.disabled = !status?.assets_exists || !status?.pipelines_exists;
   if (status?.template_path) {
     onboardingDownloadTemplate.href = downloadFileUrl(status.template_path);
     onboardingDownloadTemplate.download = "Character.md";
@@ -2852,16 +2847,6 @@ function syncBrowserRoute({ replace = false } = {}) {
   window.history[replace ? "replaceState" : "pushState"]({}, "", url);
 }
 
-async function addMissingHeadImages() {
-  if (!state.character || !state.phase) return;
-  try {
-    const payload = await fetchJson(`/api/onboarding/head-images?${currentQuery().toString()}`, { method: "POST" });
-    showOnboardingMessage(payload.message || "Head-Image foundation updated.");
-    await refreshCurrentContext();
-  } catch (error) {
-    showOnboardingMessage(error.message, "error");
-  }
-}
 
 async function loadAssets(preferredAssetId = null) {
   if (!state.character || !state.phase) {
@@ -3514,7 +3499,7 @@ async function activatePage(page, options = {}) {
   const retiredPage = ["render-console", "render-review"].includes(page);
   const retiredRoute = new URLSearchParams(window.location.search);
   const legacyPipeline = ({
-    "local-body-reference": "body-reference", "local-head-image": "head-image",
+    "local-body-reference": "body-reference",
     "local-head-image-edit": "head-image-edit", "local-character-assembly": "character-assembly",
     "local-costume-dressing": "costume-dressing",
   })[page];
@@ -3607,7 +3592,6 @@ async function activatePage(page, options = {}) {
   if (LOCAL_ASSET_PAGES.has(page)) {
     const labels = {
       "local-body-reference": "Body-Reference",
-      "local-head-image": "Head-Image (Construct)",
       "local-head-image-edit": "Head-Image (Edit)",
       "local-character-assembly": "Character-Assembly",
       "local-costume-dressing": "Costume-Dressing",
@@ -11071,11 +11055,7 @@ async function loadManifestTasks(preferredAssetId = null) {
     return;
   }
   manifestStatus.textContent = "Loading manifest tasks...";
-  const [headImagePayload, assemblyPayload] = await Promise.all([
-    fetchJson(`/api/head-image-manifest/tasks?${currentQuery().toString()}`),
-    fetchJson(`/api/character-assembly-manifest/tasks?${currentQuery().toString()}`),
-  ]);
-  state.manifestTasks = [...(headImagePayload.tasks || []), ...(assemblyPayload.tasks || [])];
+  state.manifestTasks = [];
   const taskIds = new Set(state.manifestTasks.map((task) => task.asset_id));
   state.selectedManifestAssetId = preferredAssetId || state.selectedManifestAssetId || state.manifestTasks[0]?.asset_id || null;
   if (state.selectedManifestAssetId && !taskIds.has(state.selectedManifestAssetId)) {
@@ -11117,10 +11097,7 @@ function renderManifestTaskTable() {
 async function selectManifestAsset(assetId) {
   state.selectedManifestAssetId = Number(assetId);
   updateSelectableRows(manifestTaskBody, (row) => Number(row.dataset.assetId) === state.selectedManifestAssetId);
-  const task = state.manifestTasks.find((item) => item.asset_id === state.selectedManifestAssetId);
-  const route = task?.pipeline === "Head-Image"
-    ? "head-image-manifest"
-    : "character-assembly-manifest";
+  const route = "character-assembly-manifest";
   const detail = await fetchJson(`/api/${route}/${state.selectedManifestAssetId}?${currentQuery().toString()}`);
   if (state.selectedManifestAssetId !== Number(assetId)) {
     return;
@@ -11137,8 +11114,6 @@ function clearManifest() {
   headshotReferencePreview.textContent = "No headshot selected.";
   manifestReferenceJson.textContent = "";
   manifestBodySection.hidden = false;
-  headshotUpload.hidden = false;
-  headshotPasteZone.hidden = false;
   saveManifestReferencesButton.disabled = true;
   manifestPrev.disabled = true;
   manifestNext.disabled = true;
@@ -11149,26 +11124,13 @@ function renderManifest(detail) {
   const asset = detail.asset;
   const proxyStatus = detail.ai_proxy_status?.pending ? " | AI Proxy pending" : "";
   manifestTitle.textContent = `Asset ${asset.asset_id} | ${asset.body_view} / ${asset.head_view}${proxyStatus}`;
-  const isHeadImage = asset.pipeline === "Head-Image";
-  const isCharacterAssembly = asset.pipeline === "Character-Assembly";
-  manifestBodySection.hidden = isHeadImage;
-  manifestHeadHeading.textContent = isHeadImage ? "Required Source Image" : "Head Image";
-  headshotUpload.hidden = isCharacterAssembly;
-  headshotPasteZone.hidden = isCharacterAssembly;
+  manifestBodySection.hidden = false;
+  manifestHeadHeading.textContent = "Head Image";
   fillReferenceSelect(bodyReferenceSelect, detail.body_reference_options || [], detail.selected_body_reference?.path || "");
-  const headOptions = isHeadImage
-    ? (detail.source_options || [])
-    : (detail.head_image_options || []);
-  const selectedHeadPath = isHeadImage
-    ? (detail.selected_source?.path || "")
-    : (detail.selected_head_image?.path || "");
-  fillReferenceSelect(headshotReferenceSelect, headOptions, selectedHeadPath);
+  fillReferenceSelect(headshotReferenceSelect, detail.head_image_options || [], detail.selected_head_image?.path || "");
   manifestReferenceJson.textContent = JSON.stringify(detail.reference_files || [], null, 2);
   bodyReferenceSelect.disabled = !detail.is_manifest_editable;
   headshotReferenceSelect.disabled = !detail.is_manifest_editable;
-  headshotUpload.disabled = !detail.is_manifest_editable;
-  headshotPasteZone.tabIndex = detail.is_manifest_editable ? 0 : -1;
-  headshotPasteZone.setAttribute("aria-disabled", detail.is_manifest_editable ? "false" : "true");
   saveManifestReferencesButton.disabled = !detail.is_manifest_editable;
   updateManifestPreviews();
   updateManifestNavigation();
@@ -11215,24 +11177,13 @@ async function saveManifestReferences() {
   }
   showManifestMessage("Saving...");
   try {
-    const isHeadImage = state.manifestDetail?.asset?.pipeline === "Head-Image";
-    const isCharacterAssembly = state.manifestDetail?.asset?.pipeline === "Character-Assembly";
-    const route = isHeadImage
-      ? `/api/head-image-manifest/${state.selectedManifestAssetId}/source`
-      : (isCharacterAssembly
-        ? `/api/character-assembly-manifest/${state.selectedManifestAssetId}/references`
-        : `/api/character-assembly-manifest/${state.selectedManifestAssetId}/references`);
+    const route = `/api/character-assembly-manifest/${state.selectedManifestAssetId}/references`;
     const payload = await fetchJson(
       `${route}?${currentQuery().toString()}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(isHeadImage ? {
-          source_path: headshotReferenceSelect.value,
-        } : isCharacterAssembly ? {
-          body_reference_path: bodyReferenceSelect.value,
-          head_image_path: headshotReferenceSelect.value,
-        } : {
+        body: JSON.stringify({
           body_reference_path: bodyReferenceSelect.value,
           head_image_path: headshotReferenceSelect.value,
         }),
@@ -11247,33 +11198,6 @@ async function saveManifestReferences() {
   }
 }
 
-async function uploadHeadshotReference(file = headshotUpload.files?.[0]) {
-  if (!file) {
-    return;
-  }
-  const isHeadImage = state.manifestDetail?.asset?.pipeline === "Head-Image";
-  showManifestMessage(isHeadImage ? "Uploading Head-Image source..." : "Uploading legacy headshot override...");
-  const params = currentQuery();
-  params.set("filename", file.name);
-  try {
-    const uploadRoute = "/api/head-image-sources";
-    const payload = await fetchJson(`${uploadRoute}?${params.toString()}`, {
-      method: "POST",
-      headers: { "Content-Type": file.type || "application/octet-stream" },
-      body: file,
-    });
-    showManifestMessage(`Uploaded ${payload.name}.`);
-    const selectedBodyReferencePath = bodyReferenceSelect.value;
-    await selectManifestAsset(state.selectedManifestAssetId);
-    bodyReferenceSelect.value = selectedBodyReferencePath;
-    headshotReferenceSelect.value = payload.path;
-    updateManifestPreviews();
-  } catch (error) {
-    showManifestMessage(error.message, "error");
-  } finally {
-    headshotUpload.value = "";
-  }
-}
 
 
 
@@ -11454,7 +11378,6 @@ onboardingSaveDraft.addEventListener("click", saveOnboardingDraft);
 
 
 onboardingUploadTemplate.addEventListener("click", uploadOnboardingTemplate);
-onboardingAddHeadImages.addEventListener("click", addMissingHeadImages);
 
 
 for (const button of document.querySelectorAll(".open-template-manual")) {
@@ -11934,15 +11857,6 @@ renderConsoleRefinementRequired.addEventListener("change", () => {
 renderConsoleFailTask.addEventListener("click", failRenderConsoleTask);
 bodyReferenceSelect.addEventListener("change", updateManifestPreviews);
 headshotReferenceSelect.addEventListener("change", updateManifestPreviews);
-headshotUpload.addEventListener("change", () => uploadHeadshotReference());
-headshotPasteZone.addEventListener("paste", (event) => {
-  if (headshotPasteZone.getAttribute("aria-disabled") === "true") return;
-  const file = imageBlobFromPasteEvent(event);
-  if (file) {
-    event.preventDefault();
-    uploadHeadshotReference(file);
-  }
-});
 saveManifestReferencesButton.addEventListener("click", saveManifestReferences);
 
 

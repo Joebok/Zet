@@ -38,54 +38,6 @@ Keep facial details hidden in direct rear views.
 
 ---
 
-# Head Description
-
-## Head Description — Just the Facts
-
-<!-- ZET:BEGIN HEAD_DESCRIPTION_FACTS -->
-
-Face shape: oval. Eyes: brown. Hair: short dark hair. Expression: calm and neutral.
-
-<!-- ZET:END HEAD_DESCRIPTION_FACTS -->
-
-## Head Description — View-Specific
-
-<!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_OVERRIDES -->
-
-Front view: both eyes visible and face centered. Profile views show one eye.
-
-<!-- ZET:END HEAD_DESCRIPTION_VIEW_OVERRIDES -->
-
-<!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_SUPPRESSION -->
-<!-- ZET:VIEW_DOMAIN head -->
-
-* [b] `[Keep the face and eyes hidden in a direct rear view.]`
-* [bl,br] `[Keep rear three-quarter views from rotating toward the front.]`
-
-<!-- ZET:END HEAD_DESCRIPTION_VIEW_SUPPRESSION -->
-
----
-
-# Hair Description
-
-## Hair Description — Just the Facts
-
-<!-- ZET:BEGIN HAIR_DESCRIPTION_FACTS -->
-
-Hair color: dark brown. Hair length: short. Keep a simple consistent silhouette.
-
-<!-- ZET:END HAIR_DESCRIPTION_FACTS -->
-
-## Hair Description — View-Specific
-
-<!-- ZET:BEGIN HAIR_DESCRIPTION_VIEW_OVERRIDES -->
-
-Maintain the same short haircut silhouette across all views.
-
-<!-- ZET:END HAIR_DESCRIPTION_VIEW_OVERRIDES -->
-
----
-
 # Expression
 
 ## Expression Guidance
@@ -166,76 +118,6 @@ Render a full-body adult human in a neutral, balanced stance on a simple backgro
 
 ---
 
-# Head Image
-
-## Transform Instructions
-
-<!-- ZET:BEGIN HEAD_IMAGE_TRANSFORM_INSTRUCTIONS -->
-
-
-
-<!-- ZET:END HEAD_IMAGE_TRANSFORM_INSTRUCTIONS -->
-
-## Local Head-Image Phase Changes
-
-<!-- ZET:BEGIN HEAD_IMAGE_LOCAL_PHASE_CHANGES -->
-
-
-
-<!-- ZET:END HEAD_IMAGE_LOCAL_PHASE_CHANGES -->
-
-## Source Instructions
-
-<!-- ZET:BEGIN HEAD_IMAGE_SOURCE_INSTRUCTIONS -->
-
-
-
-<!-- ZET:END HEAD_IMAGE_SOURCE_INSTRUCTIONS -->
-
-## Source Rules
-
-<!-- ZET:BEGIN HEAD_IMAGE_SOURCE_RULES -->
-
-Source-image contract:
-
-* Source identity authority: `[What likeness or design information should be taken from a supplied source image.]`
-* Preserve from source: `[Identity-defining shapes, proportions, expression, tilt, or other stable traits.]`
-* Intentional target-phase changes: `[Age, hair, species, condition, or other changes required by this Character.md.]`
-* Template precedence: the target-phase Character.md overrides the source only for explicitly described changes; preserve all other identity-defining source traits.
-* The requested target view always overrides the source image's camera angle or head orientation.
-
-<!-- ZET:END HEAD_IMAGE_SOURCE_RULES -->
-
-## Character Requirements
-
-<!-- ZET:BEGIN HEAD_IMAGE_CHARACTER_REQUIREMENTS -->
-
-Render a centered head-and-shoulders image on a transparent background.
-
-<!-- ZET:END HEAD_IMAGE_CHARACTER_REQUIREMENTS -->
-
-## Expression Guidance
-
-<!-- ZET:BEGIN HEAD_IMAGE_EXPRESSION_GUIDANCE -->
-
-<!-- ZET:VIEW_DOMAIN head -->
-* [head:frontish,profiles] Use a calm, neutral expression with relaxed brows and mouth; keep the lips gently closed, with no smile, frown, or exaggerated emotion. Keep the eyes and gaze aligned with the requested view.
-
-<!-- ZET:END HEAD_IMAGE_EXPRESSION_GUIDANCE -->
-
-## Negative Guidance
-
-<!-- ZET:BEGIN NEGATIVE_GUIDANCE_HEAD_IMAGE -->
-
-* Preserve the exact requested head orientation and view-specific facial visibility.
-* Keep the output a reusable head reference rather than a narrative portrait or scene.
-* Use only the natural neck and limited shoulder context needed to preserve the complete head and hairstyle silhouette.
-* Do not add extra weapons, props, jewelry, decorative accessories, labels, registration text, or visible guide marks.
-
-<!-- ZET:END NEGATIVE_GUIDANCE_HEAD_IMAGE -->
-
----
-
 # Character Assembly
 
 ## Character Requirements
@@ -257,3 +139,19 @@ Render a centered head-and-shoulders image on a transparent background.
 Avoid dramatic expressions, pose changes, added props, and costume redesign.
 
 <!-- ZET:END NEGATIVE_GUIDANCE_EXPRESSION -->
+
+# Head-Image Edit
+
+<!-- ZET:BEGIN HEAD_EDIT_FRONT_DESCRIPTION -->
+Face shape: oval. Eyes: brown. Hair: short dark hair. Expression: calm and neutral.
+Hair color: dark brown. Hair length: short. Keep a simple consistent silhouette.
+<!-- ZET:END HEAD_EDIT_FRONT_DESCRIPTION -->
+
+<!-- ZET:BEGIN HEAD_EDIT_PRESERVE -->
+Face shape: oval. Eyes: brown. Hair: short dark hair. Expression: calm and neutral.
+Hair color: dark brown. Hair length: short. Keep a simple consistent silhouette.
+<!-- ZET:END HEAD_EDIT_PRESERVE -->
+
+<!-- ZET:BEGIN HEAD_EDIT_REVIEW_CRITERIA -->
+* Preserve visible likeness and hairstyle.
+<!-- ZET:END HEAD_EDIT_REVIEW_CRITERIA -->

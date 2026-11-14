@@ -6,7 +6,6 @@ from uuid import uuid4
 class CharacterContainerPromptService:
     COMPILERS = {
         "body-reference": ("Scripts.Run_Body_Reference_Jobs", "compile_body_reference_job"),
-        "head-image": ("Scripts.Run_Head_Image_Jobs", "compile_head_image_job"),
         "head-image-edit": ("Scripts.Run_Head_Image_Edit_Jobs", "compile_head_image_edit_job"),
         "character-assembly": ("Scripts.Run_Character_Assembly_Jobs", "compile_character_assembly_job"),
         "costume-dressing": ("Scripts.Run_Costume_Dressing_Jobs", "compile_costume_dressing_job"),
@@ -51,7 +50,6 @@ class CharacterContainerPromptService:
             "Body View": view, "Head View": view,
             "Template Path": str(character_template), "Output Directory": str(directory),
             "Reference Files": normalized_references,
-            "Allow Unanchored View": pipeline == "head-image" and not normalized_references,
             "Apply Phase Change": apply_phase_change,
             "Assembly Style Mode": assembly_style_mode,
         }

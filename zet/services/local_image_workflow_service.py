@@ -8,7 +8,6 @@ import json
 
 from zet.services.local_body_reference_service import LocalBodyReferenceService
 from zet.services.local_character_asset_pipeline_service import LocalCharacterAssetPipelineService
-from zet.services.local_head_image_service import LocalHeadImageService
 from zet.services.local_image_pipeline_policy import local_image_pipeline_config, pipeline_page_config
 from zet.services.local_prompt_improvement_service import LocalPromptImprovementService
 from zet.services.render_slot_service import CharacterRenderSlots, RenderSlotConflict
@@ -64,8 +63,6 @@ class LocalImagePipelineWorkflowService:
         if self.pipeline_config.generation_adapter == "head-image-edit":
             from zet.services.local_head_image_edit_service import LocalHeadImageEditService
             self.adapter = LocalHeadImageEditService(app, self.project_root)
-        elif self.pipeline_config.generation_adapter == "head-image":
-            self.adapter = LocalHeadImageService(app, self.project_root)
         elif self.pipeline_config.generation_adapter == "body-reference":
             self.adapter = LocalBodyReferenceService(app, self.project_root)
         else:

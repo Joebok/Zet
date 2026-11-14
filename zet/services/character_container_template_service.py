@@ -21,7 +21,7 @@ class CharacterContainerTemplateError(ValueError):
 
 
 class CharacterContainerTemplateService:
-    PIPELINES = {"body-reference", "head-image", "head-image-edit", "character-assembly", "costume-dressing"}
+    PIPELINES = {"body-reference", "head-image-edit", "character-assembly", "costume-dressing"}
     HEAD_EDIT_LINE_REVIEW_VERSION = 1
 
     def __init__(self, app, project_root: str | Path):

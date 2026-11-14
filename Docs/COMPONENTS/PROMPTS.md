@@ -1,5 +1,7 @@
 # Prompt compilation and reference contracts
 
+Character masters use HEAD_EDIT_FRONT_DESCRIPTION, HEAD_EDIT_PRESERVE and HEAD_EDIT_REVIEW_CRITERIA for required head authoring. View and reference guidance are optional. Phase Change requires HEAD_EDIT_PHASE_CHANGES. See [ADR 0054](../DECISIONS/0054-edit-only-head-images.md).
+
 Character Assembly accepts optional `CHARACTER_ASSEMBLY_GENERAL_INSTRUCTIONS` and `CHARACTER_ASSEMBLY_VIEW_INSTRUCTIONS` in `Character.md`. The latter uses body-view tags. Both compile under Subject Details after legacy assembly requirements; blank sections add no prose. Youth Tsaeytte uses these for the lower-hair silhouette, leaving head and body images authoritative for the rest of assembly.
 
 ## Character and costume source editing (2026-10-26)

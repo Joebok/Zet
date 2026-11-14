@@ -35,7 +35,7 @@ class CharacterContainerTextPreviewService:
                     from zet.services.local_view_reference_service import batch_view_reference
                     source_view = "FRONT" if pipeline == "head-image-edit" else PREDECESSORS.get(view, "FRONT")
                     reference = batch_view_reference(source_view, view, "declared:batch_view_reference", "declared")
-                    if pipeline.startswith("head-image"):
+                    if pipeline == "head-image-edit":
                         reference.update(role="head_image_source", prompt_role="edit_base")
                     references.append(reference)
                 output = directory / view

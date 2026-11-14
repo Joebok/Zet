@@ -34,7 +34,7 @@ class CharacterAssetContainerError(ValueError):
 
 
 class CharacterAssetContainerService:
-    PIPELINES = ("body-reference", "head-image", "head-image-edit",
+    PIPELINES = ("body-reference", "head-image-edit",
                  "character-assembly", "costume-dressing")
 
     def __init__(self, app):
@@ -123,7 +123,7 @@ class CharacterAssetContainerService:
             # The persisted view order is presentation metadata. Return the current
             # order so old containers render consistently after an ordering change.
             value["scope"] = scope
-            default_ratio = "1:1" if pipeline in {"head-image", "head-image-edit"} else "2:3"
+            default_ratio = "1:1" if pipeline == "head-image-edit" else "2:3"
             value.setdefault("render_settings", {}).setdefault("aspect_ratio", default_ratio)
             if self.image_production.finish_board_withdrawals(value):
                 write_json_atomic(path, value)
@@ -419,9 +419,9 @@ class CharacterAssetContainerService:
         value = self.detail(character, phase, pipeline, costume)
         if view not in value["boards"]:
             raise CharacterAssetContainerError("Choose a view in this container.")
-        if pipeline in {"body-reference", "head-image", "head-image-edit"}:
+        if pipeline in {"body-reference", "head-image-edit"}:
             if view == "FRONT":
-                if pipeline in {"head-image", "head-image-edit"}:
+                if pipeline == "head-image-edit":
                     sources = value["sources"]
                     if "phase_change" in sources:
                         source = sources.get("phase_change") or {}
@@ -441,24 +441,25 @@ class CharacterAssetContainerService:
                         return [{"role": "head_image_source", "label": source.get("filename") or "Uploaded phase-change FRONT",
                             "path": str(source_path), "sha256": source["sha256"], "source_kind": "upload"}]
                     if source_phase and source_phase != phase:
-                        source_pipeline = str(source.get("pipeline") or pipeline)
+                        source_pipeline = "head-image-edit"
                         source_value = self.detail(character, source_phase, source_pipeline)
                         candidate_ref = self._selected_reference(source_value, "FRONT", "head_image_source", published=True)
                         return [candidate_ref]
                 return []
             source_view = (value["sources"].get("views") or {}).get(view)
             if not source_view:
-                if pipeline not in {"head-image", "head-image-edit"}:
+                if pipeline != "head-image-edit":
                     return []
                 source_view = "FRONT"
             role = "body_reference_front_anchor" if pipeline == "body-reference" else "head_image_source"
             return [self._selected_reference(value, source_view, role, published=False)]
         if pipeline == "character-assembly":
-            selected_head = str(value["sources"].get("head_pipeline") or "head-image")
             references = []
-            for source_pipeline, role in (("body-reference", "body_reference"), (selected_head, "head_image")):
+            for source_pipeline, role in (("body-reference", "body_reference"), ("head-image-edit", "head_image")):
                 source_value = self.detail(character, phase, source_pipeline)
-                reference = self._selected_reference(source_value, view, role, published=True)
+                reference = self._selected_reference(source_value, view,
+                    "head_image_edit" if role == "head_image" else role, published=True)
+                reference.update(role=role)
                 reference.update(body_view=view, head_view=view)
                 references.append(reference)
             return references
@@ -497,11 +498,11 @@ class CharacterAssetContainerService:
                        assembly_style_mode: str = "", render_mode: str = "draft",
                        costume_settings: dict | None = None, output_directory: Path | None = None) -> dict:
         scope = self._scope(character, phase, pipeline, costume)
-        if apply_phase_change and pipeline in {"head-image", "head-image-edit"} and view != "FRONT":
+        if apply_phase_change and pipeline == "head-image-edit" and view != "FRONT":
             raise CharacterAssetContainerError("Phase Change applies only to FRONT renders.")
         references = self.resolve_references(character, phase, pipeline, scope["costume"], view,
                                              render_mode=render_mode, costume_settings=costume_settings)
-        if apply_phase_change and pipeline in {"head-image", "head-image-edit"} and not references:
+        if apply_phase_change and pipeline == "head-image-edit" and not references:
             raise CharacterAssetContainerError(
                 "Phase Change requires an uploaded FRONT reference or a selected locked FRONT source.")
         target = output_directory or self._path(scope).parent / "prompt-previews" / quote(view, safe="-_.")
@@ -871,8 +872,6 @@ class CharacterAssetContainerService:
     def _preset(pipeline: str, has_references: bool, view: str, assembly_style_mode: str) -> str:
         if pipeline == "body-reference":
             return "comfyui-qwen-body-reference-edit" if has_references else "comfyui-qwen-body-reference-text"
-        if pipeline == "head-image":
-            return "comfyui-qwen-head-image-edit" if has_references else "comfyui-qwen-head-image-text"
         if pipeline == "head-image-edit":
             return ("comfyui-qwen-head-image-edit-v1" if has_references
                     else "comfyui-qwen-head-image-edit-front-v1") if view == "FRONT" else "comfyui-qwen-head-image-edit-v1"
@@ -905,7 +904,7 @@ class CharacterAssetContainerService:
     def save_source(self, character: str, phase: str, pipeline: str, costume: str,
                     source_name: str, source: dict, *, expected_revision: int,
                     render_mode: str = "") -> dict:
-        if source_name not in {"phase_change", "phase_change_by_mode", "head_pipeline", "views", "dressing_settings"}:
+        if source_name not in {"phase_change", "phase_change_by_mode", "views", "dressing_settings"}:
             if source_name == "render_settings":
                 value = self.detail(character, phase, pipeline, costume)
                 if value["revision"] != expected_revision:
@@ -922,15 +921,12 @@ class CharacterAssetContainerService:
         value = self.detail(character, phase, pipeline, costume)
         if source_name == "phase_change_by_mode":
             raise CharacterAssetContainerError("Phase-change sources are shared across qualities. Refresh the container and choose one source.")
-        if source_name == "head_pipeline":
-            if pipeline != "character-assembly" or source not in {"head-image", "head-image-edit"}:
-                raise CharacterAssetContainerError("Choose Head Image Construct or Head Image Edit for Assembly.")
-        elif not isinstance(source, dict):
+        if not isinstance(source, dict):
             raise CharacterAssetContainerError("Reference settings must be an object.")
         if isinstance(source, dict):
             source = copy.deepcopy(source)
         if source_name in {"phase_change", "phase_change_by_mode"} and source:
-            if pipeline not in {"head-image", "head-image-edit"}:
+            if pipeline != "head-image-edit":
                 raise CharacterAssetContainerError("Phase-change sources belong to a Head container.")
             if source.get("kind") == "upload":
                 source_path = Path(str(source.get("path") or "")).resolve()
@@ -942,10 +938,9 @@ class CharacterAssetContainerService:
                     raise CharacterAssetContainerError("The phase-change upload must be a verified image managed by this container.")
             else:
                 source_phase = str(source.get("phase") or "").strip()
-                source_pipeline = str(source.get("pipeline") or "")
-                if not source_phase or source_phase == phase or source_pipeline not in {"head-image", "head-image-edit"}:
+                if not source_phase or source_phase == phase or source_pipeline != "head-image-edit":
                     raise CharacterAssetContainerError("Choose a Head FRONT from another phase of this character.")
-                source = {"phase": source_phase, "pipeline": source_pipeline}
+                source = {"phase": source_phase}
         if source_name == "dressing_settings":
             if pipeline != "costume-dressing" or not isinstance(source, dict):
                 raise CharacterAssetContainerError("Dressing settings belong to a Costume Dressing container.")
@@ -977,7 +972,7 @@ class CharacterAssetContainerService:
     def upload_phase_source(self, character: str, phase: str, pipeline: str, costume: str,
                             filename: str, contents: bytes,
                             *, expected_revision: int) -> dict:
-        if pipeline not in {"head-image", "head-image-edit"}:
+        if pipeline != "head-image-edit":
             raise CharacterAssetContainerError("Managed phase-change uploads belong to a Head container.")
         if not contents or len(contents) > 32 * 1024 * 1024:
             raise CharacterAssetContainerError("The source must be a nonempty image under 32 MB.")

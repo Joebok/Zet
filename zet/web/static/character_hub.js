@@ -2,7 +2,7 @@
   const $ = (selector) => document.querySelector(selector);
   const state = {generation: 0, context: null};
   const baseImages = $("#character-base-images");
-  const labels = {"body-reference":"Body-Reference", "head-image-edit":"Head-Image (Edit)", "head-image":"Head-Image (Construct)", "character-assembly":"Character Assembly", "costume-dressing":"Costume-Dressing"};
+  const labels = {"body-reference":"Body-Reference", "head-image-edit":"Head-Image (Edit)", "character-assembly":"Character Assembly", "costume-dressing":"Costume-Dressing"};
   function prefKey() { const c=state.context; return `zet:character-hub:${c.universeId}:${c.character}:${c.phase}`; }
   function saveDisclosure(event) { if (!state.context) return; try { const p=JSON.parse(localStorage.getItem(prefKey())||"{}"); p[event.target.id]=event.target.open; localStorage.setItem(prefKey(),JSON.stringify(p)); } catch {} }
   function route(group, item) { const p=new URLSearchParams({page:"character-asset-container",character:state.context.character,phase:state.context.phase,universe_id:state.context.universeId,pipeline:group.pipeline,view:item.view}); if(group.costume)p.set("costume",group.costume); return `/?${p}`; }

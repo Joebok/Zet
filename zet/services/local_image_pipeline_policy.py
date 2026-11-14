@@ -56,16 +56,13 @@ LOCAL_IMAGE_PIPELINES: dict[str, LocalImagePipelineConfig] = {
     "body-reference": LocalImagePipelineConfig(
         "body-reference", "Body-Reference", ("character", "phase"), "body-reference", "body_reference",
         (), False, "body-reference", front_anchor_rule="required"),
-    "head-image": LocalImagePipelineConfig(
-        "head-image", "Head-Image (Construct)", ("character", "phase"), "head-image", "head_image",
-        ("front_reference",), True, "head-image", front_anchor_rule="required"),
     "head-image-edit": LocalImagePipelineConfig(
         "head-image-edit", "Head-Image (Edit)", ("character", "phase"), "head-image-edit", "head_image_edit",
         ("front_reference",), True, "head-image", front_anchor_rule="required"),
     "character-assembly": LocalImagePipelineConfig(
         "character-assembly", "Character-Assembly", ("character", "phase"), "character-assembly",
         "character_assembly", ("body_reference", "head_image"), False,
-        "character-assembly", prerequisites=("Body-Reference", "Head-Image"), front_anchor_rule="none"),
+        "character-assembly", prerequisites=("Body-Reference", "Head-Image-Edit"), front_anchor_rule="none"),
     "costume-dressing": LocalImagePipelineConfig(
         "costume-dressing", "Costume-Dressing", ("character", "phase", "costume"), "costume-dressing",
         "costume_dressing", ("character_assembly", "costume"), False,

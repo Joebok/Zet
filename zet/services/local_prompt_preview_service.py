@@ -19,7 +19,6 @@ class LocalPromptPreviewService:
 
     def compile(self, run, sources, directory, *, all_orientations=False):
         from Scripts.Run_Body_Reference_Jobs import compile_body_reference_job
-        from Scripts.Run_Head_Image_Jobs import compile_head_image_job
         from Scripts.Run_Head_Image_Edit_Jobs import compile_head_image_edit_job
         from Scripts.Run_Character_Assembly_Jobs import compile_character_assembly_job
         from Scripts.Run_Costume_Dressing_Jobs import compile_costume_dressing_job
@@ -27,7 +26,7 @@ class LocalPromptPreviewService:
         from zet.services.view_conditioning_service import VIEW_ORDER
         workflow = self.workflow
         pipeline = workflow.pipeline
-        compiler = {"body-reference": compile_body_reference_job, "head-image": compile_head_image_job, "head-image-edit": compile_head_image_edit_job,
+        compiler = {"body-reference": compile_body_reference_job, "head-image-edit": compile_head_image_edit_job,
                     "character-assembly": compile_character_assembly_job,
                     "costume-dressing": compile_costume_dressing_job}[pipeline]
         character = Path(workflow.app.config.base_character_path) / run["character"] / run["phase"] / "Character.md"

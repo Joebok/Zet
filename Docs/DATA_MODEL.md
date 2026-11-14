@@ -1,5 +1,7 @@
 # Data, configuration, and ownership
 
+New Character Assembly requests always use the Edit container for their published head input. Cross-phase head source settings store a phase without a pipeline choice. Historical Construct candidates and publications remain stored under their original identities. See [ADR 0054](DECISIONS/0054-edit-only-head-images.md).
+
 ## Character Asset Containers (2026-11-06)
 
 Character candidate state lives under the selected universe library at
@@ -14,7 +16,7 @@ The current record format is owned by
 [CharacterAssetContainerService](../zet/services/character_asset_container_service.py).
 Each container saves its shared Draft/Final aspect ratio in
 `render_settings.aspect_ratio`. Older records default to `1:1` for Head
-Construct and Head Edit, and `2:3` for Body Reference, Assembly, and Dressing.
+Edit, and `2:3` for Body Reference, Assembly, and Dressing.
 Dressing settings are scoped to the selected costume. Each render request
 captures its resolved ratio and dimensions.
 
@@ -97,7 +99,7 @@ source phase, locked asset key/ID, and actual snapshot checksum. `front_source`
 remains the batch-local copied FRONT input. The optional origin is cleared when
 that input is replaced through the upload action; older specs remain readable.
 
-Assembly adds `head_pipeline` to new specs, defaulting missing fields to
+Historical batch Assembly added `head_pipeline` to specs, defaulting missing fields to
 `head-image`. Resolved source records retain actual pipeline/key/batch/candidate
 identities and frozen bytes; refresh and promotion keep the selected family.
 Head Edit refinement attempts add operation, guide view, recipe version and
@@ -153,7 +155,7 @@ the universe's `_state/Species.json`. A definition has an immutable ID, display
 name, and required Body Reference guidance. Alternate names, traits to avoid,
 and per-view instructions are optional. Renaming a species adds its former
 display name as an alternate name. New Character.md files store the stable ID in
-the Species field. See [ADR 0053](DECISIONS/0053-universe-species-catalog.md).
+the Species field. See [ADR 0054](DECISIONS/0053-universe-species-catalog.md).
 
 ## Character template revisions
 

@@ -130,3 +130,4 @@ explicitly authored body landmark, with frozen requests preserved.
 
 [0043 - Scene text scales with pixel area](0043-scene-text-pixel-area-scaling.md) records backdrop anchored sizing and line-preserving box shrinking.
 \r\n\r\n[0047 Narrative Candidate Board handoff](0047-narrative-candidate-board-handoff.md) records the Narrative mapping and frozen render request boundary.\r\n
+- [0054 - Head Image Edit is the sole head pipeline](0054-edit-only-head-images.md)

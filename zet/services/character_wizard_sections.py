@@ -13,11 +13,9 @@ from zet.services.workflow_storage import file_lock
 
 FACTS = {
     "BODY_DESCRIPTION_FACTS": ("Body", "Describe build and silhouette. Consider apparent stature, limb-to-torso proportions, shoulders, torso and waist, hips and legs, arms and hands, feet, and habitual posture where supported. Describe relative proportions without guessing measurements."),
-    "HEAD_DESCRIPTION_FACTS": ("Head", "Describe apparent age and recognizable facial features. Consider face shape, jaw and chin, cheekbones, nose, lips, eye size and shape relative to the face, eye color if clear, brows, skin tone, ear shape, and neck."),
-    "HAIR_DESCRIPTION_FACTS": ("Hair", "Describe color, texture, volume, hairline, part, fringe, and overall shape. Describe length using a visible body landmark. Include supported anatomical asymmetry. Omit the endpoint if the reference crops it out."),
+    "HEAD_EDIT_FRONT_DESCRIPTION": ("Head and hair", "Describe apparent age and recognizable facial features. Consider face shape, jaw and chin, cheekbones, nose, lips, eye size and shape relative to the face, eye color if clear, brows, skin tone, ear shape, and neck. For hair, describe color, texture, volume, hairline, part, fringe, and overall shape. Describe length using a visible body landmark. Include supported anatomical asymmetry. Omit the endpoint if the reference crops it out."),
 }
 HEAD_SECTIONS = {
-    "HEAD_EDIT_FRONT_DESCRIPTION": "Head-Image Edit description",
     "HEAD_EDIT_PRESERVE": "Head-Image Edit preservation",
     "HEAD_EDIT_REVIEW_CRITERIA": "Head-Image Edit review criteria",
 }
@@ -216,8 +214,8 @@ class CharacterWizardSections:
 
     def _head_sections(self, session):
         entries = session["entries"]
-        facts = "\n".join(entries[name]["text"] for name in list(FACTS)[1:]).strip()
-        values = dict.fromkeys(list(HEAD_SECTIONS)[:2], facts)
+        facts = entries["HEAD_EDIT_FRONT_DESCRIPTION"]["text"].strip()
+        values = {"HEAD_EDIT_PRESERVE": facts}
         values["HEAD_EDIT_REVIEW_CRITERIA"] = REVIEW
         return {name: {"label": label, "text": session["overrides"].get(name, values[name])}
                 for name, label in HEAD_SECTIONS.items()}
@@ -229,14 +227,12 @@ class CharacterWizardSections:
                         if entry["selected"] and (creating or entry.get("edited"))}
         if creating:
             replacements.update({name: entry["text"] for name, entry in self._head_sections(session).items()})
-        keep_defaults = {"HEAD_IMAGE_CHARACTER_REQUIREMENTS", "HEAD_IMAGE_EXPRESSION_GUIDANCE",
-                         "NEGATIVE_GUIDANCE_HEAD_IMAGE"}
         baseline = session["baseline"]
         text = baseline
         markers = list(MARKER_RE.finditer(baseline))
         for start, end in reversed(list(zip(markers[::2], markers[1::2]))):
             name = start.group(2)
-            if name not in replacements and (not creating or name in keep_defaults):
+            if name not in replacements and not creating:
                 continue
             directives = [line.strip() for line in baseline[start.end():end.start()].splitlines()
                           if DIRECTIVE.fullmatch(line)]

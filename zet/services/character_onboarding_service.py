@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import asdict
 import json
 import re
 import shutil
@@ -8,7 +7,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from zet.models.asset import Asset
 from zet.models.character_onboarding import (
     CharacterOnboardingDraft,
     CharacterOnboardingOptions,
@@ -299,46 +297,6 @@ class CharacterOnboardingService:
         if not turnaround_path.exists():
             turnaround_path.write_text('{\n  "schema_version": 1,\n  "turnarounds": []\n}\n', encoding="utf-8")
 
-    def _foundation_assets(self, character: str, phase: str) -> list[dict[str, Any]]:
-        """Build initial Body-Reference, Head-Image, and Character-Assembly assets."""
-        assets: list[Asset] = []
-        stamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-        asset_id = 1
-        for view in FOUNDATION_VIEWS:
-            assets.append(Asset(asset_id, character, phase, "Body-Reference", view, final_image_output=f"Body-Reference_{view}.png", updated_at=stamp))
-            asset_id += 1
-        for view in FOUNDATION_VIEWS:
-            assets.append(
-                Asset(
-                    asset_id,
-                    character,
-                    phase,
-                    "Head-Image",
-                    view,
-                    head_view=view,
-                    final_image_output=f"Head-Image_{view}.png",
-                    updated_at=stamp,
-                )
-            )
-            asset_id += 1
-        # Preserve the retired Head-Fitment foundation slot without creating active assets.
-        asset_id += len(FOUNDATION_VIEWS)
-        for view in FOUNDATION_VIEWS:
-            assets.append(
-                Asset(
-                    asset_id,
-                    character,
-                    phase,
-                    "Character-Assembly",
-                    view,
-                    head_view=view,
-                    final_image_output=f"Character-Assembly_{view}_{view}_Assembled.png",
-                    updated_at=stamp,
-                )
-            )
-            asset_id += 1
-        return [asdict(asset) for asset in assets]
-
     def _template_metadata(self, template_path: Path) -> dict[str, str]:
         """Read top-level onboarding metadata from a character template."""
         return {
@@ -351,108 +309,6 @@ class CharacterOnboardingService:
             "shoulder_width": extract_template_field(template_path, ["Shoulder Width"]),
             "body_depth": extract_template_field(template_path, ["Body Depth"]),
         }
-
-    def _normalize_foundation_pipelines(self, pipelines_path: Path) -> None:
-        """Remove the retired prompt-review stage from phase pipelines."""
-        data = json.loads(pipelines_path.read_text(encoding="utf-8"))
-        pipelines = data.get("pipelines")
-        if not isinstance(pipelines, dict):
-            raise CharacterOnboardingError(f"Pipelines.json must contain a pipelines object: {pipelines_path}")
-        if "Head-Image" not in pipelines:
-            ordered: dict[str, Any] = {}
-            for name, pipeline in pipelines.items():
-                ordered[name] = pipeline
-                if name == "Body-Reference":
-                    ordered["Head-Image"] = {
-                        "stages": ["MANIFEST", "PROMPT", "RENDER", "RENDER_REVIEW"],
-                        "actor_by_stage": {
-                            "MANIFEST": "PYTHON",
-                            "PROMPT": "PYTHON",
-                            "RENDER": "AI_AGENT",
-                            "RENDER_REVIEW": "HUMAN_AGENT",
-                        },
-                        "worker_by_stage": {
-                            "MANIFEST": "zet.workers.head_image_manifest_worker",
-                            "PROMPT": "zet.workers.head_image_prompt_worker",
-                            "RENDER": "zet.workers.noop_worker",
-                            "RENDER_REVIEW": "zet.workers.noop_worker",
-                        },
-                    }
-            pipelines.clear()
-            pipelines.update(ordered)
-        if "Scene-Appearance" not in pipelines:
-            ordered = {}
-            definition = {
-                "stages": ["ADD_REF", "MANIFEST", "PROMPT", "RENDER", "RENDER_REVIEW"],
-                "actor_by_stage": {
-                    "ADD_REF": "PYTHON",
-                    "MANIFEST": "PYTHON",
-                    "PROMPT": "PYTHON",
-                    "RENDER": "AI_AGENT",
-                    "RENDER_REVIEW": "HUMAN_AGENT",
-                },
-                "worker_by_stage": {
-                    "ADD_REF": "zet.workers.scene_appearance_manifest_worker",
-                    "MANIFEST": "zet.workers.scene_appearance_manifest_worker",
-                    "PROMPT": "zet.workers.scene_appearance_prompt_worker",
-                    "RENDER": "zet.workers.noop_worker",
-                    "RENDER_REVIEW": "zet.workers.noop_worker",
-                },
-            }
-            for name, pipeline in pipelines.items():
-                ordered[name] = pipeline
-                if name == "Costume-Dressing":
-                    ordered["Scene-Appearance"] = definition
-            if "Scene-Appearance" not in ordered:
-                ordered["Scene-Appearance"] = definition
-            pipelines.clear()
-            pipelines.update(ordered)
-        for pipeline in pipelines.values():
-            if not isinstance(pipeline, dict):
-                continue
-            pipeline["stages"] = [stage for stage in list(pipeline.get("stages") or []) if stage != "PROMPT_REVIEW"]
-            actor_by_stage = pipeline.get("actor_by_stage", {})
-            if isinstance(actor_by_stage, dict):
-                actor_by_stage.pop("PROMPT_REVIEW", None)
-            worker_by_stage = pipeline.get("worker_by_stage", {})
-            if isinstance(worker_by_stage, dict):
-                worker_by_stage.pop("PROMPT_REVIEW", None)
-        pipelines.pop("Head-Fitment", None)
-        pipelines_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-
-    def add_missing_head_image_foundation(self, character: str, phase: str) -> list[Asset]:
-        """Append missing Head-Image views without changing existing assets."""
-        raise CharacterOnboardingError("Traditional Head-Image assets are retired. Use the local Assets workflow.")
-        self._ensure_phase_scaffold(character, phase, "")
-        assets_path = self.path_service.character_path(character, phase) / "Assets.json"
-        if not assets_path.exists():
-            raise CharacterOnboardingError("Assets.json must exist before adding Head-Image assets.")
-        payload = json.loads(assets_path.read_text(encoding="utf-8"))
-        records = payload.get("assets")
-        if not isinstance(records, list):
-            raise CharacterOnboardingError("Assets.json must contain an assets list.")
-        existing = {str(record.get("body_view") or "") for record in records if record.get("pipeline") == "Head-Image"}
-        next_id = int(payload.get("next_asset_id") or 1)
-        reserved_ids = {int(asset_id) for asset_id in payload.get("reserved_asset_ids", [])}
-        stamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-        added: list[Asset] = []
-        for view in FOUNDATION_VIEWS:
-            if view in existing:
-                continue
-            while next_id in reserved_ids:
-                next_id += 1
-            asset = Asset(next_id, character, phase, "Head-Image", view, head_view=view, final_image_output=f"Head-Image_{view}.png", updated_at=stamp)
-            records.append(asdict(asset))
-            added.append(asset)
-            next_id += 1
-        if added:
-            backup_dir = self.path_service.character_backup_path(character, phase)
-            backup_dir.mkdir(parents=True, exist_ok=True)
-            stamp_name = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            shutil.copy2(assets_path, backup_dir / f"Assets.backup.{stamp_name}.json")
-            payload["next_asset_id"] = next_id
-            assets_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-        return added
 
     def _render_template(self, payload: dict[str, Any], character: str, phase: str) -> str:
         """Render a draft template from the shared character template and interview answers."""
