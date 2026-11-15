@@ -96,7 +96,7 @@
       <button class="tab workflow-tab" data-page="identity-keys">Identity Keys</button>
       <button class="tab workflow-tab" data-page="turnarounds">Turnarounds</button>
       <button class="tab workflow-tab" data-page="costumes">Costumes</button>
-      <button class="tab workflow-tab" data-page="phase-comparison">Phase Comparison</button>
+      <button class="tab workflow-tab" data-page="phase-comparison">Compare</button>
     </div>
     <div id="local-navigation" class="workspace-navigation" hidden>
       <button class="tab workflow-tab" data-page="onboarding">Character Overview</button>
@@ -1045,55 +1045,26 @@
     </section>
     <section id="phase-comparison-page" class="page">
       <div class="page-title-row">
-        <h1>Phase Comparison</h1>
+        <h1>Compare</h1>
         <div id="phase-comparison-status" class="status-text"></div>
       </div>
       <div id="phase-comparison-message" class="action-message" hidden></div>
       <section class="control-panel phase-comparison-controls">
         <div class="phase-comparison-main-controls">
-          <label>
-            Character
-            <select id="phase-comparison-character"></select>
-          </label>
-          <label>
-            Pipeline
-            <select id="phase-comparison-pipeline"></select>
-          </label>
+          <section><h3>Left</h3><label>Universe<select id="compare-left-universe"></select></label><label>Character<select id="compare-left-character"></select></label><label>Phase<select id="compare-left-phase"></select></label><label>Pipeline / Costume<select id="compare-left-target"></select></label></section>
+          <section><h3>Right</h3><label>Universe<select id="compare-right-universe"></select></label><label>Character<select id="compare-right-character"></select></label><label>Phase<select id="compare-right-phase"></select></label><label>Pipeline / Costume<select id="compare-right-target"></select></label></section>
         </div>
-        <div class="button-row compact">
-          <button id="phase-comparison-prev" class="navigation-action" type="button">Previous</button>
-          <button id="phase-comparison-next" class="navigation-action" type="button">Next</button>
-        </div>
+        <div class="button-row compact"><button id="phase-comparison-prev" class="navigation-action" type="button">Previous</button><span id="compare-view-position"></span><button id="phase-comparison-next" class="navigation-action" type="button">Next</button></div>
       </section>
       <div id="phase-comparison-meta" class="summary-bar"></div>
       <div class="phase-comparison-layout">
         <section class="render-comparison-panel">
-          <h3 id="phase-comparison-left-title">Left Phase</h3>
-          <div class="phase-comparison-side-controls">
-            <label>
-              Left Phase
-              <select id="phase-comparison-left-phase"></select>
-            </label>
-            <label id="phase-comparison-left-costume-wrap" hidden>
-              Left Costume
-              <select id="phase-comparison-left-costume"></select>
-            </label>
-          </div>
+          <h3 id="phase-comparison-left-title">Left</h3>
           <div id="phase-comparison-left-image" class="render-image-viewer" tabindex="0">No locked asset for this slot.</div>
           <dl id="phase-comparison-left-meta" class="compact-details"></dl>
         </section>
         <section class="render-comparison-panel">
           <h3 id="phase-comparison-right-title">Right Phase</h3>
-          <div class="phase-comparison-side-controls">
-            <label>
-              Right Phase
-              <select id="phase-comparison-right-phase"></select>
-            </label>
-            <label id="phase-comparison-right-costume-wrap" hidden>
-              Right Costume
-              <select id="phase-comparison-right-costume"></select>
-            </label>
-          </div>
           <div id="phase-comparison-right-image" class="render-image-viewer" tabindex="0">No locked asset for this slot.</div>
           <dl id="phase-comparison-right-meta" class="compact-details"></dl>
         </section>

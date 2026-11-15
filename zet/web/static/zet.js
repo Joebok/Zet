@@ -1027,6 +1027,11 @@ const phaseComparisonLeftImage = document.querySelector("#phase-comparison-left-
 const phaseComparisonRightImage = document.querySelector("#phase-comparison-right-image");
 const phaseComparisonLeftMeta = document.querySelector("#phase-comparison-left-meta");
 const phaseComparisonRightMeta = document.querySelector("#phase-comparison-right-meta");
+const compareSides = ["left", "right"].map(side => ({
+  side, universe: document.querySelector(`#compare-${side}-universe`), character: document.querySelector(`#compare-${side}-character`),
+  phase: document.querySelector(`#compare-${side}-phase`), target: document.querySelector(`#compare-${side}-target`),
+}));
+const comparePosition = document.querySelector("#compare-view-position");
 const busyCounts = new WeakMap();
 
 class RequestCancelledError extends Error {
@@ -1041,6 +1046,10 @@ function isRequestCancellation(error) {
 }
 
 function beginPageLoad(page) {
+  if (activePageName() === "phase-comparison" && page !== "phase-comparison") {
+    for (const url of compareState.cache.values()) URL.revokeObjectURL(url);
+    compareState.cache.clear(); compareState.sides = []; compareState.views = [];
+  }
   state.pageController?.abort();
   for (const controller of Object.values(state.selectionControllers)) controller.abort();
   state.selectionControllers = {};
@@ -2174,7 +2183,7 @@ const RESPONSIVE_WORKSPACE_PAGES = {
     ["character-asset-container:character-assembly", "Assets · Character Assembly"],
     ["character-asset-container:costume-dressing", "Assets · Costume Dressing"],
     ["identity-keys", "Identity Keys"],
-    ["turnarounds", "Turnarounds"], ["costumes", "Costumes"], ["phase-comparison", "Phase Comparison"],
+    ["turnarounds", "Turnarounds"], ["costumes", "Costumes"], ["phase-comparison", "Compare"],
     ["minor-characters", "Minor Characters"],
   ],
   story: [
@@ -8224,6 +8233,76 @@ async function deleteImageCatalogReferenceSet() {
 }
 
 function initializePhaseComparisonControls() {
+  initializeComparePage();
+}
+
+const compareState = { sides: [], views: [], index: 0, cache: new Map(), generation: [0, 0], imageGeneration: [0, 0] };
+function initializeComparePage() {
+  const saved = JSON.parse(sessionStorage.getItem("zet.compare.sides") || "null");
+  if (!compareState.sides.length) compareState.sides = compareSides.map((controls, index) => saved?.[index] || {
+    universe: state.universeId, character: state.character || state.characters[0] || "", phase: state.phase || "", target: "",
+  });
+  compareSides.forEach((controls, index) => {
+    controls.universe.replaceChildren(...(state.universes || []).map(item => option(item.universe_id, item.name)));
+    controls.universe.value = compareState.sides[index].universe || state.universeId;
+  });
+  void Promise.all(compareSides.map((_, index) => loadCompareSide(index)));
+}
+
+async function loadCompareSide(index) {
+  const controls = compareSides[index], selected = compareState.sides[index], generation = ++compareState.generation[index];
+  const params = new URLSearchParams({ character: selected.character || "", phase: selected.phase || "", target: selected.target || "" });
+  const response = await fetch(`/api/compare/side?${params}`, { headers: { "X-Zet-Universe": selected.universe } });
+  if (!response.ok) throw new Error("Unable to load comparison side.");
+  const payload = await response.json();
+  if (generation !== compareState.generation[index]) return;
+  selected.character = payload.character; selected.phase = payload.phase; selected.target = payload.target;
+  setSelectOptions(controls.character, payload.characters || []); controls.character.value = selected.character;
+  setSelectOptions(controls.phase, payload.phases || []); controls.phase.value = selected.phase;
+  setSelectOptionsWithLabels(controls.target, payload.targets || []); controls.target.value = selected.target;
+  selected.views = payload.views || {};
+  compareState.sides[index] = selected;
+  sessionStorage.setItem("zet.compare.sides", JSON.stringify(compareState.sides));
+  updateCompareViews();
+}
+
+function updateCompareViews() {
+  const order = ["FRONT", "FRONT_LEFT_3_4", "FRONT_RIGHT_3_4", "LEFT_PROFILE", "RIGHT_PROFILE", "BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"];
+  const next = order.filter(view => compareState.sides.some(side => side.views && side.views[view]));
+  if (!next.includes(compareState.views[compareState.index])) compareState.index = 0;
+  compareState.views = next;
+  comparePosition.textContent = next.length ? `${next[compareState.index]} · ${compareState.index + 1} of ${next.length}` : "No locked views";
+  phaseComparisonPrev.disabled = phaseComparisonNext.disabled = next.length < 2;
+  compareSides.forEach((_, index) => renderCompareImage(index));
+}
+
+async function renderCompareImage(index) {
+  const side = compareState.sides[index], view = compareState.views[compareState.index];
+  const imageGeneration = ++compareState.imageGeneration[index];
+  const box = index ? phaseComparisonRightImage : phaseComparisonLeftImage;
+  const asset = side?.views?.[view];
+  box.replaceChildren();
+  if (!asset) { box.textContent = view ? "No locked image" : "No comparison images"; return; }
+  const params = new URLSearchParams({ path: asset.path, universe_id: side.universe, v: asset.revision });
+  const url = `/api/file?${params}`;
+  let objectUrl = compareState.cache.get(url);
+  if (!objectUrl) {
+    const response = await fetch(url);
+    if (!response.ok) { box.textContent = "Image unavailable"; return; }
+    objectUrl = URL.createObjectURL(await response.blob()); compareState.cache.set(url, objectUrl);
+  }
+  if (imageGeneration !== compareState.imageGeneration[index] || view !== compareState.views[compareState.index]) return;
+  const image = document.createElement("img"); image.src = objectUrl; image.alt = `${side.character} ${side.phase} ${view}`; enableFullscreenImage(image); box.append(image);
+}
+
+function changeCompareSelection(index, key, value) {
+  const side = compareState.sides[index]; side[key] = value;
+  if (key === "character") side.phase = "";
+  if (key === "universe" || key === "character" || key === "phase") side.target = "";
+  void loadCompareSide(index);
+}
+
+function initializePhaseComparisonControlsLegacy() {
   // Seed comparison controls from the current dashboard context when needed.
   if (!state.phaseComparison.character) {
     state.phaseComparison.character = state.character || state.characters[0] || "";
@@ -11827,11 +11906,11 @@ for (const imageBox of [phaseComparisonLeftImage, phaseComparisonRightImage]) {
   imageBox.addEventListener("keydown", (event) => {
     if (event.key === "ArrowLeft") {
       event.preventDefault();
-      movePhaseComparison(-1);
+      moveCompareView(-1);
     }
     if (event.key === "ArrowRight") {
       event.preventDefault();
-      movePhaseComparison(1);
+      moveCompareView(1);
     }
   });
 }
@@ -12646,42 +12725,16 @@ builderImagePickerRefresh.addEventListener("click", () => loadImagePickerReferen
 builderImagePickerClose.addEventListener("click", () => {
   builderImagePickerModal.close();
 });
-phaseComparisonCharacter.addEventListener("change", () => {
-  state.phaseComparison.character = phaseComparisonCharacter.value;
-  state.phaseComparison.pipeline = "Character-Assembly";
-  state.phaseComparison.selectedIndex = 0;
-  state.phaseComparison.selectedSlotKey = "";
-  syncPhaseComparisonPhaseOptions();
-  loadPhaseComparison({ preserveSlot: false, resetIndex: true });
+compareSides.forEach((controls, index) => {
+  for (const key of ["universe", "character", "phase", "target"]) controls[key].addEventListener("change", () => changeCompareSelection(index, key, controls[key].value));
 });
-phaseComparisonLeftPhase.addEventListener("change", () => {
-  state.phaseComparison.leftPhase = phaseComparisonLeftPhase.value;
-  loadPhaseComparison({ preserveSlot: true });
-});
-phaseComparisonRightPhase.addEventListener("change", () => {
-  state.phaseComparison.rightPhase = phaseComparisonRightPhase.value;
-  loadPhaseComparison({ preserveSlot: true });
-});
-phaseComparisonPipeline.addEventListener("change", () => {
-  state.phaseComparison.pipeline = phaseComparisonPipeline.value;
-  state.phaseComparison.leftCostume = "";
-  state.phaseComparison.rightCostume = "";
-  state.phaseComparison.selectedIndex = 0;
-  state.phaseComparison.selectedSlotKey = "";
-  loadPhaseComparison({ preserveSlot: false, resetIndex: true });
-});
-phaseComparisonLeftCostume.addEventListener("change", () => {
-  state.phaseComparison.leftCostume = phaseComparisonLeftCostume.value;
-  state.phaseComparison.selectedIndex = 0;
-  state.phaseComparison.selectedSlotKey = "";
-  loadPhaseComparison({ preserveSlot: false, resetIndex: true });
-});
-phaseComparisonRightCostume.addEventListener("change", () => {
-  state.phaseComparison.rightCostume = phaseComparisonRightCostume.value;
-  state.phaseComparison.selectedIndex = 0;
-  state.phaseComparison.selectedSlotKey = "";
-  loadPhaseComparison({ preserveSlot: false, resetIndex: true });
-});
+phaseComparisonPrev.addEventListener("click", () => moveCompareView(-1));
+phaseComparisonNext.addEventListener("click", () => moveCompareView(1));
+function moveCompareView(delta) {
+  if (!compareState.views.length) return;
+  compareState.index = (compareState.index + delta + compareState.views.length) % compareState.views.length;
+  updateCompareViews();
+}
 copyPromptButton.addEventListener("click", () => copyText(state.promptReviewDetail?.prompt || "", "Prompt copied."));
 promptReviewRenderConsole.addEventListener("click", async () => {
   const askId = state.promptReviewDetail?.task?.ask_id;

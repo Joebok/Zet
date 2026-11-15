@@ -988,6 +988,19 @@ class ZetApp:
             right_costume,
         )
 
+    def compare_side(self, character: str = "", phase: str = "", target: str = ""):
+        """Return options and locked images for one comparison side."""
+        from zet.services.character_phase_discovery_service import CharacterPhaseDiscoveryService
+
+        discovery = CharacterPhaseDiscoveryService(self.config.base_character_path)
+        characters = discovery.list_characters()
+        selected_character = character if character in characters else (characters[0] if characters else "")
+        phases = discovery.list_phases(selected_character) if selected_character else []
+        selected_phase = phase if phase in phases else (phases[0] if phases else "")
+        result = self.phase_comparison_service.compare_side(selected_character, selected_phase, target) if selected_phase else {
+            "character": selected_character, "phase": "", "target": "pipeline:character-assembly", "targets": [], "views": {}}
+        return {**result, "characters": characters, "phases": phases}
+
     def character_onboarding_options(self):
         """Return options used by new character and phase onboarding."""
         return self.character_onboarding_service.options()

@@ -3072,6 +3072,14 @@ def _create_available_app(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.get("/api/compare/side")
+    def compare_side(character: str = Query(""), phase: str = Query(""), target: str = Query("")) -> dict[str, Any]:
+        """Return one universe-scoped Compare selector and its locked views."""
+        try:
+            return _app(app.state.config_path).compare_side(character, phase, target)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/turnarounds/{turnaround_id}")
     def turnaround_detail(turnaround_id: str, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
         """Return detail for one turnaround sheet row."""

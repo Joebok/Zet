@@ -88,6 +88,42 @@ class PhaseComparisonService:
         self.project_root = project_root
         self.local_sources = local_sources
 
+    def compare_side(self, character: str, phase: str, target: str = "") -> dict:
+        """Return selectable current locks for one character phase."""
+        from zet.services.local_image_pipeline_policy import LOCAL_IMAGE_PIPELINES
+        from zet.services.view_conditioning_service import DISPLAY_VIEW_ORDER
+
+        costumes = self.path_service.character_path(character, phase)
+        costume_names = sorted(
+            (" ".join(part for part in path.stem.removeprefix("Costume_").replace("-", "_").split("_") if part)
+             for path in costumes.glob("Costume_*.md")), key=str.casefold
+        ) if costumes.is_dir() else []
+        targets = [{"value": f"pipeline:{key}", "label": config.label}
+                   for key, config in LOCAL_IMAGE_PIPELINES.items() if key != "costume-dressing"]
+        targets.extend({"value": f"costume:{self._costume_target_slug(name)}", "label": name}
+                       for name in costume_names)
+        selected = target if any(item["value"] == target for item in targets) else ""
+        if not selected:
+            selected = next((item["value"] for item in targets if item["value"].startswith("costume:")), "pipeline:character-assembly")
+        pipeline = selected.removeprefix("pipeline:") if selected.startswith("pipeline:") else "costume-dressing"
+        costume = next((name for name in costume_names if f"costume:{self._costume_target_slug(name)}" == selected), "")
+        views = {}
+        if self.local_sources is not None:
+            for source in self.local_sources.list_sources(character, phase, pipeline=pipeline):
+                if pipeline == "costume-dressing" and str(source.get("costume") or "").casefold() != costume.casefold():
+                    continue
+                views[str(source["view"]).upper()] = {
+                    "path": source["image_path"],
+                    "revision": str(source.get("image_sha256") or source.get("updated_at") or ""),
+                    "label": source.get("costume") or source.get("pipeline") or "Locked image",
+                }
+        return {"character": character, "phase": phase, "target": selected, "targets": targets,
+                "views": {view: views[view] for view in DISPLAY_VIEW_ORDER if view in views}}
+
+    @staticmethod
+    def _costume_target_slug(name: str) -> str:
+        return re.sub(r"[^a-z0-9_-]+", "_", name.strip().lower()).strip("_ ")
+
     def compare(
         self,
         character: str,

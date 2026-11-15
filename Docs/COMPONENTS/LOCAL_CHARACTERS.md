@@ -4,6 +4,11 @@ Head Image Edit is the only head workflow. Character Assembly uses matching publ
 
 ## Character Asset Container current outputs (2026-11-06)
 
+Compare reads each side through its request-bound universe and shows only current
+published Body Reference, Head Image Edit, Character Assembly and Costume locks.
+Costume choices come from saved costume templates, including costumes without a
+published image. See `/api/compare/side` and the dashboard presentation notes.
+
 `CharacterAssetContainerService` owns the current per-view board lock. A locked
 candidate is published to Inventory at either quality. `LocalAssetSourceService`
 projects only current container locks to Phase Comparison, Turnarounds, Identity

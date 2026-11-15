@@ -1,5 +1,9 @@
 # Dashboard presentation and image input
 
+Compare presents independent universe, character, phase and pipeline/costume
+selectors. Paired locked images share local view navigation; image bytes remain
+cached in memory only while the page is open.
+
 The [Candidate Board specification](CANDIDATE_BOARD.md) defines the shared UI
 standard for Render Controls, candidate cards, and review. This page records
 implementation details.

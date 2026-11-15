@@ -3910,11 +3910,7 @@ tr.auxiliary-row td:last-child {
 }
 
 .phase-comparison-controls {
-  align-items: end;
-  display: flex;
-  gap: 12px;
-  justify-content: space-between;
-  margin-bottom: 12px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; margin-bottom: 6px;
 }
 
 .phase-comparison-main-controls,
@@ -3924,6 +3920,11 @@ tr.auxiliary-row td:last-child {
   gap: 10px;
   grid-template-columns: repeat(2, minmax(180px, 1fr));
 }
+.phase-comparison-main-controls { gap: 8px; }
+.phase-comparison-main-controls section { display: grid; grid-template-columns: repeat(2, minmax(90px, 1fr)); gap: 4px 8px; min-width: 0; }
+.phase-comparison-main-controls h3 { grid-column: 1 / -1; margin: 0; font-size: .9rem; }
+.phase-comparison-main-controls label { font-size: .78rem; gap: 2px; }
+.phase-comparison-main-controls select { padding: 4px; min-height: 30px; }
 
 .phase-comparison-main-controls {
   max-width: 720px;
@@ -3936,13 +3937,14 @@ tr.auxiliary-row td:last-child {
 
 .phase-comparison-layout {
   display: grid;
-  gap: 12px;
+  gap: 8px;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .phase-comparison-layout .render-image-viewer {
-  min-height: 560px;
+  min-height: 560px; justify-content: flex-start;
 }
+.phase-comparison-layout .render-comparison-panel:first-child .render-image-viewer { justify-content: flex-end; }
 
 .phase-comparison-layout .compact-details {
   background: var(--panel);
@@ -6022,7 +6024,7 @@ dd {
   .local-pipeline-review-comparison { grid-column: 1; }
   .local-pipeline-review-details { margin-top: 4px; }
   .entity-library-layout, .entity-library-layout:not(.metadata-mode), .entity-library-layout.metadata-mode, .refinement-layout, .mc-workspace { grid-template-columns: minmax(0, 1fr); }
-  .phase-comparison-layout { grid-template-columns: minmax(0, 1fr); }
+  .phase-comparison-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mc-images { order: -1; }
   .context-controls, .workspace-context { align-items: end; }
   :is(.page, .control-panel, .refinement-layout > section) { min-width: 0; }
