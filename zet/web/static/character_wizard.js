@@ -122,7 +122,6 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted, tem
     find("[data-errors]").textContent = value.errors.join("\n");
     for (const name of ["answer", "retry", "save", "revise"]) command(name).hidden = true;
     command("accept").hidden = !preview;
-    command("abandon").hidden = applying;
     command("accept").textContent = value.mode === "create" ? "Create character" : "Update Character.md";
     species.closest("label").hidden = true;
     find("[data-direction]").closest("label").hidden = true;
@@ -236,8 +235,9 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted, tem
       return [row.master_line && `- ${row.master_text}`, row.proposed_line && `+ ${row.proposed_text}`].filter(Boolean);
     }).join("\n") || "No changes from the saved template.";
     for (const [name, visible] of Object.entries({
-      answer: questions, retry: value.status === "FAILED", save: draft, revise: draft,
-      accept: draft || value.status === "APPLYING", abandon: value.status !== "APPLYING",
+      answer: questions, retry: value.status === "FAILED" && !value.retired, save: draft, revise: draft,
+      accept: draft || value.status === "APPLYING",
+      abandon: !["ACCEPTED", "ABANDONED"].includes(value.status),
     })) command(name).hidden = !visible;
     command("accept").textContent = value.mode === "create" ? "Create character" : "Update Character.md";
     if (value.version === 2) renderSections(value, edits);
@@ -327,7 +327,7 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted, tem
       find("[data-fallback]").hidden = mode !== "create" || Boolean(options.style);
       find("[data-style]").textContent = options.style ? `Universe style: ${options.style}` : "";
       resume.replaceChildren(new Option("Start a new interview", ""), ...options.sessions.map(
-        (item) => new Option(`${item.character} / ${item.phase} · ${item.status}`, item.id)));
+        (item) => new Option(`${item.character} / ${item.phase} · ${item.retired ? "Retired template" : item.status}`, item.id)));
       find("[data-resume-label]").hidden = !options.sessions.length;
       intake.hidden = false;
       notice(mode === "create" ? "Add one to three reference images." : "You can add up to three reference images.");
@@ -438,10 +438,8 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted, tem
       if (current(token)) notice(error.message, true);
     } finally {
       pending = false;
-      if (current(token)) {
-        button.disabled = false;
-        showDraftActions();
-      }
+      button.disabled = false;
+      if (current(token)) showDraftActions();
     }
   }
 

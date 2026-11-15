@@ -152,7 +152,9 @@ class CharacterWizardService(CharacterWizardSections):
             if session["mode"] != mode or session["status"] in {"ACCEPTED", "ABANDONED"}:
                 continue
             if mode == "create" or (character, phase) == (session["character"], session["phase"]):
-                sessions.append({key: session[key] for key in ("id", "character", "phase", "status")})
+                summary = {key: session[key] for key in ("id", "character", "phase", "status")}
+                summary["retired"] = bool(self._retired_session_sections(session))
+                sessions.append(summary)
         options = {"model": model, "style": style, "sessions": sessions}
         if mode == "create":
             options.update(species=self._species_options(self.species.load()[0]),
@@ -231,18 +233,16 @@ class CharacterWizardService(CharacterWizardSections):
 
     def detail(self, sid):
         session = self._read(sid)
-        retired = self._retired_session_sections(session)
-        if retired and session.get("status") not in {"ACCEPTED", "ABANDONED"}:
-            session["status"] = "FAILED"
-            session["error"] = RETIRED_WIZARD_MESSAGE
-            self._save(session)
-        if session["status"] == "RUNNING":
+        retired = bool(self._retired_session_sections(session))
+        if session["status"] == "RUNNING" and not retired:
             self._submit(session)
         public = {key: session[key] for key in (
             "id", "mode", "character", "phase", "model", "style", "status", "revision",
             "history", "questions", "markdown", "errors", "error")}
         public["images"] = [{key: item[key] for key in ("slot", "caption")} for item in session["images"]]
-        if session.get("version") == 2:
+        if retired and session["status"] not in {"ACCEPTED", "ABANDONED"}:
+            public.update(status="FAILED", error=RETIRED_WIZARD_MESSAGE, retired=True)
+        elif not retired and session.get("version") == 2:
             self._section_details(session, public)
         elif session["status"] == "DRAFT":
             catalog, names, _ = self.species.load()
@@ -255,6 +255,8 @@ class CharacterWizardService(CharacterWizardSections):
 
     def progress(self, sid):
         session = self._read(sid)
+        if self._retired_session_sections(session) and session["status"] not in {"ACCEPTED", "ABANDONED"}:
+            return {"status": "FAILED", "revision": session["revision"]}
         if session["status"] == "RUNNING":
             self._submit(session)
         if session.get("version") == 2:
@@ -442,8 +444,19 @@ class CharacterWizardService(CharacterWizardSections):
     def act(self, sid, action, data):
         with file_lock(self._folder(sid) / "session.lock"):
             session = self._read(sid)
-            self._require_current_authoring(session)
             status = session["status"]
+            if action == "abandon":
+                if status == "ACCEPTED":
+                    raise ValueError("This interview has already been accepted.")
+                if status != "ABANDONED":
+                    # Abandon the whole session even if background progress advanced its revision.
+                    session.update(status="ABANDONED", revision=uuid4().hex)
+                    if session.get("version") == 2:
+                        session["attempt"] = None
+                        session.pop("preview_revision", None)
+                    self._save(session)
+                return {key: session[key] for key in ("id", "status", "revision")}
+            self._require_current_authoring(session)
             if action == "accept" and status == "ACCEPTED":
                 return self.detail(sid)
             if data.get("revision") != session["revision"] or status in {"ACCEPTED", "ABANDONED"}:
@@ -451,9 +464,7 @@ class CharacterWizardService(CharacterWizardSections):
             if session.get("version") == 2:
                 self._act_sections(session, action, data)
                 return self.detail(sid)
-            if action == "abandon" and status != "APPLYING":
-                session["status"] = "ABANDONED"
-            elif action == "retry" and status == "FAILED":
+            if action == "retry" and status == "FAILED":
                 return self._start(session)
             elif action == "continue" and status in {"QUESTIONS", "DRAFT"}:
                 if status == "QUESTIONS":

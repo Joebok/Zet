@@ -14,6 +14,8 @@ To revise the intended species or presentation, change **Species** or **Gender P
 
 If a section shows **Needs attention**, read its notice. For ordinary authoring you can resume the draft and use **Retry section**. For an as-is acceptance test, record the first error and stop that attempt. Manual edits or using another model would skip the path under test.
 
+To remove an unfinished interview from **Resume draft**, select it and click **Abandon draft**. Older interviews that use retired Head Image Construct sections are labeled **Retired template** and can be cleared the same way. Abandoning retains private interview records and any Character.md already published, including after an interrupted save.
+
 ## Run Body Reference FRONT
 
 1. Confirm the new character and phase are still selected. Choose **Assets > Body-Reference**.

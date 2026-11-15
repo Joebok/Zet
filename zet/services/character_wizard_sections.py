@@ -183,6 +183,7 @@ class CharacterWizardSections:
         attempt = session["attempt"]
         if not attempt or attempt["id"] != job_id or session["status"] != "RUNNING":
             return
+        self._require_current_authoring(session)
         name = attempt["section"]
         received = False
         try:
@@ -315,8 +316,6 @@ class CharacterWizardSections:
                 self._accept(session)
             else:
                 raise ValueError("Review the current template preview before publishing.")
-        elif action == "abandon" and status != "APPLYING":
-            session.update(status="ABANDONED", attempt=None)
         elif status == "APPLYING":
             raise ValueError("Resume publication of the approved template.")
         elif action in {"retry", "refine"}:
