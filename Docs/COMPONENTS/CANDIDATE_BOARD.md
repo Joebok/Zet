@@ -92,6 +92,10 @@ path as the **Review** eye glyph.
   the style guide's compact desktop and 44 px touch targets. Keep visible
   labels for unfamiliar or consequential actions. Disabled card and review
   actions expose their reasons on hover and to assistive technology on focus.
+  Each occupied card exposes its existing candidate ID as hidden text and
+  `data-candidate-id`. Give every card glyph a slot-qualified accessible name.
+  Keep the image button named `Review slot N` and the review glyph named
+  `Review candidate (Slot N)` so automation can target either control.
 
 ## 3. Candidate review dialog
 

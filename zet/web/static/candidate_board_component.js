@@ -163,17 +163,20 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
       ...actions.filter(action => action.group !== 'prompt'), ...bulk];
   }
 
-  function actionMarkup(action, slot) {
+  function actionMarkup(action, slot, surface) {
     const busy = pending.has(pendingKey(action.key, slot));
     const reason = action.disabledReason || (busy ? 'Working…' : '');
     const glyph = action.glyph || glyphs[action.key] || (actionOrder.includes(action.key) && action.key !== 'cancel' ? action.key : '');
     const renderGlyph = action.key.startsWith('render-') && qualities.includes(action.mode)
       ? window.ZetImageCardUI.iconMarkup('regenerate') : '';
     const tooltip = (slot || action.group === 'bulk') && reason ? escape(`${action.label} · ${reason}`) : '';
+    const slotNumber = slot ? model.slots.indexOf(slot) + 1 : 0;
+    const label = slot && surface === 'card' ? action.key === 'clear' ? `Clear slot ${slotNumber}`
+      : `${action.label} (Slot ${slotNumber})` : action.label;
     return `<span class="zcb-action" ${tooltip ? `title="${tooltip}" role="group" aria-label="${tooltip}" tabindex="0" data-key="${escape(action.key)}"` : ''}><button type="button" data-command="action" data-key="${escape(action.key)}"
       class="${escape(action.role || '')}" data-quality="${escape(action.mode)}"
-      ${glyph ? `data-glyph="${escape(glyph)}" data-label="${escape(action.label)}"` : ''}
-      ${reason ? 'disabled' : ''}>${renderGlyph}${escape(action.label)}</button>
+      ${glyph ? `data-glyph="${escape(glyph)}" data-label="${escape(label)}"` : ''}
+      ${reason ? 'disabled' : ''}>${renderGlyph}${escape(label)}</button>
       ${reason && !tooltip ? `<small>${escape(reason)}</small>` : ''}</span>`;
   }
 
@@ -296,7 +299,7 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
   function candidateActions(slot, surface) {
     const order = key => actionOrder.includes(key) ? actionOrder.indexOf(key) : actionOrder.length - 2.5;
     return scopeActions(slot, surface).slice().sort((left, right) => order(left.key) - order(right.key))
-      .map(action => actionMarkup(action, slot)).join('');
+      .map(action => actionMarkup(action, slot, surface)).join('');
   }
 
   function renderGrid() {
@@ -317,7 +320,20 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
       const candidate = slot.candidate;
       const label = `Review slot ${index + 1}`;
       const canReview = candidate && candidate.reviewable !== false;
+      card.dataset.candidateId = candidate?.id || '';
       card.querySelector('h3').textContent = `Slot ${index + 1}`;
+      let candidateIdentity = card.querySelector('[data-part="candidate-id"]');
+      if (candidate) {
+        if (!candidateIdentity) {
+          candidateIdentity = document.createElement('span');
+          candidateIdentity.className = 'zcb-visually-hidden';
+          candidateIdentity.dataset.part = 'candidate-id';
+          card.querySelector('h3').after(candidateIdentity);
+        }
+        candidateIdentity.textContent = `Candidate ID ${candidate.id}`;
+      } else {
+        candidateIdentity?.remove();
+      }
       card.classList.toggle('is-selected', Boolean(candidate && candidate.id === model.selectedId));
       const preview = card.querySelector('.zcb-thumbnail');
       preview.setAttribute('aria-label', label);
@@ -326,7 +342,8 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
       patch(part(card, 'state'), statusMarkup(candidate));
       part(card, 'notice').textContent = [candidate?.error, ...(candidate?.notices || [])].filter(Boolean).join(' · ');
       const actions = part(card, 'actions');
-      patch(actions, `${canReview ? `<button type="button" data-command="open" data-glyph="review" data-label="${label}">${label}</button>` : ''}
+      const reviewLabel = `Review candidate (Slot ${index + 1})`;
+      patch(actions, `${canReview ? `<button type="button" data-command="open" data-glyph="review" data-label="${reviewLabel}">${reviewLabel}</button>` : ''}
         ${candidateActions(slot, 'card')}`);
       decorate(actions);
       showFeedback(part(card, 'feedback'), feedback.get(pendingKey('card', slot)));

@@ -1,4 +1,4 @@
-import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261112-queued-cancel";
+import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261115-candidate-identities";
 import {renderProposalComparison} from "./interview_proposals.js";
 
 const $ = id => document.getElementById(id);
