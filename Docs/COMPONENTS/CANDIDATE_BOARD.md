@@ -95,7 +95,8 @@ path as the **Review** eye glyph.
   Each occupied card exposes its existing candidate ID as hidden text and
   `data-candidate-id`. Give every card glyph a slot-qualified accessible name.
   Keep the image button named `Review slot N` and the review glyph named
-  `Review candidate (Slot N)` so automation can target either control.
+  `Review candidate (Slot N)` so automation can target either control. Include
+  the candidate ID in the review dialog heading as well.
 
 ## 3. Candidate review dialog
 

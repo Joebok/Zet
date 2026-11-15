@@ -375,7 +375,7 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
     const position = list.indexOf(slot);
     const slotNumber = model.slots.indexOf(slot) + 1;
     patch(view('title'), [model.scope.title, model.scope.view, `Slot ${slotNumber} · ${position + 1} of ${list.length}`]
-      .filter(Boolean).map(escape).join(' · ') + ' · ' + statusMarkup(candidate));
+      .filter(Boolean).map(escape).join(' · ') + ' · ' + statusMarkup(candidate) + ` · Candidate ID ${escape(candidate.id)}`);
     command('previous').disabled = pending.size > 0 || position <= 0;
     command('next').disabled = pending.size > 0 || position >= list.length - 1;
     command('close').disabled = pending.size > 0;
