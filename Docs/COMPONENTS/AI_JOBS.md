@@ -242,6 +242,12 @@ model availability, artistic quality or production deployment.
 
 Character prompt review registers `template_revision._review_job` with `AIWorkflowService`; `_propose_job` remains for historical pending image-evidence revisions. Dedicated image refinement registers `character_refinement._analysis_job` and `_render_job`, retaining immutable attempt/request identities and frozen correction inputs. Namespaced refinement ownership distinguishes these sessions from Minor Characters and links AI Queue rows back to the dedicated refinement page. Their batch-local revision records retain frozen evidence, proposed text and compiler results independently of request retention. Requests carry normal character batch/costume ownership for AI Queue navigation; [local characters](LOCAL_CHARACTERS.md#prompt-review-staged-generation-and-image-refinement-2026-10-18) owns review, trial activation and explicit master promotion.
 
+Character Asset Container template review continuations retain submitted structured
+AI request IDs across pending yields. Proposal detail projects workflow/request status
+without exposing prompts and reports when a continuation ends without saving its
+result. Disposable checks verified request identity reuse after interrupted collection.
+An end-to-end storage-root outage/reconnect scenario remains unverified.
+
 Every row publishes through `FileProxyClient`; no new request uses the legacy app
 workers. Those workers remain solely for immutable envelopes already published.
 Their runtime evidence lookup is compatibility execution metadata; model selectors

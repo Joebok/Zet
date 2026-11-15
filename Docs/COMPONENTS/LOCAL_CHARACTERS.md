@@ -766,6 +766,24 @@ Existing S2 verifies Assembly/Dressing publication. Joe separately approved disp
 
 New Body, Head and Dressing batches start with text-only governing-template review. Assembly bypasses this review, as described below. [LocalPromptPreviewService](../../zet/services/local_prompt_preview_service.py) compiles all eight view prompts through the existing compilers with declared future reference roles. Preview artifacts are explicitly non-renderable; production compilation still validates actual image files. The analysis receives complete sources, compiled prompts and compact source maps, without images or image-review observations.
 
+The Asset Container Template Improvement controller clears transient analysis status
+when its container scope changes, ignores responses for superseded scopes, serializes
+proposal polls, and retries temporary poll failures while showing the pause inline.
+Its saved proposal remains the source of review status after reload. Directed local
+Head Image Edit reviews currently use frozen line IDs, while other local reviews use
+exact source excerpts; splitting reviews by source section and durable queue progress
+are exposed through proposal detail. Findings identify whether their authored section
+affects render prompts or review criteria. Fresh directed Ollama reviews make
+separate compact requests for populated Head description, preservation, and view
+override sections, or Body facts and view overrides. Conflicting replacements for
+one source line are labeled as alternatives, and selected alternatives are validated
+before preview. Prepared failure/recovery checks and the historical Gemma waist
+candidate lineage remain under investigation. A disposable replay using the test
+Character.md verified editable section anchors for both pipelines and confirmed
+that selecting two alternatives for one line is rejected. A malformed edit in the
+same response remains rejected while its valid sibling stays selectable. This does
+not verify live model output or async storage recovery.
+
 [LocalTemplateRevisionService](../../zet/services/local_template_revision_service.py) saves version-2 reviews with individual source corrections, affected views and rationale. Suggestions start unchecked. Checkbox decisions persist; acceptance applies only selected, nonoverlapping exact source edits after checking master baselines and recompiles a READY child version. No-change acceptance is valid. Operator feedback and manual child edits support iteration. Accepted sources are batch-local overlays; master promotion retains its separate confirmation, baseline checks and partial-write journal. Legacy version-1 records and pending continuations remain readable.
 
 **Improve governing templates** offers only the current phase's `Character.md` for Body Reference, Head Image and Head-Image Edit; Costume Dressing also offers the selected costume template. Head-Image Edit retains its `HEAD_EDIT_*` section restriction. The revision API exposes `editable_source_ids` independently of complete frozen compilation sources. Global sections and pipeline instruction templates are read-only context: requests, model corrections, decisions and acceptance cannot introduce edits to them, and promotion writes only changed governing templates. Historical project-source diffs remain readable, and continuing an old revision retains its frozen context.

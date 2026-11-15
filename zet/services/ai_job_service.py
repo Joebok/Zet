@@ -402,6 +402,8 @@ class AIJobService:
                 job_id = self.submit_text(model, system, prompt, schema, images, **metadata)
         else:
             job_id = self.submit_text(model, system, prompt, schema, images, **metadata)
+        if context is not None:
+            context.setdefault("request_ids", []).append(job_id)
         cache = self.lifecycle.root / "StructuredResults" / f"{job_id}.json"
         if cache.is_file():
             saved = json.loads(cache.read_text(encoding="utf-8"))

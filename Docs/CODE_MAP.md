@@ -6,6 +6,8 @@ Character Asset Container template improvement is owned by
 `CharacterContainerTemplateService`: it stores finished-candidate-backed
 Character.md proposals and text-only reviews, validates and compiles previews, and
 promotes only after explicit acceptance and a current-master revision check.
+The dashboard controller clears scope-stale status and retries temporary review
+poll failures while a proposal remains pending.
 The container router and `character_asset_container.js` expose proposal review
 on the Assets container page. See [Local Characters](COMPONENTS/LOCAL_CHARACTERS.md#character-asset-container-workflow-2026-11-06)
 and the [completed migration plan](../plans/completed/character-image-production-workflow.md).

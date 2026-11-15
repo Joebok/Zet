@@ -10,6 +10,7 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
   const state = {pipeline: "", costume: "", view: "", detail: null, phaseSourceFile: null,
     timer: null, active: false, pollInFlight: false, request: 0, sourceRequest: 0, templateProposal: null, dressingDrafts: {},
     mutation: false, scope: null, controller: null, templateTimer: null,
+    templatePollInFlight: false, templatePollError: "",
     phaseChange: false, sourceScopeKey: "", aspectRatio: "2:3"};
   let sharedBoard = null;
   const sharedBoardHost = $("shared-board");
@@ -520,14 +521,26 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
   function watchTemplateReview() {
     clearInterval(state.templateTimer); state.templateTimer = null;
     if (!state.active || state.view || !$("template-improvement").open ||
-        state.templateProposal?.schema_version !== 2 || state.templateProposal.status !== "PROPOSING") return;
+        state.templateProposal?.schema_version !== 2 || state.templateProposal.status !== "PROPOSING" ||
+        state.templateProposal.progress?.status === "FAILED") return;
     state.templateTimer = setInterval(async () => {
       if (!state.active || state.view || !$("template-improvement").open) { clearInterval(state.templateTimer); state.templateTimer = null; return; }
+      if (state.templatePollInFlight) return;
+      state.templatePollInFlight = true;
       try {
-        state.templateProposal = await request(api(`/template-proposals/${state.templateProposal.proposal_id}`));
+        const proposalId = state.templateProposal.proposal_id;
+        const sequence = state.request;
+        const proposal = await request(api(`/template-proposals/${proposalId}`));
+        if (sequence !== state.request || state.templateProposal?.proposal_id !== proposalId) return;
+        state.templateProposal = proposal;
+        state.templatePollError = "";
         renderTemplateProposal();
-        if (state.templateProposal.status !== "PROPOSING") { clearInterval(state.templateTimer); state.templateTimer = null; }
-      } catch (error) { reportError(error); clearInterval(state.templateTimer); state.templateTimer = null; }
+        if (state.templateProposal.status !== "PROPOSING" || state.templateProposal.progress?.status === "FAILED") {
+          clearInterval(state.templateTimer); state.templateTimer = null;
+        }
+      } catch (error) {
+        if (error.name !== "AbortError") { state.templatePollError = error.message; renderTemplateProposal(); }
+      } finally { state.templatePollInFlight = false; }
     }, 3000);
   }
 
@@ -537,10 +550,24 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
     host.replaceChildren();
     host.hidden = !proposal;
     if (!proposal) return;
+    if (state.templatePollError && proposal.status === "PROPOSING") {
+      const notice = document.createElement("p");
+      notice.className = "error";
+      notice.textContent = `Review status temporarily unavailable. Retrying automatically. ${state.templatePollError}`;
+      host.append(notice);
+    }
     if (proposal.schema_version === 2) {
       const heading = document.createElement("h3");
       heading.textContent = `Template review · ${proposal.status}`;
       host.append(heading);
+      if (proposal.status === "PROPOSING" && proposal.progress) {
+        const progress = document.createElement("p");
+        const state = proposal.progress.status === "PAUSED_STORAGE" ? "Paused while storage reconnects" :
+          proposal.progress.status === "FAILED" ? "Review continuation failed" :
+          proposal.progress.ask_id ? `AI request ${proposal.progress.request_status || "submitted"}` : "Preparing AI request";
+        progress.textContent = `${state}${proposal.progress.message ? ` · ${proposal.progress.message}` : ""}${proposal.progress.ask_id ? ` · ${proposal.progress.ask_id}` : ""}`;
+        host.append(progress);
+      }
       if (proposal.error) { const error = document.createElement("p");
         error.textContent = `${proposal.failure_stage ? `${proposal.failure_stage}: ` : ""}${proposal.error}`; host.append(error); }
       if (proposal.summary) { const summary = document.createElement("p"); summary.textContent = proposal.summary; host.append(summary); }
@@ -569,7 +596,9 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
           const check = document.createElement("input"); check.type = "checkbox"; check.value = finding.id;
           check.checked = (proposal.selected_ids || []).includes(finding.id);
           check.disabled = proposal.status === "ACCEPTED";
-          label.append(check, document.createTextNode(`${finding.source_id}${finding.section ? ` · ${finding.section}` : ""} · ${finding.views.join(", ")} · ${finding.rationale}`));
+          const effect = finding.effect === "review_criteria" ? "Review criteria only" : "Changes render prompt";
+          const alternative = finding.alternative_label ? `${finding.alternative_label} · ` : "";
+          label.append(check, document.createTextNode(`${alternative}${effect} · ${finding.source_id}${finding.section ? ` · ${finding.section}` : ""} · ${finding.views.join(", ")} · ${finding.rationale}`));
           const before = document.createElement("pre"); before.textContent = `Before\n${finding.before}`;
           const after = document.createElement("pre"); after.textContent = `After\n${finding.after}`;
           list.append(label, before, after);
@@ -586,6 +615,8 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
               const ids = [...list.querySelectorAll("input:checked")].map(input => input.value);
               state.templateProposal = await request(api(`/template-proposals/${proposal.proposal_id}/decisions`),
                 {method: "PUT", body: JSON.stringify({selected_ids: ids})});
+              state.templatePollError = "";
+              $("template-status").textContent = "";
               renderTemplateProposal();
             } catch (error) { reportError(error); review.disabled = false; }
           });
@@ -617,6 +648,8 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
               accept.disabled = true;
               try { state.templateProposal = await request(api(`/template-proposals/${proposal.proposal_id}/accept`),
                 {method: "POST", body: JSON.stringify({confirm: true})}); renderTemplateProposal();
+                state.templatePollError = "";
+                $("template-status").textContent = "";
                 show("Governing templates updated for future prompts."); }
               catch (error) { reportError(error); accept.disabled = false; }
             }); host.append(accept);
@@ -701,6 +734,9 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
     state.mutation = false;
     state.detail = null;
     state.templateProposal = options.proposal || null;
+    state.templatePollError = "";
+    state.templatePollInFlight = false;
+    $("template-status").textContent = "";
     for (const id of ["outputs", "source-status", "phase-source-status", "prompt-text"]) $(id).replaceChildren();
     for (const id of ["workspace", "outputs", "authoring", "template-improvement", "prompt-preview", "refresh", "costume-wrap"]) $(id).hidden = true;
     $("authoring").open = sameSourceScope && authoringWasOpen;
@@ -885,7 +921,7 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
         body: JSON.stringify({mode, view, candidate_id, direction: $("template-guidance").value,
           model: $("template-model").value, expected_revision: state.detail.revision,
           source_ids: [...$("template-sources").querySelectorAll("input:checked")].map(input => input.value)})});
-      $("template-status").textContent = "Analyzing templates…";
+      $("template-status").textContent = "";
       renderTemplateProposal(); watchTemplateReview();
     } catch (error) { $("template-status").textContent = error.message; reportError(error); }
     finally { button.disabled = false; }

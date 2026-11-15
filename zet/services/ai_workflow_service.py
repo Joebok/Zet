@@ -209,7 +209,7 @@ class AIWorkflowService:
                 record.update(status="RUNNING", error="")
                 record["updated_at"] = datetime.now(timezone.utc).isoformat()
                 self._save(path, record)
-                token = current_workflow.set({"id": task_id, "counts": {}, "owner": record["owner"], "service": record["service"]})
+                token = current_workflow.set({"id": task_id, "counts": {}, "request_ids": record.get("request_ids", []), "owner": record["owner"], "service": record["service"]})
                 try:
                     target = getattr(self._service(record["service"]), record["method"])
                     if initial:
@@ -227,6 +227,9 @@ class AIWorkflowService:
                     else:
                         record.update(status="FAILED", error=str(exc))
                 finally:
+                    workflow_context = current_workflow.get()
+                    if workflow_context:
+                        record["request_ids"] = list(dict.fromkeys(workflow_context.get("request_ids", [])))
                     current_workflow.reset(token)
                     record["updated_at"] = datetime.now(timezone.utc).isoformat()
                     if record["status"] == "COMPLETE":
