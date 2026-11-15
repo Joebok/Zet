@@ -361,6 +361,17 @@ class AIJobService:
             return None
         if self.repository.is_deleted(job_id):
             raise AIExecutionError("This AI job was deleted. Start a new attempt to retry.")
+        receipt = self.lifecycle.read_receipt(job_id)
+        if receipt.get("ask_id") == job_id and receipt.get("universe_id") == self.paths.config.universe_id:
+            status = str(receipt.get("status") or "")
+            if "FAIL" in status or receipt.get("execution_status") == "FAILED" or receipt.get("answer_status") == "FAILED":
+                message = str(receipt.get("error_message") or receipt.get("message") or "AI execution failed")
+                runtime = receipt.get("runtime") or {}
+                if isinstance(runtime, dict) and runtime.get("done_reason") == "length" and "Expecting property name" in message:
+                    count = runtime.get("eval_count")
+                    detail = f" after generating {count} tokens" if isinstance(count, (int, float)) else ""
+                    message = f"Structured AI output was truncated at the model output limit{detail}."
+                raise AIExecutionError(message)
         path = self.ready_answer(job_id)
         if path is None:
             return None

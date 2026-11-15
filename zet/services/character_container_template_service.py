@@ -429,7 +429,7 @@ class CharacterContainerTemplateService:
                             model, "", section_prompt, schema, images, task_type="character_template_revision",
                             role="character_template_line_review", render_context={"operation": "mixed", "bindings_owned_by_zet": True},
                             workflow=scope["pipeline"], owner={"container_id": record["container_id"], "proposal_id": proposal_id},
-                            options={"num_predict": 384})
+                            options={"num_predict": 1536})
                         if not isinstance(section_answer, dict) or not isinstance(section_answer.get("edits"), list):
                             raise ValueError("The model response did not contain an edits list.")
                         collected_edits.extend(section_answer["edits"])
@@ -461,11 +461,14 @@ class CharacterContainerTemplateService:
             rejected.extend({"number": len(rejected) + index + 1, "source_id": "Character.md",
                 "reasons": [f"{item['section']} review failed: {item['error']}"]}
                 for index, item in enumerate(locals().get("section_errors", [])))
-            record.update(status="REVIEW_READY" if findings or not answer["findings"] else "FAILED",
+            section_errors = locals().get("section_errors", [])
+            review_status = "FAILED" if section_errors and not findings else "REVIEW_READY"
+            record.update(status=review_status,
                           findings=findings, rejected_findings=rejected, summary=answer["summary"],
                           runtime=runtime, current_prompts=prompts, model=model)
             if record["status"] == "FAILED":
-                record.update(error="All proposed corrections were rejected.", failure_stage=stage)
+                record.update(error="; ".join(f"{item['section']}: {item['error']}" for item in section_errors)
+                    if section_errors else "All proposed corrections were rejected.", failure_stage=stage)
         except Exception as exc:
             record.update(status="FAILED", error=str(exc), failure_stage=stage)
         write_json_atomic(path, record)
@@ -575,15 +578,12 @@ class CharacterContainerTemplateService:
         write_json_atomic(self._proposal_path(container["scope"], proposal_id), record)
         return self._public(record)
 
-    def detail(self, character: str, phase: str, pipeline: str, costume: str,
-               proposal_id: str) -> dict:
-        scope = self.containers._scope(character, phase, pipeline, costume)
-        record = self._read(scope, proposal_id)
+    def _with_progress(self, scope: dict, record: dict) -> dict:
         public = self._public(record)
         if record.get("schema_version") == 2 and record.get("status") == "PROPOSING":
             from zet.services.ai_workflow_service import AIWorkflowService
             workflows = AIWorkflowService(self.app)
-            workflow_id = "container_template_" + proposal_id
+            workflow_id = "container_template_" + record["proposal_id"]
             workflow_path = workflows.root / (workflow_id + ".json")
             local_path = workflows.local_root / workflow_path.name
             workflow = None
@@ -602,13 +602,17 @@ class CharacterContainerTemplateService:
                     progress["status"] = "FAILED"
                     progress["message"] = "Review ended without saving its result. Reload saved results or start a new analysis."
                 ask_ids = workflow.get("request_ids") or []
-                if ask_ids:
-                    ask_id = ask_ids[-1]
-                    progress["ask_id"] = ask_id
+                progress["requests"] = []
+                for ask_id in ask_ids:
                     try:
-                        progress["request_status"] = self.app.ai_proxy_service.ai_proxy_path_service.jobs.inspect(ask_id)["status"]
+                        request = self.app.ai_proxy_service.ai_proxy_path_service.jobs.inspect(ask_id)
                     except (OSError, ValueError, KeyError):
-                        progress["request_status"] = "UNKNOWN"
+                        request = {"status": "UNKNOWN"}
+                    progress["requests"].append({"ask_id": ask_id, "status": request["status"],
+                        "blocking_reason": request.get("blocking_reason", "")})
+                if progress["requests"]:
+                    progress.update(ask_id=progress["requests"][-1]["ask_id"],
+                                    request_status=progress["requests"][-1]["status"])
                 public["progress"] = progress
             else:
                 from zet.services.storage_health_service import storage_health
@@ -623,6 +627,11 @@ class CharacterContainerTemplateService:
                 }
         return public
 
+    def detail(self, character: str, phase: str, pipeline: str, costume: str,
+               proposal_id: str) -> dict:
+        scope = self.containers._scope(character, phase, pipeline, costume)
+        return self._with_progress(scope, self._read(scope, proposal_id))
+
     def latest(self, character: str, phase: str, pipeline: str, costume: str) -> dict:
         scope = self.containers._scope(character, phase, pipeline, costume)
         root = self.containers._path(scope).parent / "template-proposals"
@@ -635,7 +644,7 @@ class CharacterContainerTemplateService:
             if value.get("scope") == scope and value.get("proposal_id") == path.stem:
                 records.append(value)
         records.sort(key=lambda value: value.get("created_at") or "", reverse=True)
-        return {"proposal": self._public(records[0]) if records else None}
+        return {"proposal": self._with_progress(scope, records[0]) if records else None}
 
     def _selected(self, record: dict, ids: list[str]) -> list[dict]:
         if record.get("schema_version") != 2 or record["status"] not in {"REVIEW_READY", "ACCEPTED"}:

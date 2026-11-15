@@ -567,8 +567,15 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
           proposal.progress.ask_id ? `AI request ${proposal.progress.request_status || "submitted"}` : "Preparing AI request";
         progress.textContent = `${state}${proposal.progress.message ? ` · ${proposal.progress.message}` : ""}${proposal.progress.ask_id ? ` · ${proposal.progress.ask_id}` : ""}`;
         host.append(progress);
+        for (const request of proposal.progress.requests || []) {
+          if (!request.blocking_reason) continue;
+          const failure = document.createElement("p");
+          failure.className = "error";
+          failure.textContent = `${request.ask_id} · ${request.blocking_reason}`;
+          host.append(failure);
+        }
       }
-      if (proposal.error) { const error = document.createElement("p");
+      if (proposal.error) { const error = document.createElement("p"); error.className = "error";
         error.textContent = `${proposal.failure_stage ? `${proposal.failure_stage}: ` : ""}${proposal.error}`; host.append(error); }
       if (proposal.summary) { const summary = document.createElement("p"); summary.textContent = proposal.summary; host.append(summary); }
       if (proposal.rejected_findings?.length) {

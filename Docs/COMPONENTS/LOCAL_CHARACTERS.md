@@ -4,6 +4,13 @@ Head Image Edit is the only head workflow. Character Assembly uses matching publ
 
 ## Character Asset Container current outputs (2026-11-06)
 
+Directed text-only Body Reference and Head Image Edit template reviews split
+local model requests by editable source section. Body Reference requests allow
+1,536 output tokens per section. Reviews preserve valid sibling edits when a
+section fails, show request failure details while siblings remain pending, and
+settle all-failed proposals. Structured request failures are read from verified
+durable receipts after queue payload cleanup.
+
 Compare reads each side through its request-bound universe and shows only current
 published Body Reference, Head Image Edit, Character Assembly and Costume locks.
 Costume choices come from saved costume templates, including costumes without a

@@ -145,6 +145,7 @@ Open **Tools > AI Controls** and check the process state and Ask, Running, and A
 - [plans/README.md](plans/README.md) — implementation plans and maintenance checkpoints
 - [Tutorial.md](Tutorial.md) — feature-oriented usage guide
 - [Docs/COMPONENTS/LOCAL_CHARACTERS.md](Docs/COMPONENTS/LOCAL_CHARACTERS.md) — current local character workflow and rendering boundaries
+- [Docs/MINOR_CHARACTERS_GUIDE.md](Docs/MINOR_CHARACTERS_GUIDE.md) — create, refine, publish, rename, and delete Minor Character workspaces
 - [Docs-Joe/archive/Local_Image_Generation.md](Docs-Joe/archive/Local_Image_Generation.md) — historical local rendering guidance
 - [Docs-Joe/archive/Zet reliability, library scaling, and model qualification.md](Docs-Joe/archive/Zet%20reliability,%20library%20scaling,%20and%20model%20qualification.md) — historical reliability and scaling plan
 

@@ -18,6 +18,8 @@ Persisted `prompt_generator` continuations and Costume-Dressing's historical `po
   verifies identities/inventories, drains answers into the local Inbox, exposes
   results, copies validated artifacts and records completion. Compatibility
   synchronous callers wait here; resumable workflows yield rather than wait.
+  Structured callers also settle from a matching durable failed receipt after
+  answer cleanup, so continuations do not wait forever for a removed payload.
   For structured Ollama responses, a JSON parse failure with worker
   `done_reason=length` is reported as output-limit truncation with the generated
   token count when available; other parse errors retain their original detail.
@@ -95,6 +97,9 @@ New filesystem collection failures schedule collection-only retry with a bounded
 Missing saved requests and ownership/identity errors still require explicit
 recovery. A temporarily unavailable library volume is not treated as an orphaned
 request. Successful receipts clear the active collection error.
+Structured execution failures remain available from their durable receipt after
+answer cleanup; receipt identity and universe are checked before exposing the
+error to a continuation.
 
 Image Generation loads requests from disk under its process-shared collection
 lock. Atomic image and child-state commits precede the receipt; restart can finish
