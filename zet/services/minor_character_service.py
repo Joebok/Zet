@@ -197,7 +197,8 @@ class MinorCharacterService(QuickCharacterWizardService):
                 root = self.root.resolve()
                 if not directory.is_relative_to(root) or directory == root:
                     raise ValueError("Minor Character directory is outside its universe.")
-                shutil.rmtree(directory)
+                if directory.exists():
+                    shutil.rmtree(directory)
                 template_root = template_path.parent.resolve()
                 if not template_root.is_relative_to(self.templates.root.resolve()):
                     raise ValueError("Minor Character template is outside its universe.")
