@@ -178,6 +178,43 @@ class EntityLibraryService:
                 before_commit()
             self._record_lock_receipt(connection, operation_id, ids, stamp)
 
+    def preserve_and_unbind_workflow_locks(self, owners, *, operation_id="", before_commit=None):
+        """Move workflow-owned image bytes into Inventory storage and keep asset links."""
+        from zet.services.atomic_file_service import write_bytes_atomic
+
+        owners = list(owners)
+        rows = []
+        for owner in owners:
+            row = self.repository.fetchone(
+                "SELECT * FROM assets WHERE lock_owner=?", (owner,)
+            )
+            if row:
+                source = self._asset_path(row)
+                if source is None or not source.is_file():
+                    raise EntityLibraryServiceError("A published image is unavailable.")
+                data = source.read_bytes()
+                if hashlib.sha256(data).hexdigest() != row["checksum"]:
+                    raise EntityLibraryServiceError("A published image changed and cannot be preserved.")
+                target = self._image_path(row["asset_id"], row["file_name"])
+                if not target.is_file():
+                    write_bytes_atomic(target, data)
+                elif hashlib.sha256(target.read_bytes()).hexdigest() != row["checksum"]:
+                    raise EntityLibraryServiceError("An Inventory image path already contains different bytes.")
+                rows.append((row, target.relative_to(Path(self.path_service.config.base_library_path).resolve()).as_posix()))
+
+        stamp = _now()
+        with self.repository.transaction() as connection:
+            ids = []
+            for row, relative in rows:
+                ids.append(row["asset_id"])
+                connection.execute(
+                    "UPDATE assets SET lock_owner=NULL,lock_candidate=NULL,lock_path=?,updated_at=? WHERE asset_id=?",
+                    (relative, stamp, row["asset_id"]),
+                )
+            if before_commit:
+                before_commit()
+            self._record_lock_receipt(connection, operation_id, ids, stamp)
+
     @staticmethod
     def _json(row: dict) -> dict:
         for key in ("width", "height", "rating"):

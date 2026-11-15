@@ -1046,14 +1046,21 @@ Background collection uses the shared AI job coordinator for Character Asset Con
 
 Each named collection has Style Alignment and five view assets. Each asset
 uses the shared eight-slot mixed-quality Candidate Board. The overview and
-container show locked images and link to all six boards. Container Settings
-edits the shared sections of MinorCharacter.md and selects the original
+container show locked images and link to all six boards. Rename is available
+from both the overview and container header. Container Settings edits the
+shared sections of MinorCharacter.md and selects the original
 Inventory image. Each board owns the interview and mounts the shared Render Controls, candidate grid, and review.
 Edit the next prompt body in Render Controls. Open candidate review to see the
 exact submitted prompt and frozen render inputs. STYLE locks stay in the
 collection and supply the reference for official views. Official locks publish
 through Inventory. Interviews start fresh from saved inputs, and accepted proposals save
 to the relevant section of the same template.
+
+Delete previews each selected or locked board image and requires approval for
+each affected image. Active work blocks deletion. Published Inventory images
+retain their asset IDs and references while their bytes are moved into Inventory
+storage; private workspace and template files are then removed. The preview is
+fenced by workspace revision and template hash.
 
 Choose an Inventory image in Container Settings and click **Run Intake** under
 **Template Improvement** to

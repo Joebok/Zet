@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import random
+import shutil
 from uuid import uuid4
 
 from zet.services import image_candidate_board_service as board_policy
@@ -146,15 +147,43 @@ class MinorCharacterService(QuickCharacterWizardService):
             self.templates.write(sid, seed(name))
             return self._public(empty_collection(sid))
 
-    def delete_character(self, sid):
-        """Permanently remove one named workspace and its owned outputs."""
-        import shutil
-        from pathlib import Path
+    def preview_delete_character(self, sid):
+        with file_lock(self.root / "names.lock"), self._lock(sid):
+            value = self._read(sid)
+            template = self._template(sid)
+            effects = []
+            for view, board in value["boards"].items():
+                for cid in dict.fromkeys([board.get("selected_id"), *[item["id"] for item in board["candidates"].values() if item.get("locked")]]):
+                    if not cid:
+                        continue
+                    item = board["candidates"].get(cid)
+                    if not item:
+                        continue
+                    effects.append({
+                        "id": f"{view}:{cid}",
+                        "label": f"{board['label']} · slot {item.get('slot', '?')} · {'Locked' if item.get('locked') else 'Selected'}",
+                        "image_url": (f"/api/minor-characters/{sid}/assets/{view}/candidates/{cid}/thumbnail"
+                                      if item.get("image") else ""),
+                    })
+            token = sha256(json.dumps({"revision": value["revision"], "template_hash": template[1],
+                                       "effects": effects}, sort_keys=True).encode()).hexdigest()
+            return {"revision": value["revision"], "template_hash": template[1],
+                    "protected_effects": effects, "confirmation_token": token}
+
+    def delete_character(self, sid, data):
+        """Remove one workspace while retaining its published Inventory images."""
         with file_lock(self.root / "names.lock"):
             with self._lock(sid):
                 template_path = self.templates.path(sid)
                 text, _, sections, _ = self.templates.read(sid)
                 value = self._read(sid)
+                preview = self.preview_delete_character(sid)
+                if (data.get("revision") != preview["revision"] or data.get("template_hash") != preview["template_hash"]
+                        or data.get("confirmation_token") != preview["confirmation_token"]):
+                    raise ProtectedEffectsChanged(preview)
+                expected = {effect["id"] for effect in preview["protected_effects"]}
+                if not isinstance(data.get("approved_effects"), list) or set(data["approved_effects"]) != expected:
+                    raise ValueError("Approve each selected or locked image affected by deletion.")
                 if value.get("intake_job", {}).get("status") in ACTIVE or any(
                         board.get("text_job", {}).get("status") in ACTIVE
                         or board.get("luna_review", {}).get("status") == "RUNNING"
@@ -163,11 +192,7 @@ class MinorCharacterService(QuickCharacterWizardService):
                     raise ValueError("Wait for this Minor Character's active work to finish before deleting it.")
                 library = self.app.entity_library_service
                 owners = [library.lock_owner("minor", sid, view) for view in value.get("boards", {})]
-                for owner in owners:
-                    asset = library.repository.fetchone("SELECT asset_id FROM assets WHERE lock_owner=?", (owner,))
-                    if asset and library.usage_for_asset(asset["asset_id"]):
-                        raise ValueError("A published Minor Character image has recorded usages; remove those references first.")
-                library.unbind_workflow_locks(owners)
+                library.preserve_and_unbind_workflow_locks(owners)
                 directory = self._directory(sid).resolve()
                 root = self.root.resolve()
                 if not directory.is_relative_to(root) or directory == root:
@@ -304,7 +329,8 @@ class MinorCharacterService(QuickCharacterWizardService):
                     self._prompt_basis(value, data["view"])
             if any(sections[key] != content for key, content in changes.items()):
                 self.templates.write(sid, replace_sections(text, changes))
-                self._mark_changed(value["boards"]["STYLE"])
+                if any(key != "NAME" for key in changes):
+                    self._mark_changed(value["boards"]["STYLE"])
             if "view" in data:
                 board = self._board(value, data["view"])
                 if "aspect_ratio" in data:

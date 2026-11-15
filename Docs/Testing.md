@@ -1,5 +1,13 @@
 # Local testing
 
+## Minor Character management controls (2026-11-15)
+
+Python compilation, Minor Character controller JavaScript syntax, and
+`git diff --check` passed. `npm run test:e2e` passed all four approved scenarios
+(48.8 seconds). The baseline does not cover Minor Character rename or deletion.
+No live workspace was modified. Disposable API coverage of image preservation,
+stale previews, and cleanup retry remains unverified.
+
 ## Head Image Edit line review and Construct retirement cleanup (2026-11-14)
 
 The saved Luna proposal and Codex response were replayed read-only. Both old

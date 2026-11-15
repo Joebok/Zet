@@ -39,8 +39,12 @@ def create_minor_character_router(provider):
         return {"character": call("create_character", data)}
 
     @router.delete("/{sid}")
-    def delete(sid: str):
-        return call("delete_character", sid)
+    def delete(sid: str, data: dict = Body(...)):
+        return call("delete_character", sid, data)
+
+    @router.post("/{sid}/delete-preview")
+    def delete_preview(sid: str):
+        return call("preview_delete_character", sid)
 
     @router.get("/{sid}")
     def character(sid: str):

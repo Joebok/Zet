@@ -117,6 +117,49 @@ async function navigate(id, assetView) {
   route(id, assetView);
   await load();
 }
+async function renameCharacter(id, name) {
+  const next = window.prompt("Rename Minor Character", name);
+  if (next === null || next.trim() === name) return;
+  const current = character?.character_id === id ? character : (await api("/" + encodeURIComponent(id))).character;
+  const result = await api("/" + encodeURIComponent(id), "PATCH", {
+    name:next, revision:current.revision, template_hash:current.template_hash,
+  });
+  if (character?.character_id === id) adopt(result.character);
+  else await load();
+  message("Minor Character renamed.");
+}
+async function deleteCharacter(id, name) {
+  const preview = await api("/" + encodeURIComponent(id) + "/delete-preview", "POST", {});
+  const dialog = document.createElement("dialog");
+  dialog.className = "protected-effects-dialog";
+  const title = document.createElement("h2"); title.textContent = "Delete " + name + "?";
+  const description = document.createElement("p"); description.textContent = "This removes the workspace. Published Inventory images and their references are kept.";
+  const form = document.createElement("form"); form.method = "dialog";
+  const checks = [];
+  for (const effect of preview.protected_effects) {
+    const label = document.createElement("label"), input = document.createElement("input");
+    input.type = "checkbox"; checks.push(input); label.append(input);
+    if (effect.image_url) { const image = document.createElement("img"); image.src = scoped(effect.image_url); image.alt = "Affected image preview"; label.append(image); }
+    label.append(document.createTextNode(effect.label)); form.append(label);
+  }
+  const actions = document.createElement("div"); actions.className = "button-row";
+  const cancel = document.createElement("button"); cancel.value = "cancel"; cancel.textContent = "Cancel";
+  const all = document.createElement("button"); all.type = "button"; all.textContent = "Approve all";
+  all.onclick = () => { checks.forEach(check => { check.checked = true; }); confirm.disabled = false; };
+  const confirm = document.createElement("button"); confirm.value = "confirm"; confirm.textContent = "Delete workspace"; confirm.className = "danger-action"; confirm.disabled = checks.length > 0;
+  checks.forEach(check => check.onchange = () => { confirm.disabled = checks.some(item => !item.checked); });
+  actions.append(cancel); if (checks.length) actions.append(all); actions.append(confirm); form.append(actions);
+  dialog.append(title, description, form); document.body.append(dialog);
+  try {
+    dialog.showModal();
+    await new Promise(resolve => dialog.addEventListener("close", resolve, {once:true}));
+    if (dialog.returnValue !== "confirm") return;
+  } finally { dialog.remove(); }
+  await api("/" + encodeURIComponent(id), "DELETE", {...preview, approved_effects:preview.protected_effects.map(effect => effect.id)});
+  if (character?.character_id === id) { character = null; route(""); }
+  await load();
+  message(name + " deleted.");
+}
 function cards(id, assets) {
   return assets.map(item => {
     const href = escape(routeUrl(id, item.view));
@@ -180,7 +223,9 @@ async function load() {
   }
   $("mc-page-title").textContent = "Minor Characters";
   $("mc-list").innerHTML = characters.map(row => `<section class="control-panel">
-    <h2>${escape(row.name)}</h2><a data-mc-route href="${escape(routeUrl(row.character_id))}">Open Asset Container</a>
+    <h2>${escape(row.name)}</h2><div class="button-row"><a data-mc-route href="${escape(routeUrl(row.character_id))}">Open Asset Container</a>
+    <button type="button" data-mc-rename="${escape(row.character_id)}" data-name="${escape(row.name)}">Rename</button>
+    <button type="button" class="danger-action" data-mc-delete="${escape(row.character_id)}" data-name="${escape(row.name)}">Delete</button></div>
     <div class="mc-asset-cards" aria-label="${escape(row.name)} assets">${cards(row.character_id, row.assets)}</div></section>`).join("") || "<p>No Minor Characters yet.</p>";
   $("mc-list-panel").hidden = false;
 }
@@ -228,6 +273,8 @@ function schedule() {
 }
 function render() {
   $("mc-editor").hidden = false;
+  $("mc-rename").onclick = () => run(() => renameCharacter(character.character_id, character.name));
+  $("mc-delete").onclick = () => run(() => deleteCharacter(character.character_id, character.name));
   $("mc-authoring-model").textContent = selectedModel() || "Use configured default";
   $("mc-list-panel").hidden = true;
   const current = board();
@@ -250,9 +297,8 @@ function render() {
   else renderContainer();
 }
 function renderContainer() {
-  for (const [key,value] of Object.entries({...character.fields, name:character.name}))
+  for (const [key,value] of Object.entries(character.fields))
     form.elements.namedItem(key).value = edits.get(key) ?? value;
-  form.elements.namedItem("name").required = true;
   $("mc-assets").innerHTML = cards(character.character_id, character.assets);
   $("mc-source-status").textContent = character.source?.label || character.source_error || "Choose an Inventory image.";
   const intake = character.intake_job;
@@ -532,6 +578,8 @@ page.addEventListener("click", event => {
   const control = event.target.closest("button");
   if (!control || control.disabled) return;
   const data = control.dataset;
+  if (data.mcRename) return run(() => renameCharacter(data.mcRename, data.name));
+  if (data.mcDelete) return run(() => deleteCharacter(data.mcDelete, data.name));
   if ("applyProposals" in data) return run(()=>author("apply", {
     job_id: board().text_job.id,
     choices: Object.fromEntries([...$("mc-proposals").querySelectorAll("select")].map(select => [select.dataset.proposal, select.value])),

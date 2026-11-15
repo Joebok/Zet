@@ -497,6 +497,9 @@ Character adapter for `mountCandidateBoard`. The shared component owns the
 Render Controls, cards, and review. `minor_character_service.py` owns scoped
 evidence, the private STYLE lock, and journaled official-view publication. Intake progress
 is collection-scoped and render and authoring progress is asset-scoped.
+The service also owns name- and revision-fenced deletion previews and removes
+workspaces after preserving published bytes in Inventory. The controller exposes
+Rename and individually approved Delete actions on the overview and container.
 The shared image production service transports
 frozen requests. AIJobCoordinator applies answers by owning universe,
 collection, asset, candidate, slot and attempt. The offline name-and-source

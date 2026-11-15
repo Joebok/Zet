@@ -991,6 +991,7 @@
         <div id="mc-list"></div>
       </section>
       <section id="mc-editor" hidden>
+        <div class="button-row"><button type="button" id="mc-rename">Rename</button><button type="button" id="mc-delete" class="danger-action">Delete</button></div>
         <div class="button-row"><label>Authoring Model <button type="button" id="mc-authoring-model">Use configured default</button></label></div>
         <label id="mc-view-wrap" class="mc-asset-selector" hidden>View<select id="mc-view"></select></label>
         <a id="mc-back" data-mc-route href="?page=minor-characters">All Minor Characters</a>
@@ -998,7 +999,6 @@
           <section id="mc-container">
             <details class="control-panel">
               <summary>Container Settings</summary>
-              <label>Name<input name="name" maxlength="200" required></label>
               <div id="mc-source-controls">
                 <img id="mc-source-image" alt="Original Inventory reference" width="160" hidden>
                 <button type="button" id="mc-add-reference">Choose from Inventory</button>

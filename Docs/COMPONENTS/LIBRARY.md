@@ -46,6 +46,10 @@ Library-owned typed JSON path fields are stored in portable format version 1 rel
 - Derived index corruption or stale generations can affect discovery while authored files remain intact. Inspect error/freshness reporting before choosing a rebuild; the machine-local index lives under configured `Storage.Root/Indexes`, outside Git/Dropbox and the authored library. The rebuild CLI uses the configured universe binding; indexes remain disposable and are not copied during storage cutover.
 - Add new reusable library actions in focused services and expose them through existing app/router patterns. Add indexed discovery kinds through source scanning and list providers; inspect pagination/freshness contracts in source and obtain approval for any new coverage. Do not make candidates searchable approved images merely by adding them to a folder scan.
 
+Workspace deletion can preserve a workflow publication by copying and checksum
+verifying its bytes into ID-addressed Inventory storage, then clearing workflow
+ownership in the catalog while retaining the same asset row and references.
+
 ## Tests and design evidence
 
 [Testing](../Testing.md#approved-fast-scenarios) owns current validation. S1 exercises source authoring and seeded Narrative image display; S2 consumes prerequisites and publishes local locks. Neither proves full entity import/merge/archive, usages, schema migration, universe lifecycle, or derived-index integrity. Disposable checks cover SQL paging, missing-blob display metadata, publication rollback/recovery and universe-bound serving; no maintained scenario was added.
