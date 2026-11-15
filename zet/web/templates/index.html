@@ -1015,7 +1015,7 @@
               <p class="muted">Fill blank Appearance, Framing, and Directions fields from the source image.</p>
               <p id="mc-intake-status" role="status"></p>
             </details>
-            <div id="mc-assets" class="narrative-slots" aria-label="Minor Character assets"></div>
+            <div id="mc-assets" class="mc-asset-cards" aria-label="Minor Character assets"></div>
           </section>
           <section id="mc-board-authoring">
             <details id="mc-asset-inputs" class="control-panel">
@@ -1025,17 +1025,26 @@
               <label id="mc-refinement">View refinement<textarea name="refinement"></textarea></label>
               <button type="submit">Save asset inputs</button>
             </details>
-            <details id="mc-interview-section" class="control-panel">
-              <summary>Interview</summary>
+            <details id="mc-improvement" class="control-panel" open>
+              <summary id="mc-improvement-title">Template Improvement</summary>
               <p>Each interview uses the saved template. Applying proposals updates this asset’s section of that template.</p>
+              <p id="mc-reference-status" role="status"></p>
+              <a id="mc-style-link" data-mc-route hidden>Open Style</a>
+              <a id="mc-front-link" data-mc-route hidden>Continue to Front</a>
+              <a id="mc-inventory-link" hidden>Open published Front image in Inventory</a>
               <label>Interview feedback<textarea id="mc-feedback"></textarea></label>
               <label>Candidate evidence<select id="mc-evidence"><option value="">None</option></select></label>
               <div class="button-row">
-                <button type="button" id="mc-model">Use configured default</button>
+                <button type="button" id="mc-model-interview">Use configured default for Interview</button>
                 <button type="button" id="mc-interview">Interview</button>
               </div>
-              <p id="mc-authoring-status" role="status"></p>
               <div id="mc-proposals" hidden></div>
+            </details>
+            <details id="mc-interview-section" class="control-panel">
+              <summary>Interview details</summary>
+              <label>Intake model <button type="button" id="mc-model-intake">Use configured default</button></label>
+              <label>Prompt model <button type="button" id="mc-model-prompt">Use configured default</button></label>
+              <p id="mc-authoring-status" role="status"></p>
             </details>
           </section>
         </form>

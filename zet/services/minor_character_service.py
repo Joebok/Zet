@@ -197,7 +197,7 @@ class MinorCharacterService(QuickCharacterWizardService):
                       assets=self._asset_summaries(value))
         if intake := value.get("intake_job"):
             public["intake_job"] = {key: intake[key] for key in
-                ("id", "status", "error", "applied_fields", "saved_template_hash") if key in intake}
+                ("id", "status", "error", "applied_fields", "saved_template_hash", "effective_model") if key in intake}
         if sections["SOURCE_ASSET_ID"]:
             try:
                 binding = self._source_binding(sections["SOURCE_ASSET_ID"])
@@ -790,6 +790,7 @@ class MinorCharacterService(QuickCharacterWizardService):
             write_bytes_atomic(self._directory(sid) / relative, contents)
             return self._submit_authoring_job(value, value, "STYLE", "intake_job", {
                 "id": job_id, "status": "RUNNING", "action": "intake", "fields": fields,
+                "model": str(data.get("model") or ""),
                 "template_hash": digest, "reference_hash": sha256(contents).hexdigest(),
                 "authoring_reference": relative,
             })
@@ -943,7 +944,8 @@ class MinorCharacterService(QuickCharacterWizardService):
     def _intake_result(self, sid, job):
         from zet.services.llm_role_service import resolve_role_model
         role = "minor_intake"
-        model = resolve_role_model(self.app.config, role)
+        model = resolve_role_model(self.app.config, role, job.get("model", ""))
+        job["effective_model"] = model
         source = self._owned_file(sid, job["authoring_reference"])
         if sha256(source.read_bytes()).hexdigest() != job["reference_hash"]:
             raise ValueError("The captured intake image changed. Run intake again.")
@@ -1008,6 +1010,7 @@ class MinorCharacterService(QuickCharacterWizardService):
         interview = job["action"] == "interview"
         role = "minor_interview" if interview else "minor_prompt"
         model = resolve_role_model(self.app.config, role, job["model"])
+        job["effective_model"] = model
         baseline = job["baseline"]
         fields = baseline["editable"]
         images = [str(self._owned_file(sid, job["authoring_reference"]))]
@@ -1048,7 +1051,7 @@ class MinorCharacterService(QuickCharacterWizardService):
         if not interview:
             if not isinstance(result.get("prompt"), str) or not result["prompt"].strip():
                 raise ValueError("The model returned an empty prompt.")
-            return {"written_prompt": result["prompt"]}
+            return {"written_prompt": result["prompt"], "effective_model": model}
         rows, seen = [], set()
         for proposal in result["proposals"]:
             field = proposal["field"]
@@ -1058,4 +1061,4 @@ class MinorCharacterService(QuickCharacterWizardService):
             row = field_replacement(proposal, fields[field], job["id"], len(rows))
             if row:
                 rows.append(row)
-        return {"review": {"proposals": rows}}
+        return {"review": {"proposals": rows}, "effective_model": model}
