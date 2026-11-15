@@ -22,6 +22,13 @@ locked outputs. Interviews, prompt editing, and renders live on the individual
 boards. Each interview starts from the current template, and accepted proposals
 write to the relevant section of that template.
 
+One workspace Authoring Model choice covers Intake, interviews, and Write
+Prompt. It defaults to the configured Minor / Quick Character model. Each
+job freezes its resolved model at submission. Intake asks about each blank
+field separately. Interviews observe each frozen image separately and use
+the labeled observations to propose an edit to the active asset's field.
+The existing Luna Review ranking configuration governs candidate ranking.
+
 ## Candidate Board and publication
 
 All six assets mount the shared Candidate Board. Style Alignment locks its

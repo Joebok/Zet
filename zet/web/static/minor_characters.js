@@ -9,7 +9,7 @@ let sharedBoard;
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"})[char]);
 let character, universe, entryAsset, timer;
-let view = "", busy = false, model = "", epoch = 0, mutation = 0;
+let view = "", busy = false, epoch = 0, mutation = 0;
 const modelOverrides = new Map(Object.entries(JSON.parse(sessionStorage.getItem("mc-model-overrides") || "{}")));
 let saving;
 const edits = new Map();
@@ -28,18 +28,18 @@ const promptDrafts = new Map();
 const pendingWrites = new Map();
 const promptKey = () => [universe, character?.character_id, view].join(":");
 const renderActive = status => ["SUBMITTING", "QUEUED", "RUNNING"].includes(status);
-const modelKey = action => [universe, character?.character_id, action].join(":");
-const selectedModel = action => modelOverrides.get(modelKey(action)) || "";
-function updateModelButton(action) {
-  const button = $("mc-model-" + action);
-  if (button) button.textContent = selectedModel(action) || "Use configured default";
-}
-async function chooseModel(action) {
-  const value = await window.ZetModelPicker.open({value:selectedModel(action),required:["vision"],allowDefault:true});
+const modelKey = () => JSON.stringify([universe, character?.character_id]);
+const selectedModel = () => modelOverrides.get(modelKey()) || "";
+const modelLabel = job => job.effective_model || "Model not recorded";
+const pendingReview = current => current.text_job?.status === "COMPLETE" && current.text_job.review?.proposals.length;
+
+async function chooseModel() {
+  const key = modelKey();
+  const value = await window.ZetModelPicker.open({value:selectedModel(),required:["vision"],allowDefault:true});
   if (value === null) return;
-  modelOverrides.set(modelKey(action), value);
+  modelOverrides.set(key, value);
   sessionStorage.setItem("mc-model-overrides", JSON.stringify(Object.fromEntries(modelOverrides)));
-  updateModelButton(action);
+  if (key === modelKey()) $("mc-authoring-model").textContent = value || "Use configured default";
 }
 
 function routeUrl(id, assetView) {
@@ -228,6 +228,7 @@ function schedule() {
 }
 function render() {
   $("mc-editor").hidden = false;
+  $("mc-authoring-model").textContent = selectedModel() || "Use configured default";
   $("mc-list-panel").hidden = true;
   const current = board();
   $("mc-back").href = routeUrl(view ? character.character_id : "");
@@ -257,10 +258,11 @@ function renderContainer() {
   const intake = character.intake_job;
   const hasBlankFields = Object.values(character.fields).some(value => !value.trim());
   $("mc-intake").disabled = !character.source || !hasBlankFields || intake?.status === "RUNNING";
-  $("mc-intake-status").textContent = intake?.error || {
+  const intakeStatus = intake?.error || {
     RUNNING: "Analyzing the source image…",
     COMPLETE: `Saved to the template: ${(intake?.applied_fields || []).join(", ")}.`,
   }[intake?.status] || "";
+  $("mc-intake-status").textContent = intake ? [intakeStatus, modelLabel(intake)].filter(Boolean).join(" · ") : intakeStatus;
   $("mc-source-image").hidden = !character.source;
   if (character.source) $("mc-source-image").src = scoped(character.source.url);
 }
@@ -294,7 +296,7 @@ function boardModel(current) {
     actions.push({key, label, group, placement, disabledReason, role});
   const items = current.slots.filter(Boolean).map(id => current.candidates[id]);
   const completed = item => item.status === "COMPLETE" && item.image;
-  add("write-prompt", "Write Prompt", "prompt", authorReason || (current.text_job?.action === "interview" && current.text_job.status === "COMPLETE" && current.text_job.review ? "Review or dismiss the interview suggestions before writing a new prompt." : ""));
+  add("write-prompt", "Write Prompt", "prompt", authorReason || (pendingReview(current) ? "Review or dismiss the interview suggestions before writing a new prompt." : ""));
   add("save-prompt", "Save Prompt", "prompt", authorReason);
   add("save-settings", "Save settings", "render", "", undefined, ["settings"]);
   const luna = current.luna_review;
@@ -349,10 +351,8 @@ function boardModel(current) {
   const style = character.boards.STYLE;
   const selectedStyle = style.candidates[style.selected_id];
   const lockedStyle = selectedStyle?.locked ? selectedStyle : Object.values(style.candidates).find(item => item.locked);
-  const front = character.boards.FRONT;
-  const frontCandidate = front.candidates[front.selected_id];
   const promptStatus = job?.action === "write-prompt"
-    ? job.error || ({RUNNING:"Writing prompt…", COMPLETE:"Prompt written."}[job.status] ?? "")
+    ? [job.error || ({RUNNING:"Writing prompt…", COMPLETE:"Prompt written."}[job.status] ?? ""), modelLabel(job)].filter(Boolean).join(" · ")
     : "";
   return {scope:{key:promptKey(), title:character.name, view:current.label}, revision:character.revision, slots, actions,
     selectedId:current.selected_id, comparisons,
@@ -364,9 +364,6 @@ function boardModel(current) {
       {key:"aspect_ratio", label:"Aspect ratio", type:"text", value:edits.get("aspect_ratio") ?? current.aspect_ratio},
     ], readiness:{draft:renderReason, final:renderReason}, promptStatus,
     renderStatus:renderReason || (view === "STYLE" ? `Source reference · ${character.source.label}` : `Locked Style reference · slot ${lockedStyle?.slot ?? ""}`)},
-    workflow:{styleLocked:Boolean(lockedStyle),frontPublished:Boolean(frontCandidate?.locked && frontCandidate.inventory_asset_id),
-      styleUrl:routeUrl(character.character_id,"STYLE"),frontUrl:routeUrl(character.character_id,"FRONT"),
-      frontInventoryId:frontCandidate?.inventory_asset_id || "",frontCandidateId:frontCandidate?.id || ""},
   };
 }
 
@@ -393,19 +390,18 @@ function renderBoard(current) {
   evidence.replaceChildren(new Option("None", ""), ...current.slots.filter(id => current.candidates[id]?.status === "COMPLETE" && current.candidates[id]?.image)
     .map(id => new Option(`Slot ${current.candidates[id].slot}`, id)));
   if ([...evidence.options].some(option => option.value === previousEvidence)) evidence.value = previousEvidence;
-  $("mc-interview").disabled = Boolean(authoringReason(current));
+  $("mc-interview").disabled = Boolean(authoringReason(current) || pendingReview(current));
   $("mc-improvement").hidden = false;
   $("mc-improvement-title").textContent = view === "STYLE" ? "Style improvement" : `${current.label} improvement`;
-  $("mc-model-prompt").hidden = false;
-  updateModelButton("interview"); updateModelButton("prompt");
   const style = character.boards.STYLE;
   const styleCandidate = style.candidates[style.selected_id];
   const lockedStyle = styleCandidate?.locked ? styleCandidate : Object.values(style.candidates).find(item => item.locked);
   $("mc-reference-status").textContent = view === "STYLE"
     ? `Style reference · ${character.source?.label || "Source unavailable"}`
-    : `Front reference · ${lockedStyle ? `Style slot ${lockedStyle.slot} (locked)` : "Style image not locked"}`;
+    : `${current.label} reference · ${lockedStyle ? `Style slot ${lockedStyle.slot} (locked)` : "Style image not locked"}`;
   $("mc-front-link").hidden = view !== "STYLE" || !lockedStyle;
-  $("mc-style-link").hidden = view !== "FRONT" || Boolean(lockedStyle);
+  $("mc-front-link").href = routeUrl(character.character_id,"FRONT");
+  $("mc-style-link").hidden = view === "STYLE" || Boolean(lockedStyle);
   $("mc-style-link").href = routeUrl(character.character_id,"STYLE");
   publishBoard(current);
   const job = current.text_job;
@@ -422,16 +418,14 @@ function renderBoard(current) {
   $("mc-authoring-status").textContent = [
     job?.action === "interview" && (job.error || (job.status === "RUNNING" ? "Interview in progress…" : "")),
     job?.applied_fields?.length ? `Applied to template: ${job.applied_fields.map(field => field === "style_alignment_changes" ? "Source-to-reference changes" : field).join(", ")}.` : "",
-    job?.action === "interview" && job.status === "COMPLETE" ? `Interview complete${job.model ? ` · ${job.model}` : " · configured default"}.` : "",
-    current.luna_review?.model ? `Luna Review model · ${current.luna_review.model}.` : "",
+    job?.action === "interview" ? modelLabel(job) : "",
+    job?.applied_fields?.length && !current.prompt_current ? "Use Write Prompt to update the render prompt." : "",
   ].filter(Boolean).join(" ");
-  const intakeButton = $("mc-intake");
-  if (intakeButton) updateModelButton("intake");
-  const workflow = boardModel(current).workflow;
-  $("mc-front-link").textContent = "Continue to Front";
-  const inventoryLink = $("mc-inventory-link");
-  inventoryLink.hidden = !(view === "FRONT" && workflow.frontPublished);
-  inventoryLink.href = workflow.frontInventoryId ? `?page=inventory&universe_id=${encodeURIComponent(universe)}&asset_id=${encodeURIComponent(workflow.frontInventoryId)}` : "#";
+  const rankingModel = current.luna_review?.model;
+  $("mc-ranking-model").hidden = !rankingModel;
+  $("mc-ranking-model").textContent = rankingModel ? `Luna Review model · ${rankingModel}` : "";
+  const selected = current.candidates[current.selected_id];
+  $("mc-inventory-link").hidden = view === "STYLE" || !selected?.locked || !selected.inventory_asset_id;
 }
 
 async function bulk(kind, isCurrent) {
@@ -480,14 +474,16 @@ async function boardAction(intent) {
     } else if (key === "luna-review") {
       accepted = await author(key);
     } else if (key === "interview-candidate") {
-      accepted = await author("interview", {candidate_id:candidateId});
-      if (accepted) {
-        $("mc-evidence").value = candidateId;
-        $("mc-interview-section").open = true;
-        $("mc-improvement").open = true;
+      // The board releases its pending action before the public close method can succeed.
+      requestAnimationFrame(async () => {
+        if (!isCurrent()) return;
         await sharedBoard?.closeReview();
-        if (isCurrent()) $("mc-feedback").focus();
-      }
+        if (!isCurrent()) return;
+        $("mc-improvement").open = true;
+        $("mc-evidence").value = candidateId;
+        $("mc-feedback").focus();
+      });
+      return cancelled;
     } else if (key.startsWith("delete-")) {
       accepted = await bulk(key.slice(7), isCurrent);
     } else if (key.startsWith("render-") || key.startsWith("regen-")) {
@@ -524,7 +520,7 @@ async function setSource(source) {
   if (token === epoch) adopt(result.character);
 }
 function author(action, extra = {}) {
-  return change(asset()+"/authoring/"+action,{model:selectedModel(action === "write-prompt" ? "prompt" : "interview"),feedback:$("mc-feedback").value,candidate_id:$("mc-evidence").value,...extra});
+  return change(asset()+"/authoring/"+action,{model:selectedModel(),feedback:$("mc-feedback").value,candidate_id:$("mc-evidence").value,...extra});
 }
 page.addEventListener("click", event => {
   const link = event.target.closest("a[data-mc-route]");
@@ -540,10 +536,7 @@ page.addEventListener("click", event => {
     job_id: board().text_job.id,
     choices: Object.fromEntries([...$("mc-proposals").querySelectorAll("select")].map(select => [select.dataset.proposal, select.value])),
   }));
-  if ("dismissProposals" in data) return run(()=>author("apply", {
-    job_id:board().text_job.id,
-    choices:Object.fromEntries([...$("mc-proposals").querySelectorAll("select")].map(select=>[select.dataset.proposal,"reject"])),
-  }));
+  if ("dismissProposals" in data) return run(()=>author("dismiss", {job_id:board().text_job.id}));
 });
 page.addEventListener("error", event => {
   const preview = event.target.closest?.("[data-mc-preview]");
@@ -567,10 +560,20 @@ page.addEventListener("submit",event=>{
     if (entryAsset) { await setSource({asset_id:entryAsset.asset_id,label:entryAsset.label}); entryAsset=null; }
   });
 });
-$("mc-intake").onclick=()=>run(()=>change(base()+"/intake",{model:selectedModel("intake")}));
+$("mc-intake").onclick=()=>run(()=>change(base()+"/intake",{model:selectedModel()}));
 $("mc-interview").onclick=()=>run(()=>author("interview"));
 $("mc-view").addEventListener("change", event => run(() => navigate(character.character_id, event.target.value)));
-for (const action of ["intake","interview","prompt"]) $("mc-model-"+action).onclick=()=>chooseModel(action);
+$("mc-authoring-model").onclick = chooseModel;
+$("mc-inventory-link").onclick = () => run(async () => {
+  const token = epoch;
+  await flush();
+  if (token !== epoch) return;
+  const current = board();
+  const item = current.candidates[current.selected_id];
+  if (view !== "STYLE" && item?.locked && item.inventory_asset_id) {
+    window.dispatchEvent(new CustomEvent("zet:open-inventory-image", {detail:{assetId:item.inventory_asset_id, universe}}));
+  }
+});
 $("mc-add-reference").onclick=()=>{
   const token = epoch;
   return bridge.openLibraryPicker(item=>{
