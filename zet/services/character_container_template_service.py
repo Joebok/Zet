@@ -610,12 +610,16 @@ class CharacterContainerTemplateService:
         with file_lock(path.with_suffix(".lock")):
             record = self._read(scope, proposal_id)
             if record.get("status") == "ACCEPTED":
+                if not record.get("promotion", {}).get("source_ids"):
+                    raise CharacterContainerTemplateError("This review has no saved corrections to accept.")
                 return self._public(record)
             if "previews" not in record:
                 raise CharacterContainerTemplateError("Review selected edits and prompt previews before accepting.")
             sources = self._selected(record, record["selected_ids"])
             current = {source["source_id"]: source for source in self._sources(scope)}
             changed = [source for source in sources if source["replacement"] != source["text"]]
+            if not changed:
+                raise CharacterContainerTemplateError("Select and preview at least one correction that changes a governing master before saving.")
             for source in sources:
                 live = current.get(source["source_id"])
                 if (not live or live["source_path"] != source["source_path"]

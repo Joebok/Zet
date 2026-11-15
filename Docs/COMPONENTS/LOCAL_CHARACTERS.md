@@ -113,7 +113,11 @@ panel. It can analyze current governing sources and eight non-renderable text
 prompts without an image or direction, or analyze a finished candidate's frozen
 image, submitted prompt and ordered inputs. Reviews persist under the container;
 individual exact-text findings start unselected. The operator previews selected
-edits and explicitly accepts them with current-master revision checks. Dressing
+edits and explicitly accepts them with current-master revision checks. Saving
+requires at least one selected correction that changes a governing source.
+Accept remains disabled until the current selection has been previewed, and
+changing the selection requires another preview. Historical accepted reviews
+with no promoted sources are displayed as having saved no corrections. Dressing
 can propose edits to Character.md and its selected Costume template; both also
 open directly in the shared source editor. Assembly supports optional text
 review. Current board work never waits for review, and existing asks remain

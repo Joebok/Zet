@@ -560,6 +560,9 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
         details.append(list); host.append(details);
       }
       if (proposal.status === "REVIEW_READY" || proposal.status === "ACCEPTED") {
+        if (proposal.status === "ACCEPTED" && !(proposal.promotion?.source_ids || []).length) {
+          const notice = document.createElement("p"); notice.textContent = "No corrections saved."; host.append(notice);
+        }
         const list = document.createElement("div");
         for (const finding of proposal.findings || []) {
           const label = document.createElement("label");
@@ -575,6 +578,8 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
         host.append(list);
         if (proposal.status === "REVIEW_READY") {
           const review = document.createElement("button"); review.type = "button"; review.textContent = "Preview selected corrections";
+          review.disabled = !list.querySelector("input:checked");
+          list.addEventListener("change", () => { review.disabled = !list.querySelector("input:checked"); });
           review.addEventListener("click", async () => {
             review.disabled = true;
             try {
@@ -586,6 +591,8 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
           });
           host.append(review);
         }
+        const hasChangedSources = (proposal.diffs || []).some(diff => (diff.rows || []).some(row =>
+          row.kind !== "equal" && row.kind !== "gap"));
         for (const diff of proposal.diffs || []) {
           const details = document.createElement("details");
           const summary = document.createElement("summary"); summary.textContent = `${diff.source_id} master → proposed`;
@@ -600,8 +607,9 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
             const title = document.createElement("summary"); title.textContent = item.view;
             const pre = document.createElement("pre"); pre.textContent = item.prompt; detail.append(title, pre); previews.append(detail); }
           host.append(previews);
-          if (proposal.status === "REVIEW_READY") {
+          if (proposal.status === "REVIEW_READY" && hasChangedSources) {
             const accept = document.createElement("button"); accept.type = "button"; accept.textContent = "Accept selected corrections and save masters";
+            accept.disabled = !proposal.previews;
             list.addEventListener("change", () => { accept.disabled = true;
               accept.title = "Preview the changed selection before accepting."; });
             accept.addEventListener("click", async () => {
