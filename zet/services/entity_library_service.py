@@ -1288,7 +1288,7 @@ class EntityLibraryService:
                 "SELECT 1 FROM logical_references WHERE asset_id=? AND status='active' LIMIT 1",
                 (asset_id,),
             ).fetchone())
-            if fresh.get("lock_owner") and status != "approved":
+            if fresh["lock_owner"] and status != "approved":
                 raise EntityLibraryServiceError("Unlock this image in its workflow first.")
             if fresh["status"] == "approved" and status not in {"approved", "archived"}:
                 if has_usages or active_references:
