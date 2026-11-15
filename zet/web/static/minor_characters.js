@@ -378,8 +378,8 @@ function renderBoard(current) {
   $("mc-proposals").hidden = !proposals;
   const proposalChoices = Object.fromEntries([...$("mc-proposals").querySelectorAll("select")].map(select => [select.dataset.proposal, select.value]));
   $("mc-proposals").innerHTML = proposals ? `<div id="mc-proposal-form"><h2>Review interview proposals</h2>${
-    proposals.map(row => `<article class="narrative-proposal"><h3>${escape(row.field === "style_alignment_changes" ? "Source-to-reference changes" : row.field)}</h3><p>${escape(row.reason)}</p>${renderProposalComparison(row, escape)}
-      <label>Decision<select data-proposal="${escape(row.id)}"><option value="reject">Reject</option><option value="accept">Accept</option></select></label></article>`).join("")
+    proposals.map((row,index) => `<article class="narrative-proposal"><h3>${escape(row.field === "style_alignment_changes" ? "Source-to-reference changes" : row.field)}</h3><p>${escape(row.reason)}</p>${renderProposalComparison(row, escape)}
+      <label>Decision for ${escape(row.field)} proposal ${index+1}<select aria-label="Decision for ${escape(row.field)} proposal ${index+1}" data-proposal="${escape(row.id)}"><option value="reject">Reject</option><option value="accept">Accept</option></select></label></article>`).join("")
       || "<p>No field changes proposed.</p>"}<button type="button" data-apply-proposals>Apply</button></div>` : "";
   for (const select of $("mc-proposals").querySelectorAll("select")) {
     if (proposalChoices[select.dataset.proposal]) select.value = proposalChoices[select.dataset.proposal];

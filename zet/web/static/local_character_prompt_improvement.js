@@ -106,13 +106,13 @@
     const analysis = data.analysis || {};
     if (analysis.status) host.append(el("h3", `Review · ${analysis.status}`), el("p", analysis.error || analysis.summary || "Analyzing…"));
     if (data.status === "REVIEW_READY") {
-      for (const item of analysis.findings || []) {
+      for (const [index, item] of (analysis.findings || []).entries()) {
         const row = el("section"); row.className = "template-correction post-finding";
         const label = el("label"); label.className = "template-correction-choice";
         const check = el("input"); check.type = "checkbox"; check.value = item.id;
         check.dataset.findingChoice = item.id;
         row.dataset.findingId = item.id;
-        check.setAttribute("aria-label", `Apply correction: ${item.rationale}`);
+        check.setAttribute("aria-label", `Apply correction ${index + 1}: ${(item.after || item.rationale || "Suggested change").replace(/\s+/g, " ").trim().slice(0, 120)}`);
         check.checked = (analysis.selected_ids || []).includes(item.id);
         check.addEventListener("change", () => void saveDecisions());
         label.append(check);
@@ -129,6 +129,7 @@
             const group = el("fieldset"); group.className = "post-scope"; group.append(el("legend", title));
             for (const value of values) {
               const choice = el("input"); choice.type = "checkbox"; choice.value = value; choice.dataset.scope = key;
+              choice.setAttribute("aria-label", `${title} for correction ${index + 1}: ${value.replaceAll("_", " ")}`);
               choice.checked = (selected || []).includes(value);
               choice.addEventListener("change", () => void saveDecisions());
               const option = el("label", value.replaceAll("_", " ")); option.prepend(choice); group.append(option);

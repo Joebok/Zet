@@ -928,11 +928,11 @@ function renderInterviewReview() {
     ${review.questions.length ? `<section><h3>Questions for the next interview</h3>${review.questions.map(text=>`<p>${esc(text)}</p>`).join('')}</section>` : ''}
     <div class="narrative-actions"><button data-review-bulk="override">Accept All (override)</button><button data-review-bulk="shared">Accept All (shared)</button><button data-review-bulk="reject">Reject All</button></div>
     <p class="narrative-muted">Bulk choices affect only rows you have not explicitly chosen.</p>
-    ${review.proposals.map(row=>`<article class="narrative-proposal" data-proposal-id="${row.id}"><h3>${esc(row.element_name ? row.element_name+' · Appearance notes' : title(row.field))}</h3>
+    ${review.proposals.map((row,index)=>`<article class="narrative-proposal" data-proposal-id="${row.id}"><h3>${esc(row.element_name ? row.element_name+' · Appearance notes' : title(row.field))}</h3>
       <p>${esc(row.reason)}</p>${row.scope === 'appearance' ? '<p class="narrative-muted">Shared appearance: affects every subscene using this element.</p>' : ''}
       ${row.scope === 'visual' ? `<p class="narrative-muted">Shared: ${esc(job.detail.inherited_context?.[row.field] || 'Not specified')}<br>Local override: ${esc(job.detail.visual_overrides?.[row.field] || 'None — inherits shared')}</p>` : ''}
       ${renderProposalComparison(row, esc, row.scope === 'visual' ? 'Old · Effective' : 'Old')}
-      <div class="narrative-actions" role="group" aria-label="${esc(row.element_name || title(row.field))} action">${(row.scope === 'visual' ? ['override','shared','reject'] : ['accept','reject']).map(choice=>`<button data-proposal="${row.id}" data-proposal-choice="${choice}" aria-pressed="${choices[row.id].action === choice}">${title(choice)}</button>`).join('')}</div></article>`).join('') || '<p>No field changes proposed.</p>'}
+      <div class="narrative-actions" role="group" aria-label="${esc(row.element_name || title(row.field))} action ${index+1}">${(row.scope === 'visual' ? ['override','shared','reject'] : ['accept','reject']).map(choice=>`<button aria-label="${title(choice)} ${esc(row.element_name || title(row.field))} proposal ${index+1}" data-proposal="${row.id}" data-proposal-choice="${choice}" aria-pressed="${choices[row.id].action === choice}">${title(choice)}</button>`).join('')}</div></article>`).join('') || '<p>No field changes proposed.</p>'}
     <div class="narrative-actions narrative-review-footer"><button class="primary" data-apply-interview="${job.id}">Apply</button><button data-close="narrative-interview-review">Close</button></div>
     <p id="narrative-interview-review-error" class="error" role="status"></p>`;
 }
@@ -970,7 +970,7 @@ function updateLive() {
   }
   refreshVisualContext();
   const pending = pendingInterviews();
-  host.querySelector('#narrative-pending-reviews').innerHTML = pending.map(job=>`<button data-interview-review="${job.id}">Review interview proposals · ${job.review.proposals.length} changes</button>`).join('');
+  host.querySelector('#narrative-pending-reviews').innerHTML = pending.map(job=>{const index=jobs.filter(item=>item.kind==='interview').findIndex(item=>item.id===job.id)+1;return `<button aria-label="Review interview proposals ${index}" data-interview-review="${job.id}">Review interview proposals · ${job.review.proposals.length} changes</button>`;}).join('');
   const signatureHistory = JSON.stringify([detail.interview, jobs.filter(job=>job.kind!=='image').map(job=>[job.id,job.status,job.result,job.review?.status])]);
   if (signatureHistory !== historySignature) {
     const replies = detail.interview.filter(item=>item.role === 'assistant').length;

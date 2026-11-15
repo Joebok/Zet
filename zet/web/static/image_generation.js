@@ -456,11 +456,12 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
     if (findings.dataset.report !== current?.id + ":" + current?.status) {
       findings.dataset.report = current?.id + ":" + current?.status;
       findings.replaceChildren();
-      for (const item of current?.items || []) {
+      for (const [index, item] of (current?.items || []).entries()) {
         if (!item.correction) continue;
         const label = document.createElement("label");
         const input = document.createElement("input");
         input.type = "checkbox";
+        input.setAttribute("aria-label", `Correct feature ${index + 1}: ${(item.correction || item.feature || "Suggested change").replace(/\s+/g, " ").trim().slice(0, 120)}`);
         input.checked = state.item_ids?.includes(item.id);
         input.onchange = () => {
           const items = new Set(refinement().item_ids || []);

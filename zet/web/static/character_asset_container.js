@@ -591,9 +591,11 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
           const notice = document.createElement("p"); notice.textContent = "No corrections saved."; host.append(notice);
         }
         const list = document.createElement("div");
-        for (const finding of proposal.findings || []) {
+        for (const [index, finding] of (proposal.findings || []).entries()) {
           const label = document.createElement("label");
           const check = document.createElement("input"); check.type = "checkbox"; check.value = finding.id;
+          const replacement = (finding.after || "Remove text").replace(/\s+/g, " ").trim().slice(0, 120);
+          check.setAttribute("aria-label", `Correction ${index + 1}: ${finding.source_id}${finding.section ? ` ${finding.section}` : ""} · ${replacement || "Remove text"}`);
           check.checked = (proposal.selected_ids || []).includes(finding.id);
           check.disabled = proposal.status === "ACCEPTED";
           const effect = finding.effect === "review_criteria" ? "Review criteria only" : "Changes render prompt";

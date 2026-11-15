@@ -152,6 +152,9 @@ character and phase, like the other disclosures. Data refreshes
 on entry/context change without recurring or tab visibility polling. The former
 `local-overview` page and `/local-character-overview` URL map to this hub.
 
+Dynamic proposal controls have unique accessible names that include their action,
+row position, and affected field or correction. Nested image review scope choices
+identify their parent correction, and replacement actions identify their section.
 The dashboard uses the existing palette in [zet.css](../../zet/web/static/zet.css).
 The [2026-10-27 compliance register](../UI_COMPLIANCE_REVIEW.md) records current
 page reachability, bounded alignment changes and unverified states. Local Character

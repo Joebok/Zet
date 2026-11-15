@@ -101,8 +101,9 @@
       const section = $("analysis"); section.replaceChildren();
       if (analysis.attempt_id === current) {
         section.append(el("h2", "Suggested corrections"), el("p", analysis.error || analysis.report?.summary || "Analyzing…"));
-        for (const item of analysis.report?.items || []) {
+        for (const [index, item] of (analysis.report?.items || []).entries()) {
           const row = el("section"), label = el("label"), input = el("input"); input.type = "checkbox"; input.value = item.id;
+          input.setAttribute("aria-label", `Correct feature ${index + 1}: ${(item.correction || item.feature || "Suggested change").replace(/\s+/g, " ").trim().slice(0, 120)}`);
           input.disabled = !item.correction;
           input.checked = !input.disabled && draft.analysisId === analysis.id && (draft.itemIds || []).includes(item.id);
           label.append(input, document.createTextNode(item.feature));

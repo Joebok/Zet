@@ -82,8 +82,8 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted, tem
           proposal.rows = 4;
           proposal.value = entry.proposal;
           panel.append(labeledInput("Proposed replacement", proposal),
-            sectionButton("Apply replacement", "apply-proposal", name),
-            sectionButton("Dismiss replacement", "dismiss-proposal", name));
+            sectionButton(`Apply replacement: ${entry.label}`, "apply-proposal", name),
+            sectionButton(`Dismiss replacement: ${entry.label}`, "dismiss-proposal", name));
         }
         const direction = document.createElement("input");
         direction.dataset.sectionDirection = name;

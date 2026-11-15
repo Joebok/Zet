@@ -189,10 +189,11 @@
       const findings = el("fieldset"); findings.append(el("legend", "Proposed corrections — check Yes to apply; unchecked means No"));
       let saving = Promise.resolve();
       const chosen = () => [...findings.querySelectorAll("input:checked:not(:disabled)")].map(input => input.value);
-      for (const finding of revision.findings || []) {
+      for (const [index, finding] of (revision.findings || []).entries()) {
         const row = el("section", "", "template-correction");
         const label = el("label", "", "template-correction-choice"); const check = el("input"); check.type = "checkbox"; check.value = finding.id;
-        check.setAttribute("aria-label", `Apply correction: ${finding.rationale}`);
+        const replacement = (finding.after || "Remove text").replace(/\s+/g, " ").trim().slice(0, 120);
+        check.setAttribute("aria-label", `Apply correction ${index + 1}: ${finding.source_id} · ${replacement || "Remove text"}`);
         check.disabled = !editableSource(finding.source_id);
         check.checked = !check.disabled && (decisionDrafts.get(revision.revision_id) || revision.selected_ids || []).includes(finding.id);
         if (check.disabled) label.append(el("span", "Read-only historical correction"));
