@@ -81,7 +81,7 @@ test("library and narrative authoring save and reload through the dashboard", as
   await page.waitForFunction(() => document.body.dataset.narrativeReady === "true");
   await page.locator("#narrative-setting").fill("A pine forest beside the test road");
   await page.getByRole("button", { name: "Save scene" }).click();
-  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.getByRole("button", { name: "Edit Subject Traveler", exact: true }).click();
   await page.getByLabel("Appearance notes").fill("Blue travel coat, dark trousers, brown boots.");
   await page.getByRole("button", { name: "Save element" }).click();
   await page.goto(`/narrative?story=${context.ids.story}`);
@@ -127,14 +127,14 @@ test("narrative interview, prompt, render, retry, and final assembly persist", a
       await page.getByText("Prompt and render settings", { exact: true }).click();
 
       await page.getByRole("textbox", { name: "Final Qwen prompt" }).fill("A quiet forest path, soft daylight.");
-      await page.getByRole("button", { name: "Save inputs" }).click();
+      await page.getByRole("button", { name: "Save direction inputs" }).click();
       await page.getByRole("button", { name: "Draft 1" }).click();
       await answerRender(page, scene, targetId, image(1184, 896));
     } else {
       await page.getByText("Prompt and render settings", { exact: true }).click();
 
       await page.getByRole("textbox", { name: "Final Qwen prompt" }).fill("The traveler reaches the forest gate.");
-      await page.getByRole("button", { name: "Save inputs" }).click();
+      await page.getByRole("button", { name: "Save direction inputs" }).click();
       await page.getByRole("button", { name: "Draft 1" }).click();
       await answerRender(page, scene, targetId, null, true);
       await expect(page.locator(".zet-candidate-board [data-slot]").first()).toContainText("failed");

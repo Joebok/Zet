@@ -63,9 +63,12 @@ const label = (key, value, textarea = true, name = title(key)) => {
   const helpKey = key.startsWith('override_') || visualFields.includes(key) ? 'visual_context' : key;
   const help = detail?.field_purposes?.[helpKey];
   const inputOnly = route.target && key === 'title';
-  return `<label class="narrative-field">${esc(name)}${help ? '<small class="narrative-field-role">Interview input · Interview may propose changes</small>' : inputOnly ? '<small class="narrative-field-role">Interview input · Edited here only</small>' : key === 'prompt' ? '<small class="narrative-field-role">Prompt output · Editable before rendering</small>' : ''}${textarea
-  ? `<textarea data-field="${key}" id="narrative-${key}">${esc(value)}</textarea>`
-  : `<input data-field="${key}" id="narrative-${key}" value="${esc(value)}">`}${help ? `<small class="narrative-field-help">${esc(help)}</small>` : ''}</label>`;
+  const id = `narrative-${key}`;
+  const roleId = `${id}-role`;
+  const helpId = `${id}-help`;
+  return `<label class="narrative-field" for="${id}">${esc(name)}</label>${help ? `<small id="${roleId}" class="narrative-field-role">Interview input · Interview may propose changes</small>` : inputOnly ? '<small class="narrative-field-role">Interview input · Edited here only</small>' : key === 'prompt' ? '<small class="narrative-field-role">Prompt output · Editable before rendering</small>' : ''}${textarea
+  ? `<textarea data-field="${key}" id="${id}" ${help ? `aria-describedby="${roleId} ${helpId}"` : ''}>${esc(value)}</textarea>`
+  : `<input data-field="${key}" id="${id}" value="${esc(value)}">`}${help ? `<small id="${helpId}" class="narrative-field-help">${esc(help)}</small>` : ''}`;
 };
 
 function status(text, error = false) { if (disposed) return; message.textContent = text; message.classList.toggle('error', error); }
@@ -590,8 +593,8 @@ async function loadPageContent() {
         <input aria-label="Target title" name="title" required placeholder="Title"><select name="kind" aria-label="Target kind"><option value="subscene">Subscene</option><option value="backdrop">Backdrop</option></select><button class="primary">Create and edit</button></form>
         ${detail.targets.some(target=>target.kind==='assembly') ? '' : '<button data-action="create-assembly">Create final assembly</button>'}
         <div class="narrative-actions"><button data-action="reference-backdrop">Reference backdrop from another scene</button><button data-action="import-subscene">Import subscene from another scene</button></div>
-        ${targetsWithAssemblyLast(detail.targets).map(target=>{const selected=target.selected_id;return `<article class="narrative-card narrative-target-card" data-target-id="${target.id}"><h3>${link(target.title,{...route,target:target.id})}</h3><p class="narrative-muted">${esc(target.kind)}${selected ? ' · Image selected' : ''}</p>
-          ${selected ? `<a href="${esc(href({...route,target:target.id}))}" data-navigate><img class="narrative-target-preview" src="${esc(imageUrl(selected,target.id))}" alt="Selected image for ${esc(target.title)}"></a>` : ''}${target.kind==='subscene' ? `<button class="danger" data-delete-subscene="${target.id}">Delete subscene</button>` : ''}</article>`;}).join('')}</section>
+        ${targetsWithAssemblyLast(detail.targets).map((target,index)=>{const selected=target.selected_id;const targetLabel=`${target.title} · ${title(target.kind)} ${index+1}`;return `<article class="narrative-card narrative-target-card" data-target-id="${target.id}" aria-label="${esc(targetLabel)}"><h3>${link(target.title,{...route,target:target.id})}</h3><p class="narrative-muted">${esc(target.kind)}${selected ? ' · Image selected' : ''}</p>
+          ${selected ? `<a href="${esc(href({...route,target:target.id}))}" data-navigate><img class="narrative-target-preview" src="${esc(imageUrl(selected,target.id))}" alt="Selected image for ${esc(target.title)}"></a>` : ''}${target.kind==='subscene' ? `<button class="danger" aria-label="Delete subscene ${esc(targetLabel)}" data-delete-subscene="${target.id}">Delete subscene</button>` : ''}</article>`;}).join('')}</section>
       <section class="narrative-card"><h2>Scene elements</h2><button data-action="new-element">Add element</button><div id="narrative-elements">${elementsHtml(detail.elements,false)}</div></section></div></div>`;
     host.querySelector('#narrative-breadcrumb').innerHTML = link('Stories',{})+' / '+link(story.title,{story:route.story});
   } else {
@@ -606,16 +609,24 @@ async function loadPageContent() {
 }
 
 function elementsHtml(elements, target) {
-  return elements.map(element=>`<article class="narrative-reference">
+  const counts = new Map();
+  return elements.map(element=>{
+    const base = `${title(element.kind)} ${element.name}`;
+    const count = (counts.get(base) || 0) + 1;
+    counts.set(base, count);
+    const label = count === 1 ? base : `${base} ${count}`;
+    const action = target ? `Remove ${label} from subscene` : `Delete element ${label}`;
+    return `<article class="narrative-reference" aria-label="${esc(label)}">
     ${(element.reference?.asset_id || element.asset_id) ? `<img src="${esc(assetUrl(element.reference?.asset_id || element.asset_id))}" alt="${esc(element.name)} reference">` : ''}
     <div><h3>${esc(element.name)}</h3><p class="narrative-muted">${esc(element.kind)} · ${esc(element.reference_role)}</p><small class="narrative-field-role">Name and reference metadata: interview input · Edited here only</small><small class="narrative-field-role">Appearance: interview input · Interview may propose changes</small><p>${esc(element.appearance)}</p>
       ${element.reference_error ? `<p class="error">${esc(element.reference_error)}</p>` : ''}
-      <div class="narrative-actions"><button data-edit-element="${element.id}">Edit</button>
-      <button data-${target ? 'remove' : 'delete'}-element="${element.id}">${target ? 'Remove from subscene' : 'Delete element'}</button></div></div></article>`).join('') || '<p class="narrative-muted">No elements assigned.</p>';
+      <div class="narrative-actions"><button aria-label="Edit ${esc(label)}" data-edit-element="${element.id}">Edit</button>
+      <button aria-label="${esc(action)}" data-${target ? 'remove' : 'delete'}-element="${element.id}">${target ? 'Remove from subscene' : 'Delete element'}</button></div></div></article>`;
+  }).join('') || '<p class="narrative-muted">No elements assigned.</p>';
 }
 
 function assemblyHtml() {
-  return `<section class="narrative-card"><h2>Sources and placement</h2><label class="narrative-field">Add source<select id="assembly-source">${detail.assembly_sources.map(source=>`<option value="${source.id}">${esc(source.title)} · ${source.kind}</option>`).join('')}</select></label>
+  return `<section class="narrative-card"><h2>Sources and placement</h2><label class="narrative-field">Add source<select id="assembly-source">${detail.assembly_sources.map((source,index)=>`<option value="${source.id}">${esc(source.title)} · ${source.kind} ${index+1}</option>`).join('')}</select></label>
     <button data-action="add-layer">Add selected image</button><label class="narrative-field">Scene element<select id="assembly-element"><option value="">Choose an element</option>${detail.assembly_element_sources.map(item=>`<option value="${esc(item.id)}" ${item.available?'':'disabled'}>${esc(item.name)}${item.reason ? ` · ${esc(item.reason)}` : ''}</option>`).join('')}</select></label><button data-action="add-element-layer">Add element</button><p class="narrative-muted">Choose a completed image below if the source has no selection. Select a layer, then drag it or use the corner handle to resize.</p>
     <div id="assembly-layers"></div><label class="narrative-field">Active layer<select id="assembly-active-layer"></select></label><p id="assembly-size"></p><div id="assembly-canvas" style="aspect-ratio:${esc(detail.scene_canvas.replace(':','/'))}"></div>
     <div class="narrative-actions"><button data-action="preview-composite">Refresh raw composite</button><button id="assembly-download" data-action="download-composite">Download raw composite</button></div>
@@ -632,15 +643,16 @@ function renderLayers() {
   container.innerHTML = detail.layers.map(layer=>{
     const source = detail.assembly_sources.find(item=>item.id===layer.target_id);
     const options = source?.candidates || [];
-    return `<article class="narrative-layer"><h3>${esc(layer.label)}</h3><img class="narrative-layer-thumb" src="${esc(layerUrl(layer))}" alt="${esc(layer.label)} cutout">
+    const layerIndex = detail.layers.indexOf(layer) + 1;
+    return `<article class="narrative-layer" aria-label="Layer ${esc(layer.label)} ${layerIndex}"><h3>${esc(layer.label)}</h3><img class="narrative-layer-thumb" src="${esc(layerUrl(layer))}" alt="${esc(layer.label)} cutout">
       ${layer.source_kind==='element' ? '' : `<label>Candidate<select data-layer="${layer.id}" data-layer-field="candidate_id">${options.some(candidate=>candidate.id===layer.candidate_id) ? '' : `<option value="${layer.candidate_id}">Pinned image</option>`}${options.map(candidate=>`<option value="${candidate.id}" ${candidate.id===layer.candidate_id ? 'selected' : ''}>${candidate.render_mode === 'final' ? 'Final' : 'Draft'} · Slot ${candidate.slot}</option>`).join('')}</select></label>
       <button data-current-selection="${layer.id}">Use current selection</button>`}
       <div class="narrative-layer-controls"><label>Role<select data-layer="${layer.id}" data-layer-field="role"><option value="group" ${layer.role==='group'?'selected':''}>Group</option>${layer.source_kind==='backdrop'?`<option value="base" ${layer.role==='base'?'selected':''}>Base backdrop</option>`:''}</select></label>
       <label><input type="checkbox" data-layer="${layer.id}" data-layer-field="visible" ${layer.visible?'checked':''}> Visible</label>
       ${layer.role==='base' ? `<label>Backdrop fit<select data-layer="${layer.id}" data-layer-field="fit">${['cover','contain','manual'].map(value=>`<option ${value===layer.fit?'selected':''}>${value}</option>`).join('')}</select></label>${layerField(layer,'x','X')}${layerField(layer,'y','Y')}${layerField(layer,'scale','Width / canvas')}` : `
-      ${layerField(layer,'x','X')}${layerField(layer,'y','Y')}${layerField(layer,'scale','Width / canvas')}${layerField(layer,'z','Depth','1')}<label>Opacity <input type="number" min="0" max="1" step="0.01" data-layer="${layer.id}" data-layer-field="opacity" value="${layer.opacity ?? 1}"><small>0 is invisible; 1 is fully opaque.</small></label>
+      ${layerField(layer,'x','X')}${layerField(layer,'y','Y')}${layerField(layer,'scale','Width / canvas')}${layerField(layer,'z','Depth','1')}<label for="layer-opacity-${layer.id}">Opacity</label><input id="layer-opacity-${layer.id}" aria-describedby="layer-opacity-help-${layer.id}" type="number" min="0" max="1" step="0.01" data-layer="${layer.id}" data-layer-field="opacity" value="${layer.opacity ?? 1}"><small id="layer-opacity-help-${layer.id}">0 is invisible; 1 is fully opaque.</small>
       <label>Cutout<select data-layer="${layer.id}" data-layer-field="cutout">${['auto','alpha','opaque'].map(value=>`<option ${value===layer.cutout?'selected':''}>${value}</option>`).join('')}</select></label>${layerField(layer,'tolerance','Background tolerance','1')}`}</div>
-      <div class="narrative-actions">${layer.role==='group' ? `<button data-mask-layer="${layer.id}">Keep / remove corrections</button>` : ''}<button data-remove-layer="${layer.id}">Remove layer</button></div></article>`;
+      <div class="narrative-actions">${layer.role==='group' ? `<button data-mask-layer="${layer.id}">Keep / remove corrections</button>` : ''}<button aria-label="Remove layer ${layerIndex}" data-remove-layer="${layer.id}">Remove layer</button></div></article>`;
   }).join('');
   renderPlacement();
 }
@@ -817,7 +829,7 @@ async function chooseNarrativeSource(kind, attach = false) {
 async function populateSourceTargets() {
   const story = host.querySelector('#source-story').value;
   const targets = sourcePicker.sources.filter(source=>source.story_id===story);
-  host.querySelector('#source-target').innerHTML = targets.map(source=>`<option value="${source.target_id}">${esc(source.scene_title)} · ${esc(source.title)}</option>`).join('');
+  host.querySelector('#source-target').innerHTML = targets.map((source,index)=>`<option value="${source.target_id}">${esc(source.scene_title)} · ${esc(source.title)} · ${index+1}</option>`).join('');
   await populateSourceCandidates();
 }
 
@@ -847,7 +859,7 @@ async function previewNarrativeSource() {
   if (sourcePicker!==picker || request!==JSON.stringify(chosenSource())) return;
   picker.preview = preview;
   host.querySelector('#source-preview').innerHTML = `${preview.candidate_id ? `<img class="narrative-source-preview" alt="Source candidate preview" src="/api/narrative/stories/${choice.story_id}/scenes/${choice.scene_id}/targets/${choice.target_id}/candidates/${preview.candidate_id}/image?universe_id=${encodeURIComponent(universe)}">` : ''}${sourceTextHtml(preview)}
-    ${picker.kind==='subscene' ? `<h3>Imported elements</h3>${preview.current_inputs.elements.map(element=>`<label class="narrative-field">${esc(element.name)}<select data-source-element="${element.id}"><option value="">Create independent local copy</option>${picker.elements.map(local=>`<option value="${local.id}">Use existing: ${esc(local.name)}</option>`).join('')}</select></label>`).join('')}` : ''}`;
+    ${picker.kind==='subscene' ? `<h3>Imported elements</h3>${preview.current_inputs.elements.map((element,index)=>`<label class="narrative-field">${esc(element.name)}<select aria-label="Map imported ${esc(element.name)} ${index+1}" data-source-element="${element.id}"><option value="">Create independent local copy</option>${picker.elements.map((local,localIndex)=>`<option value="${local.id}">Use existing: ${esc(local.name)} · ${local.kind} ${localIndex+1}</option>`).join('')}</select></label>`).join('')}` : ''}`;
   const name = host.querySelector('#source-title');
   if (name) name.value = preview.title;
   host.querySelector('#source-apply').disabled = false;
@@ -875,16 +887,16 @@ function renderTarget(targets) {
       ${label('staging',detail.staging,true,backdrop ? 'Environment composition' : 'Interaction and staging')}${label('physical_context',detail.physical_context)}
       ${detail.kind === 'subscene' ? `<label><input type="checkbox" id="narrative-use_transparent_background" data-field="use_transparent_background" ${detail.use_transparent_background ? 'checked' : ''}> Use transparent background</label><p class="narrative-muted">Interview and Write Prompt use transparency instead of visible scenery, including Setting. Camera, subject lighting and required supports still apply. Use Write Prompt to update existing prompt text; Render sends your edited prompt exactly as entered.</p>` : ''}
       ${label('framing',detail.framing,false)}
-      <div class="narrative-actions"><button data-action="save">Save inputs</button><button class="danger" data-action="delete">Delete ${assembly ? 'assembly' : backdrop ? 'backdrop' : 'subscene'}</button></div></section>
+      <div class="narrative-actions"><button aria-label="Save direction inputs" data-action="save">Save inputs</button><button class="danger" data-action="delete">Delete ${assembly ? 'assembly' : backdrop ? 'backdrop' : 'subscene'}</button></div></section>
     ${assembly ? `<section class="narrative-card"><h2>Scene text</h2><button data-action="scene-text-raw">Edit raw composite text draft</button></section>`+assemblyHtml() : `<section class="narrative-card"><h2>Participants and references</h2><div id="narrative-elements">${elementsHtml(detail.elements,true)}</div>
       <div class="narrative-actions"><button data-action="assign-elements">Assign scene elements</button><button data-action="new-element">New element / library reference</button></div></section>`}
     <section class="narrative-card"><h2>Shared visual context</h2><p class="narrative-muted">Interview input · Interview may propose changes. Shared values apply across this scene; local overrides replace them for this target.</p>
       <p class="narrative-muted">Style source: ${esc(detail.style_source || 'saved scene')}</p>
       <dl class="narrative-context">${visualFields.map(key=>`<dt>${title(key)} · Shared</dt><dd data-shared-visual="${key}"></dd><dt>${title(key)} · Effective</dt><dd data-effective-visual="${key}"></dd>`).join('')}</dl>
-      <details><summary id="narrative-overrides-summary">Local overrides</summary>${visualFields.map(key=>label(`override_${key}`,detail.visual_overrides[key] || '',true,`${title(key)} override (blank inherits)`)).join('')}<button data-action="save">Save inputs</button></details></section>
+      <details><summary id="narrative-overrides-summary">Local overrides</summary>${visualFields.map(key=>label(`override_${key}`,detail.visual_overrides[key] || '',true,`${title(key)} override (blank inherits)`)).join('')}<button aria-label="Save local overrides" data-action="save">Save inputs</button></details></section>
     <section class="narrative-card"><h2>Interview</h2>${modelControl('interview_model')}<p class="narrative-muted" id="narrative-interview-effective"></p><p id="narrative-interview-status" role="status" aria-live="polite"></p><div id="narrative-interview" class="narrative-history"></div>
-      <label class="narrative-field">Answer or direct a revision<textarea id="narrative-direction" placeholder="Describe what is happening, answer a question, or ask for a change."></textarea></label>
-      ${detail.kind === 'subscene' ? `<label class="narrative-field">Image for this interview<select id="narrative-interview-image"><option value="">None</option></select><small>Used for this turn only. Requires a vision-capable interview model.</small></label><div id="narrative-interview-image-preview"></div><p class="narrative-muted" id="narrative-interview-replay-image"></p>` : ''}
+    <label class="narrative-field" for="narrative-direction">Answer or direct a revision</label><textarea id="narrative-direction" placeholder="Describe what is happening, answer a question, or ask for a change."></textarea>
+      ${detail.kind === 'subscene' ? `<label class="narrative-field" for="narrative-interview-image">Image for this interview</label><select id="narrative-interview-image" aria-describedby="narrative-interview-image-help"><option value="">None</option></select><small id="narrative-interview-image-help">Used for this turn only. Requires a vision-capable interview model.</small><div id="narrative-interview-image-preview"></div><p class="narrative-muted" id="narrative-interview-replay-image"></p>` : ''}
       <div class="narrative-actions"><button class="primary" data-action="interview">Continue interview</button><button data-action="rerun_interview">Re-run last interview</button><button data-action="restart_interview" title="Clear interview history and start again from current inputs">Restart interview</button></div><div id="narrative-interview-failure"></div><div id="narrative-pending-reviews"></div><p class="narrative-muted">Interview revisions are proposals until you Apply them. Answers are optional; edit directly or generate whenever you are ready. Restart interview clears the conversation and pending proposals, keeping your current inputs and images.</p></section></div>
     </details><div id="narrative-board-host"></div></div>
     <datalist id="narrative-model-options"></datalist><p id="narrative-model-error" class="error"></p>`;
@@ -1141,7 +1153,7 @@ async function editElement(id) {
   dialog.innerHTML = `<h2>${id ? 'Edit' : 'New'} element</h2><form id="element-form">
     <label class="narrative-field">Name<input name="name" required value="${esc(elementDraft.name)}"></label>
     <label class="narrative-field">Type<select name="kind">${['subject','prop','environment'].map(kind=>`<option ${kind===elementDraft.kind ? 'selected' : ''}>${kind}</option>`).join('')}</select></label>
-    <label class="narrative-field">Appearance notes<small class="narrative-field-role">Interview input · Interview may propose changes · Shared across subscenes</small><textarea name="appearance">${esc(elementDraft.appearance)}</textarea><small class="narrative-field-help">${esc(scene.field_purposes.appearance)}</small></label>
+    <label class="narrative-field" for="element-appearance">Appearance notes</label><small id="element-appearance-role" class="narrative-field-role">Interview input · Interview may propose changes · Shared across subscenes</small><textarea id="element-appearance" name="appearance" aria-describedby="element-appearance-role element-appearance-help">${esc(elementDraft.appearance)}</textarea><small id="element-appearance-help" class="narrative-field-help">${esc(scene.field_purposes.appearance)}</small>
     <label class="narrative-field">Reference role<select name="reference_role">${['appearance','costume','object shape','environment','style'].map(role=>`<option ${role===elementDraft.reference_role ? 'selected' : ''}>${role}</option>`).join('')}</select></label>
     <p id="element-reference-label">${elementDraft.reference_key ? 'Current reference: '+esc(elementDraft.reference_key) : elementDraft.asset_id ? 'Reference image attached' : 'Text only — no reference image'}</p>
     <div class="narrative-actions"><button type="button" id="choose-reference">Choose library image</button><button type="button" id="remove-reference">Remove reference</button></div>
@@ -1152,14 +1164,14 @@ async function editElement(id) {
 async function librarySearch() {
   const query = host.querySelector('#library-query').value;
   const assets = await api('/api/narrative/library?q='+encodeURIComponent(query));
-  host.querySelector('#library-results').innerHTML = assets.map(asset=>`<button type="button" data-library-asset="${esc(asset.asset_id)}" data-label="${esc(asset.label)}" data-reference-key="${esc(asset.reference_key || '')}"><img src="${esc(assetUrl(asset.asset_id))}" alt="${esc(asset.label)}"><span>${esc(asset.label)}</span></button>`).join('') || '<p>No matching images.</p>';
+  host.querySelector('#library-results').innerHTML = assets.map(asset=>`<button type="button" aria-label="${esc(asset.label)}${asset.reference_key ? ` · ${esc(asset.reference_key)}` : ` · ${esc(asset.asset_id)}`}" data-library-asset="${esc(asset.asset_id)}" data-label="${esc(asset.label)}" data-reference-key="${esc(asset.reference_key || '')}"><img src="${esc(assetUrl(asset.asset_id))}" alt=""><span>${esc(asset.label)}</span><small>${esc(asset.reference_key || asset.asset_id)}</small></button>`).join('') || '<p>No matching images.</p>';
 }
 
 async function assignElements() {
   await save();
   const scene = await api(`/api/narrative/stories/${route.story}/scenes/${route.scene}`);
   const dialog = host.querySelector('#membership-dialog');
-  dialog.innerHTML = `<h2>Assign elements to ${esc(detail.title)}</h2><form id="membership-form"><div class="narrative-membership-list">${scene.elements.map(element=>`<label class="narrative-membership-row"><input type="checkbox" name="element" value="${element.id}" ${detail.element_ids.includes(element.id) ? 'checked' : ''}> <span>${esc(element.name)} · ${esc(element.kind)}</span></label>`).join('') || '<p>Create an element first.</p>'}</div><div class="narrative-actions"><button class="primary">Save assignments</button><button type="button" data-close="membership-dialog">Cancel</button></div></form>`;
+  dialog.innerHTML = `<h2>Assign elements to ${esc(detail.title)}</h2><form id="membership-form"><div class="narrative-membership-list">${scene.elements.map((element,index)=>`<label class="narrative-membership-row"><input type="checkbox" name="element" aria-label="${esc(element.kind)} ${esc(element.name)} ${index+1}" value="${element.id}" ${detail.element_ids.includes(element.id) ? 'checked' : ''}> <span>${esc(element.name)} · ${esc(element.kind)}</span></label>`).join('') || '<p>Create an element first.</p>'}</div><div class="narrative-actions"><button class="primary">Save assignments</button><button type="button" data-close="membership-dialog">Cancel</button></div></form>`;
   dialog.showModal();
 }
 

@@ -63,6 +63,8 @@ published Narrative assemblies and emits their `LIB:ASSET` reference tag.
 | [narrative_router.py](../../zet/web/narrative_router.py), [narrative.html](../../zet/web/templates/narrative.html), [narrative.js](../../zet/web/static/narrative.js) | HTTP/browser presentation and calls into Narrative services; context capture integrates with shared [task_capture.js](../../zet/web/static/task_capture.js) |
 | [StoryAnimationService](../../zet/services/story_animation_service.py), [story_animation_html_compiler.py](../../zet/services/story_animation_html_compiler.py) | Versioned story animation instructions, locked source snapshots, timeline validation/resolution and standalone HTML compilation |
 
+Narrative controls use short accessible names for fields and element actions. Repeated element, target, source, and assembly layer controls include a record-specific name so dashboard automation can target them without relying on the first matching label. Help text remains associated through `aria-describedby`.
+
 ## Save a subscene image to Inventory (2026-10-30)
 
 Narrative target boards offer on-demand **Luna Review** across completed images.
