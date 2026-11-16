@@ -97,8 +97,24 @@ function layerUrl(layer,kind='cutout') {
   return artifactUrl(`layers/${layer.id}/image`)+`&kind=${kind}&revision=${revision}`;
 }
 
-function modelControl(key) {
-  return `<label class="narrative-field">${title(key)}<input data-field="${key}" id="narrative-${key}" list="narrative-model-options" value="${esc(detail[key])}" placeholder="Default: ${esc(modelOptions.model)}"></label>`;
+function sceneModelControl(key, labelText) {
+  const inherited = detail.effective_models.inherited[key];
+  const effective = detail.effective_models.effective[key];
+  return `<label class="narrative-field">${labelText}<input data-field="${key}" id="narrative-${key}" data-ai-model-picker list="narrative-model-options" value="${esc(detail[key] || effective)}"></label><small>Effective model: ${esc(effective)}${detail[key] ? ' · Scene override' : ` · Inherited from ${esc(inherited)}`}</small><button type="button" data-clear-model="${key}" ${detail[key] ? '' : 'disabled'}>Use inherited model</button>`;
+}
+function refreshSceneModelControls() {
+  for (const key of ['interview_model','prompt_model']) {
+    const field = root.querySelector(`#narrative-${key}`);
+    const note = field?.parentElement?.nextElementSibling;
+    const clear = note?.nextElementSibling;
+    if (!field || !note || !clear) continue;
+    const inherited = detail.effective_models.inherited[key];
+    const effective = detail.effective_models.effective[key];
+    note.textContent = `Effective model: ${effective}${detail[key] ? ' · Scene override' : ` · Inherited from ${inherited}`}`;
+    clear.disabled = !detail[key];
+    field.value = detail[key] || effective;
+    window.ZetModelPicker?.sync(field);
+  }
 }
 function enableModelPickers() {
   for (const field of root.querySelectorAll('input[list="narrative-model-options"]')) {
@@ -169,7 +185,7 @@ function boardModel() {
   return narrativeBoardModel({detail, scopeKey: JSON.stringify([universe, route.story, route.scene, route.target]),
     revision, drafts: boardDrafts, busy, llmSubmitting,
     models: [...new Set([modelOptions.model, ...knownModels, ...modelOptions.codex_models, detail.prompt_model])].filter(Boolean),
-    defaultModel: modelOptions.model, sizing: boardSizing, sizingError, imageUrl, artifactUrl,
+    defaultModel: detail.effective_models?.effective?.prompt_model || modelOptions.model, sizing: boardSizing, sizingError, imageUrl, artifactUrl,
     reviewedId: reviewCandidate, pendingInterviews: pendingInterviews().length});
 }
 
@@ -581,6 +597,7 @@ async function loadPageContent() {
     detail = loaded;
     contextLabels = {story:story.title, scene:detail.title};
     root.innerHTML = `<h1>${esc(detail.title)}</h1><div class="narrative-editor"><section class="narrative-card"><h2>Shared scene direction</h2>
+      <h3>Authoring models</h3><p>Choose the models used for interview and prompt writing in this scene.</p>${sceneModelControl('interview_model','Interview model')}${sceneModelControl('prompt_model','Prompt writing model')}<datalist id="narrative-model-options"></datalist>
       ${label('title',detail.title,false)}${label('intent',detail.intent)}${visualFields.map(key=>label(key,detail[key])).join('')}${label('canvas',detail.canvas,false)}
       <label><input type="checkbox" data-field="use_universe_style" ${detail.use_universe_style ? 'checked' : ''}> Use universe style</label>
       <label>Universe style<select data-field="universe_style_variant"><option value="canonical" ${detail.universe_style_variant==='canonical'?'selected':''}>Canonical</option><option value="environmental" ${detail.universe_style_variant==='environmental'?'selected':''}>Environmental</option></select></label>
@@ -596,6 +613,7 @@ async function loadPageContent() {
         ${targetsWithAssemblyLast(detail.targets).map((target,index)=>{const selected=target.selected_id;const targetLabel=`${target.title} · ${title(target.kind)} ${index+1}`;return `<article class="narrative-card narrative-target-card" data-target-id="${target.id}" aria-label="${esc(targetLabel)}"><h3>${link(target.title,{...route,target:target.id})}</h3><p class="narrative-muted">${esc(target.kind)}${selected ? ' · Image selected' : ''}</p>
           ${selected ? `<a href="${esc(href({...route,target:target.id}))}" data-navigate><img class="narrative-target-preview" src="${esc(imageUrl(selected,target.id))}" alt="Selected image for ${esc(target.title)}"></a>` : ''}${target.kind==='subscene' ? `<button class="danger" aria-label="Delete subscene ${esc(targetLabel)}" data-delete-subscene="${target.id}">Delete subscene</button>` : ''}</article>`;}).join('')}</section>
       <section class="narrative-card"><h2>Scene elements</h2><button data-action="new-element">Add element</button><div id="narrative-elements">${elementsHtml(detail.elements,false)}</div></section></div></div>`;
+    root.querySelectorAll('[data-ai-model-picker]').forEach(control => window.ZetModelPicker?.attach(control, {allowDefault:false}));
     host.querySelector('#narrative-breadcrumb').innerHTML = link('Stories',{})+' / '+link(story.title,{story:route.story});
   } else {
     const [loaded, targets, story] = await Promise.all([api(base()), api(`/api/narrative/stories/${route.story}/scenes/${route.scene}/targets`), api(`/api/narrative/stories/${route.story}`)]);
@@ -894,7 +912,7 @@ function renderTarget(targets) {
       <p class="narrative-muted">Style source: ${esc(detail.style_source || 'saved scene')}</p>
       <dl class="narrative-context">${visualFields.map(key=>`<dt>${title(key)} · Shared</dt><dd data-shared-visual="${key}"></dd><dt>${title(key)} · Effective</dt><dd data-effective-visual="${key}"></dd>`).join('')}</dl>
       <details><summary id="narrative-overrides-summary">Local overrides</summary>${visualFields.map(key=>label(`override_${key}`,detail.visual_overrides[key] || '',true,`${title(key)} override (blank inherits)`)).join('')}<button aria-label="Save local overrides" data-action="save">Save inputs</button></details></section>
-    <section class="narrative-card"><h2>Interview</h2>${modelControl('interview_model')}<p class="narrative-muted" id="narrative-interview-effective"></p><p id="narrative-interview-status" role="status" aria-live="polite"></p><div id="narrative-interview" class="narrative-history"></div>
+    <section class="narrative-card"><h2>Interview</h2><p class="narrative-muted" id="narrative-interview-effective"></p><p id="narrative-interview-status" role="status" aria-live="polite"></p><div id="narrative-interview" class="narrative-history"></div>
     <label class="narrative-field" for="narrative-direction">Answer or direct a revision</label><textarea id="narrative-direction" placeholder="Describe what is happening, answer a question, or ask for a change."></textarea>
       ${detail.kind === 'subscene' ? `<label class="narrative-field" for="narrative-interview-image">Image for this interview</label><select id="narrative-interview-image" aria-describedby="narrative-interview-image-help"><option value="">None</option></select><small id="narrative-interview-image-help">Used for this turn only. Requires a vision-capable interview model.</small><div id="narrative-interview-image-preview"></div><p class="narrative-muted" id="narrative-interview-replay-image"></p>` : ''}
       <div class="narrative-actions"><button class="primary" data-action="interview">Continue interview</button><button data-action="rerun_interview">Re-run last interview</button><button data-action="restart_interview" title="Clear interview history and start again from current inputs">Restart interview</button></div><div id="narrative-interview-failure"></div><div id="narrative-pending-reviews"></div><p class="narrative-muted">Interview revisions are proposals until you Apply them. Answers are optional; edit directly or generate whenever you are ready. Restart interview clears the conversation and pending proposals, keeping your current inputs and images.</p></section></div>
@@ -902,7 +920,6 @@ function renderTarget(targets) {
     <datalist id="narrative-model-options"></datalist><p id="narrative-model-error" class="error"></p>`;
   sourceVisibility();
   mountBoard();
-  enableModelPickers();
   updateLive();
   void updateRenderSize();
   loadModels();
@@ -1000,7 +1017,7 @@ function updateLive() {
       if (pending.length) openInterviewReview(pending.at(-1).id);
     }
   }
-  host.querySelector('#narrative-interview-effective').textContent = 'Next run: ' + (host.querySelector('#narrative-interview_model').value || modelOptions.model);
+  host.querySelector('#narrative-interview-effective').textContent = 'Next run: ' + (detail.effective_models?.effective?.interview_model || modelOptions.model);
   const working = jobs.filter(job => isNarrativeActive(job.status));
   const llmWorking = llmSubmitting || working.some(job => job.kind !== 'image');
   for (const button of root.querySelectorAll('[data-action*="interview"]')) {
@@ -1080,6 +1097,7 @@ async function save() {
     }
     revision++;
     Object.assign(detail,updated);
+    if (!route.target && detail.effective_models) refreshSceneModelControls();
     if (pendingLayers) detail.layers = pendingLayers;
     if (pendingAdaptation) detail.backdrop_adaptation = pendingAdaptation;
     const option = root.querySelector(`#narrative-target-select option[value="${updated.id}"]`);
@@ -1216,6 +1234,12 @@ listen(host,'change',event=>{
 listen(host,'click',event=>{
   const button = event.target.closest('button,a');
   if (!button) return;
+  if (button.dataset.clearModel) {
+    const key = button.dataset.clearModel;
+    const field = root.querySelector(`#narrative-${key}`);
+    if (field) { field.value = ''; field.dispatchEvent(new Event('input', {bubbles:true})); }
+    return;
+  }
   if (button.dataset.close) { document.getElementById(button.dataset.close).close(); return; }
   if (button.dataset.moveScene) {
     const from = detail.scenes.findIndex(scene => scene.id === button.dataset.moveScene);
@@ -1411,7 +1435,7 @@ async function initialize() {
   host.querySelector('#narrative-universe').innerHTML = universes.universes.map(item=>`<option value="${esc(item.universe_id)}" ${item.universe_id===universe ? 'selected' : ''}>${esc(item.name)}</option>`).join('');
   const options = await api('/api/narrative/options');
   modelOptions = options;
-  host.querySelector('#narrative-model').textContent = `${options.model} · ${options.renderer}`;
+  host.querySelector('#narrative-model').textContent = `Image renderer: ${options.renderer}`;
   await loadPage();
   pollTimer = setInterval(poll,2000);
 }

@@ -17,7 +17,7 @@ TARGET_FIELDS = ("title", "narrative", "staging", "physical_context", "framing",
                  "use_transparent_background", "universe_style_variant",
                  "element_ids", "visual_overrides", "prompt", "interview_model", "prompt_model", "layers", "assembly_mode",
                  "backdrop_adaptation", "backdrop_link_mode")
-SCENE_FIELDS = ("title", "intent", *VISUAL_FIELDS, "canvas", "use_universe_style", "universe_style_variant")
+SCENE_FIELDS = ("title", "intent", *VISUAL_FIELDS, "canvas", "use_universe_style", "universe_style_variant", "interview_model", "prompt_model")
 
 
 class ProtectedNarrativeImages(ValueError):
@@ -166,8 +166,16 @@ class NarrativeSceneService:
     def scene(self, story: str, scene: str) -> dict:
         record = self.repository.read(story, scene)
         record["elements"] = [self.element_detail(element) for element in record["elements"]]
-        return {**record, "targets": self.list_targets(story, scene), "field_purposes": FIELD_PURPOSES,
+        return {**record, "effective_models": self.effective_models(record), "targets": self.list_targets(story, scene), "field_purposes": FIELD_PURPOSES,
                 "universe_style": universe_style(self.app.config.base_library_path, record.get("universe_style_variant") or "canonical")}
+
+    def effective_models(self, scene, target=None):
+        fields = {"interview_model": "narrative_interview", "prompt_model": "narrative_prompt"}
+        inherited, effective = {}, {}
+        for field, role in fields.items():
+            inherited[field] = resolve_role_model(self.app.config, role, scene.get(field, ""))
+            effective[field] = resolve_role_model(self.app.config, role, (target or {}).get(field, "") or scene.get(field, ""))
+        return {"inherited": inherited, "effective": effective}
 
     def element_asset(self, element: dict) -> dict | None:
         if element.get("reference_key"):
@@ -201,9 +209,16 @@ class NarrativeSceneService:
         with self.repository.lock():
             record = self.repository.read(story, scene)
             self._patch(record, data, SCENE_FIELDS)
+            for key in ("interview_model", "prompt_model"):
+                value = record[key]
+                if not isinstance(value, str) or len(value) > 200 or any(char.isspace() for char in value):
+                    raise ValueError("Model identifiers must be text without whitespace.")
+                if value == "codex:":
+                    raise ValueError("Enter a Codex model after codex:.")
             if "canvas" in data:
                 canvas_dimensions(record["canvas"])
-            return self.persist(record, story, scene)
+            self.persist(record, story, scene)
+            return self.scene(story, scene)
 
     def save_element(self, story: str, scene: str, data: dict, element_id: str = "") -> dict:
         with self.repository.lock():
@@ -387,9 +402,7 @@ class NarrativeSceneService:
                                    "universe" if style is not None else "saved scene"),
                   "universe_style": style, "universe_style_variant": stored_variant,
                   "field_purposes": FIELD_PURPOSES,
-                  "scene_title": parent["title"], "effective_models": {
-                      key: resolve_role_model(self.app.config, "narrative_interview" if key == "interview_model" else "narrative_prompt", record[key])
-                      for key in ("interview_model", "prompt_model")}}
+                  "scene_title": parent["title"], **self.effective_models(parent, record)}
         if record["kind"] == "subscene" and not detail["aspect_ratio"]:
             detail["aspect_ratio"] = (parent["canvas"] if canvas_dimensions(parent["canvas"]) == (record["width"], record["height"])
                                       else f"{record['width']}:{record['height']}")

@@ -46,6 +46,8 @@ class NarrativeScene:
     legacy_image: dict = field(default_factory=dict)
     source_provenance: dict = field(default_factory=dict)
     migration: dict = field(default_factory=dict)
+    interview_model: str = ""
+    prompt_model: str = ""
 
 
 @dataclass

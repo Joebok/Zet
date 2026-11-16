@@ -138,6 +138,10 @@ Paths below are relative to the **bound universe root** unless stated otherwise.
 | Legacy story pipeline artifacts | Preserved files and [offline source archive](../Archive/scene-builder/README.md) | Historical compiler/review/queue records; retired execution paths do not stage or publish new work. |
 | `NarrativeStories/<story-id>/<scene-id>/<target-id>/` | [NarrativeRepository](../zet/repositories/narrative_repository.py), [Narrative models](../zet/models/narrative.py) | `story.json`, `scene.json`, `target.json` plus images/snapshots. Independent of Scene Builder. Target reads fill absent model defaults; no global schema version is declared in these models. |
 
+Scene JSON may store optional `interview_model` and `prompt_model` overrides.
+Targets retain their own optional overrides. Empty values inherit by role, and
+job provenance records the resolved model. Existing scene JSON needs no rewrite.
+
 Narrative target `board_version: 2` stores one eight-entry `slots` list and one
 `selected_id`; each candidate retains its own `render_mode` and frozen render
 inputs. Legacy targets require the dry-run/backup conversion command

@@ -210,7 +210,9 @@ class NarrativeGenerationService:
             if candidate_id and (data.get("action") not in {"interview", "restart_interview"} or detail["kind"] != "subscene"):
                 raise ValueError("Images can only be attached to a new subscene interview.")
             model_field = "interview_model" if kind == "interview" else "prompt_model"
-            model = resolve_role_model(self.author.app.config, "narrative_interview" if kind == "interview" else "narrative_prompt", record[model_field])
+            scene_record = self.repository.read(story, scene)
+            model = resolve_role_model(self.author.app.config, "narrative_interview" if kind == "interview" else "narrative_prompt",
+                                       record[model_field] or scene_record.get(model_field, ""))
             evidence = deepcopy(replay.get("interview_evidence")) if replay else None
             payload = None
             if candidate_id:

@@ -34,6 +34,11 @@ The native request and ask manifest retain `llm_guidance` with role, application
 
 Optional `[LLMRoles.Models]` TOML entries map registry role keys to models. Precedence is explicit task/session choice, role override, then the original model setting. Empty overrides inherit. Existing saved sessions without `model_explicit` retain their saved model as an explicit selection; new character/reconstruction records distinguish operator selections from inherited defaults. Shared character reviews retain their domain role even when using reconstruction's comparison engine.
 
+Narrative scene records may override `narrative_interview` and
+`narrative_prompt` independently. Resolution for a target is target override,
+scene override, Config role override, then the Narrative model setting. Submitted
+jobs retain the resolved model in their request provenance.
+
 Config shows every registered role, purpose, effective and inherited model, provider/capability requirements, and a Qwen Yes—authoring/fragments/review or No indicator. Instruction-file disclosures open existing Template Editor sources. Selectors use the shared capability-aware popup. Provider restrictions are validated locally; changed overrides also validate against the existing proxy-owned model catalog. Unknown saved model choices remain visible. Model defaults and compatibility settings remain separately editable; no normal-library migration or model-setting rewrite happens on load.
 
 Recipe Lab's CLI accepts `--config` and optional `--model`, binds the configured universe and common AI_Proxy paths, and resolves `recipe_qa` before requesting inference. It does not call a local model directly.

@@ -19,6 +19,11 @@ Non-Selected previews its exact slots and preserves selected/locked candidates;
 non-selected deletion waits for affected renders to settle. Draft deletion cancels
 matching Draft work using its existing job cleanup path.
 
+Scene settings provide independent Interview and Prompt writing model choices.
+Targets inherit these scene choices unless they have a target override. Empty
+scene choices inherit the configured role model. Job records freeze the model
+used for each submitted request, and the scene page shows the effective model.
+
 Saved prompt changes set a permanent, advisory `source_change_fyi` on affected
 finished candidates. Visible active targets poll compact progress and fetch detail when work settles. Draft cleanup requires a state-bound preview and approval
 for each selection or lock it would clear; protected target deletion uses the
