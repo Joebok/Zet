@@ -402,7 +402,7 @@ class NarrativeSceneService:
                                    "universe" if style is not None else "saved scene"),
                   "universe_style": style, "universe_style_variant": stored_variant,
                   "field_purposes": FIELD_PURPOSES,
-                  "scene_title": parent["title"], **self.effective_models(parent, record)}
+                  "scene_title": parent["title"], "effective_models": self.effective_models(parent, record)}
         if record["kind"] == "subscene" and not detail["aspect_ratio"]:
             detail["aspect_ratio"] = (parent["canvas"] if canvas_dimensions(parent["canvas"]) == (record["width"], record["height"])
                                       else f"{record['width']}:{record['height']}")
