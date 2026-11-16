@@ -43,13 +43,13 @@ Use AI_Proxy and the shared capability-aware model picker. Preserve target overr
 - Status: complete.
 
 ## Validation
-`node --check zet/web/static/narrative.js` passed. `git diff --check` passed. The approved E2E suite and prepared-response browser workflow were not run, so model precedence and interactive picker behavior remain unverified end to end. Live inference was not run.
+`node --check zet/web/static/narrative.js` and `git diff --check` passed. Joe reports that all tests passed after deployment. The test command and detailed results were not provided.
 
 ## Risks and alternatives
 Scene overrides inherit dynamically, so changing one affects existing targets that have no explicit target override. Existing model fields remain additive and require no migration.
 
 ## Progress and decisions
-Scene-level scope selected. Additive fields need no migration. Scene overrides resolve between target overrides and Config role defaults. User-directed implementation is complete; E2E validation remains outstanding.
+Scene-level scope selected. Additive fields need no migration. Scene overrides resolve between target overrides and Config role defaults. User-directed implementation is complete. Joe confirmed the deployed behavior works and all tests passed.
 
 Follow-up from the ZetTester deployment: scene API confirms both saved overrides
 and target inheritance resolve to `codex:gpt-6-luna`. Target detail returned the
@@ -57,4 +57,4 @@ resolution under top-level `effective`/`inherited`, while the UI reads
 `effective_models`; changed target response to use the documented nested shape.
 
 ## Final results
-Scene model fields, effective resolution, generation inheritance, scene-page controls and documentation are implemented. Static JavaScript syntax and whitespace checks passed. The approved E2E workflow remains unverified.
+Scene model fields, effective resolution, generation inheritance, scene-page controls and documentation are implemented. Static JavaScript syntax and whitespace checks passed. Joe reports all tests passed after deployment. No command-level test report was provided in this plan.

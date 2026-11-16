@@ -4338,10 +4338,13 @@ async function costumeSectionAction(session, key, action, direction) {
 function renderCostumeSections(session, running) {
   costumeSectionPanel.replaceChildren();
   for (const [key, entry] of Object.entries(session.sections)) {
-    const card = document.createElement("section");
+    const card = document.createElement("article");
     card.className = "control-panel";
+    const titleId = `costume-wizard-section-${key}`;
     const title = document.createElement("h3");
+    title.id = titleId;
     title.textContent = entry.label;
+    card.setAttribute("aria-labelledby", titleId);
     const status = document.createElement("p");
     status.dataset.sectionStatus = key;
     status.textContent = entry.error || costumeSectionStatus(entry.status);
