@@ -427,7 +427,6 @@ function publishBoard(current) {
 }
 
 function renderBoard(current) {
-  form.elements.namedItem("name").required = false;
   for (const [key,value] of Object.entries({refinement:current.refinement, style_alignment_changes:current.style_alignment_changes ?? ""}))
     form.elements.namedItem(key).value = edits.get(key) ?? value;
   $("mc-style-changes").hidden = view !== "STYLE";
