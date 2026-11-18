@@ -102,8 +102,10 @@ answer cleanup; receipt identity and universe are checked before exposing the
 error to a continuation.
 
 Image Generation loads requests from disk under its process-shared collection
-lock. Atomic image and child-state commits precede the receipt; restart can finish
-a saved child whose receipt was interrupted. `copy_result(image=True)` records the
+lock. Startup cleanup considers only answer manifests owned by the bound universe;
+the shared queue can contain requests from several universes. Atomic image and
+child-state commits precede the receipt; restart can finish a saved child whose
+receipt was interrupted. `copy_result(image=True)` records the
 applied image checksum as write-time metadata. Local and Minor Character review
 use current owned files, independently of old receipts or saved checksums; admission still rechecks
 current candidate/attempt, cancellation and evaluation under the domain lock before

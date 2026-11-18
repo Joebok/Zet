@@ -863,6 +863,9 @@ class AdHocImageGenerationService:
             except (OSError, ValueError, json.JSONDecodeError):
                 continue
             if ask.get("consumer") == IMAGE_GENERATION_CONSUMER:
+                owner = str(ask.get("universe_id") or "Moonsea")
+                if owner != self.zet_app.universe_id:
+                    continue
                 request_id = str(ask.get("ad_hoc_request_id") or "")
                 # A long-lived collector's cache cannot prove that another host lost a request.
                 if request_id:
