@@ -103,7 +103,9 @@ error to a continuation.
 
 Image Generation loads requests from disk under its process-shared collection
 lock. Startup cleanup considers only answer manifests owned by the bound universe;
-the shared queue can contain requests from several universes. Atomic image and
+the shared queue can contain requests from several universes. File Proxy route
+ownership is checked before decoding library paths, so scanning another
+universe's answer does not decode it against the current library. Atomic image and
 child-state commits precede the receipt; restart can finish a saved child whose
 receipt was interrupted. `copy_result(image=True)` records the
 applied image checksum as write-time metadata. Local and Minor Character review

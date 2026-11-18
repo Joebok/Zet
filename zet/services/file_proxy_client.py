@@ -368,10 +368,10 @@ class FileProxyClient:
         data = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             return {}
+        if self.universe_id and data.get("universe_id") and data["universe_id"] != self.universe_id:
+            return {}
         if self.library_root:
             data = resolve_library_document(data, self.library_root)
-            if self.universe_id and data.get("universe_id") and data["universe_id"] != self.universe_id:
-                return {}
         return data
 
     def remove_route(self, job_id: str) -> None:
