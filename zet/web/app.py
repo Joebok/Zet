@@ -1281,6 +1281,15 @@ def _create_available_app(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post("/api/local/character-overview/rename")
+    def local_character_overview_rename(data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            return _app(app.state.config_path).rename_character_or_phase(
+                data.get("character", ""), data.get("phase", ""),
+                data.get("new_name", ""), data.get("scope", ""))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/local/character-overview/thumbnail/{pipeline}")
     def local_character_overview_image(pipeline: str, character: str = Query(...), phase: str = Query(...),
                                        view: str = Query(...), costume: str = Query(""),
@@ -1289,6 +1298,17 @@ def _create_available_app(
             service = LocalCharacterOverviewService(_app(app.state.config_path), PROJECT_ROOT)
             path = service.thumbnail(character, phase, pipeline, view, costume, universe_id, v)
             return FileResponse(path, media_type="image/jpeg")
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/local/character-overview/image/{pipeline}")
+    def local_character_overview_full_image(pipeline: str, character: str = Query(...), phase: str = Query(...),
+                                            view: str = Query(...), costume: str = Query(""),
+                                            universe_id: str = Query("")) -> FileResponse:
+        try:
+            service = LocalCharacterOverviewService(_app(app.state.config_path), PROJECT_ROOT)
+            path = service.image(character, phase, pipeline, view, costume, universe_id)
+            return FileResponse(path)
         except Exception as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -1342,6 +1362,17 @@ def _create_available_app(
         try:
             destination = zet_app.delete_character_phase(character, phase, confirm_ids=data.get("confirm_ids"), expected_versions=data.get("expected_versions"))
             return {"destination": destination, "message": f"Moved {character} / {phase} and its related assets to deleted storage."}
+        except ImageDeletionConfirmation as exc:
+            raise HTTPException(status_code=409, detail=exc.detail()) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/api/character")
+    def character_delete(character: str = Query(...), data: dict = Body(default={})) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            destination = zet_app.delete_character(character, confirm_ids=data.get("confirm_ids"), expected_versions=data.get("expected_versions"), expected_phases=data.get("expected_phases"))
+            return {"destination": destination, "message": f"Moved {character} and all its phases to deleted storage."}
         except ImageDeletionConfirmation as exc:
             raise HTTPException(status_code=409, detail=exc.detail()) from exc
         except Exception as exc:

@@ -1427,6 +1427,15 @@ class ZetApp:
         """Move a character phase and its related library data to deleted storage."""
         return self._indexed_write(lambda: self.library_deletion_service.delete_phase(character, phase, **confirmation))
 
+    def delete_character(self, character: str, **confirmation) -> str:
+        return self._indexed_write(lambda: self.library_deletion_service.delete_character(character, **confirmation))
+
+    def rename_character_or_phase(self, character: str, phase: str, new_name: str, scope: str):
+        from zet.services.character_management_service import CharacterManagementService
+        result = CharacterManagementService(self).rename(character, phase, new_name=new_name, scope=scope)
+        self.request_library_index_refresh()
+        return result
+
     def delete_costume(self, character: str, phase: str, costume_slug: str, **confirmation) -> str:
         """Move a costume and its related library data to deleted storage."""
         return self._indexed_write(lambda: self.library_deletion_service.delete_costume(character, phase, costume_slug, **confirmation))

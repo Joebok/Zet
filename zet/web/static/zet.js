@@ -207,7 +207,6 @@ const PRODUCTION_PAGES = new Set(["prompt-review"]);
 let entityLibraryImportGeneration = null;
 const characterSelect = document.querySelector("#character-select");
 const phaseSelect = document.querySelector("#phase-select");
-const deletePhaseButton = document.querySelector("#delete-phase");
 const headerStorySelect = document.querySelector("#header-story-select");
 const headerSceneSelect = document.querySelector("#header-scene-select");
 const characterContext = document.querySelector("#character-context");
@@ -1794,6 +1793,7 @@ function openFullscreenImage(src, alt = "", options = {}) {
   fullscreenImageOverlay.showModal();
   fullscreenImageClose.focus();
 }
+window.ZetOpenFullscreenImage = openFullscreenImage;
 
 function enableFullscreenImage(image, getOptions = null) {
   if (!image) return null;
@@ -2223,7 +2223,7 @@ function renderResponsiveSectionMenu(selectedPage = activePageName() || state.la
 const compactShell = window.matchMedia("(max-width: 1360px)");
 const compactUtilityHomes = new Map();
 function syncResponsiveChrome() {
-  for (const id of ["toolbar-create-task", "toolbar-github-issues", "toolbar-restart-zet", "delete-phase"]) {
+  for (const id of ["toolbar-create-task", "toolbar-github-issues", "toolbar-restart-zet"]) {
     const item = document.getElementById(id);
     if (!compactUtilityHomes.has(item)) {
       const marker = document.createComment(id);
@@ -2235,7 +2235,6 @@ function syncResponsiveChrome() {
       if (item.parentElement !== toolbarSettingsMenu) toolbarSettingsMenu.append(item);
     } else if (item.previousSibling !== compactUtilityHomes.get(item)) compactUtilityHomes.get(item).after(item);
   }
-  deletePhaseButton.hidden = state.workspace === "story";
   for (const details of document.querySelectorAll("details[data-viewer-settings]")) {
     if (!details.dataset.viewerInitialized) { details.open = !compactShell.matches; details.dataset.viewerInitialized = "true"; }
   }
@@ -2572,7 +2571,6 @@ function renderOnboarding() {
   }
   onboardingDownloadTemplate.hidden = !status?.template_path;
   document.querySelector("#character-wizard-edit").hidden = isDraft || !status?.template_path;
-  document.querySelector("#onboarding-edit-template").hidden = isDraft || !status?.template_path;
   if (status?.template_path) {
     onboardingDownloadTemplate.href = downloadFileUrl(status.template_path);
     onboardingDownloadTemplate.download = "Character.md";
@@ -2611,7 +2609,7 @@ function renderOnboarding() {
   } else {
     onboardingValidation.textContent = "Create a new character or phase to begin.";
   }
-  void window.ZetCharacterHub?.activate({fetchJson, character: state.character, phase: state.phase, universeId: state.universeId});
+  void window.ZetCharacterHub?.activate({fetchJson, character: state.character, phase: state.phase, universeId: state.universeId, openImage: window.ZetOpenFullscreenImage, refresh: refreshCurrentContext});
 }
 
 async function refreshCurrentContext() {
@@ -3630,7 +3628,7 @@ async function activatePage(page, options = {}) {
     const entry = options.containerPipeline ? {view: "", costume: ""} : {};
     window.ZetCharacterAssetContainer?.activate(pipeline, {...entry, sync: false});
   } else window.ZetCharacterAssetContainer?.deactivate();
-  if (page === "onboarding") void window.ZetCharacterHub?.activate({fetchJson, character: state.character, phase: state.phase, universeId: state.universeId});
+if (page === "onboarding") void window.ZetCharacterHub?.activate({fetchJson, character: state.character, phase: state.phase, universeId: state.universeId, openImage: window.ZetOpenFullscreenImage, refresh: refreshCurrentContext});
   renderResponsiveSectionMenu(page);
   if (options.updateHistory !== false && !options.fromHistory) syncBrowserRoute();
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
@@ -7770,6 +7768,7 @@ async function confirmedImageMutation(url, options, message) {
         expected_versions: Object.fromEntries(images.map(image => [image.id, image.version]))})});
   }
 }
+window.ZetConfirmedImageMutation = confirmedImageMutation;
 
 for (const action of ["check", "rebuild"]) {
   document.querySelector(`#entity-library-usages-${action}`)?.addEventListener("click", async () => {
@@ -11927,10 +11926,6 @@ analyzePromptButton.addEventListener("click", analyzePromptReview);
 viewPromptAnalysisButton.addEventListener("click", viewPromptReviewAnalysis);
 sourceOpenEditor.addEventListener("click", openSelectedSourceEditor);
 sourceEditorSave.addEventListener("click", saveSourceEditor);
-document.querySelector("#onboarding-edit-template").addEventListener("click", () => {
-  const path = selectedOnboardingStatus()?.template_path;
-  if (path) openSourceEditorForSource({source_path: path, source_label: `${state.character} / ${state.phase} — Character.md`, editable: true});
-});
 document.querySelector("#template-editor-reload").addEventListener("click", () => {
   if (state.sourceEditor) openSourceEditorForSource(state.sourceEditor.source);
 });
@@ -12504,23 +12499,6 @@ phaseSelect.addEventListener("change", async () => {
     await loadLocalImageReviewTasks();
   }
   await loadWorkspaceSummary();
-});
-deletePhaseButton.addEventListener("click", async () => {
-  if (!state.character || !state.phase) return;
-  deletePhaseButton.disabled = true;
-  showActionMessage("Moving phase to deleted storage...");
-  try {
-    const payload = await confirmedImageMutation(`/api/character-phase?${currentQuery().toString()}`, { method: "DELETE" }, `Move ${state.character} / ${state.phase} and all templates and assets to the library deleted folder?`);
-    if (!payload) return;
-    state.phase = null;
-    await refreshCurrentContext();
-    if (document.querySelector("#costumes-page").classList.contains("active") && state.phase) await loadCostumes();
-    showActionMessage(payload.message || "Character phase moved to deleted storage.");
-  } catch (error) {
-    showActionMessage(error.message, "error");
-  } finally {
-    deletePhaseButton.disabled = false;
-  }
 });
 headerStorySelect.addEventListener('change',async()=>{
   const params=new URLSearchParams({page:'narrative',workspace:'story',universe_id:state.universeId});

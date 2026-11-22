@@ -127,6 +127,77 @@ class LibraryDeletionService:
             with self.entity_repository.transaction() as connection:
                 return self._delete_phase(character, phase, connection, confirm_ids, expected_versions)
 
+    def delete_character(self, character, *, confirm_ids=None, expected_versions=None, expected_phases=None):
+        from zet.services.image_usage_service import usage_mutation
+        character = self._name(character, "character")
+        root = Path(self.paths.config.base_character_path)
+        character_path = root / character
+        if not character_path.is_dir():
+            raise LibraryDeletionServiceError(f"Character not found: {character}")
+        actual_phases = sorted(path.name for path in character_path.iterdir() if path.is_dir())
+        if expected_phases is not None and sorted(map(str, expected_phases)) != actual_phases:
+            raise LibraryDeletionServiceError("The character's phases changed during review. Refresh and review deletion again.")
+        self._assert_character_idle(character)
+        with usage_mutation(self.paths, character_path, tree=True):
+            actual_phases = sorted(path.name for path in character_path.iterdir() if path.is_dir())
+            if expected_phases is not None and sorted(map(str, expected_phases)) != actual_phases:
+                raise LibraryDeletionServiceError("The character's phases changed during review. Refresh and review deletion again.")
+            with self.entity_repository.transaction() as connection:
+                entity = self.entity_repository.fetchone(
+                    "SELECT entity_id FROM entities WHERE lower(name)=lower(?) AND entity_type='character'", (character,))
+                variant_ids = [row["variant_id"] for row in self.entity_repository.fetchall(
+                    "SELECT variant_id FROM variants WHERE entity_id=?", (entity["entity_id"],))] if entity else []
+                ids = []
+                if variant_ids:
+                    marks = ",".join("?" for _ in variant_ids)
+                    ids = [row["asset_id"] for row in self.entity_repository.fetchall(
+                        f"SELECT DISTINCT asset_id FROM asset_entities WHERE variant_id IN ({marks})", tuple(variant_ids))]
+                from zet.services.image_deletion_service import confirm_image_deletion
+                confirm_image_deletion(connection, ids, confirm_ids, expected_versions)
+                archive = self._archive(character, "all", "character")
+                moves = [
+                    (character_path, archive / "Characters" / character),
+                    (Path(self.paths.config.base_asset_path) / character, archive / "Assets" / character),
+                    (Path(self.paths.config.base_pipeline_path) / character, archive / "Pipelines" / character),
+                    (self.paths.pipeline_candidates_path("Character-Pipeline", character), archive / "PipelineCandidates" / character),
+                    (self.paths.state_path("LocalAssets", quote(character, safe="-_.")), archive / "LocalAssets" / character),
+                    (self.paths.state_path("CharacterAssetContainers", quote(character, safe="-_.")), archive / "CharacterAssetContainers" / character),
+                ]
+                moved = []
+                try:
+                    for source, destination in moves:
+                        if source.exists():
+                            self._move(source, destination)
+                            moved.append((source, destination))
+                    self._purge_assets(ids, archive, connection)
+                    if entity:
+                        connection.execute("DELETE FROM variants WHERE entity_id=?", (entity["entity_id"],))
+                        connection.execute("DELETE FROM entities WHERE entity_id=?", (entity["entity_id"],))
+                except Exception:
+                    for source, destination in reversed(moved):
+                        if destination.exists() and not source.exists():
+                            source.parent.mkdir(parents=True, exist_ok=True)
+                            shutil.move(str(destination), str(source))
+                    raise
+                return str(archive)
+
+    def _assert_character_idle(self, character):
+        root = self.paths.state_path("CharacterAssetContainers", quote(character, safe="-_."))
+        if not root.is_dir():
+            return
+        active = {"SUBMITTING", "QUEUED", "RUNNING", "DISPATCHING"}
+        for path in root.rglob("container.json"):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise LibraryDeletionServiceError(f"Cannot verify workflow state before deletion: {path}") from exc
+            if any(journal.is_file() for journal in (path.parent / "publications").glob("*.json")):
+                raise LibraryDeletionServiceError("Recover pending image publications before deleting the character.")
+            for board in (data.get("boards") or {}).values():
+                candidates = (board.get("candidates") or {}) if isinstance(board, dict) else {}
+                if any(candidate.get("status") in active for candidate in candidates.values() if isinstance(candidate, dict)):
+                    raise LibraryDeletionServiceError("Wait for active image work to finish before deleting the character.")
+
     def delete_costume(self, character, phase, costume_slug, *, confirm_ids=None, expected_versions=None):
         from zet.services.image_usage_service import usage_mutation
         from zet.services.workflow_storage import file_lock

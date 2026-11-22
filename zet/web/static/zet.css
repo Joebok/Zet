@@ -6160,6 +6160,8 @@ button:enabled:active, .button-link:active { filter: brightness(.92); }
 .character-hub-group-title { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .character-hub-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(125px,100%),1fr)); gap:10px; }
 .character-hub-card { display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:auto 1fr; align-items:start; gap:7px; padding:8px; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--text); text-decoration:none; overflow-wrap:anywhere; }
+.character-hub-image-button { border:0; padding:0; cursor:zoom-in; background:transparent; width:100%; }
+.character-hub-card > a { font-weight:600; font-size:.72rem; line-height:1.15; }
 .character-hub-card strong { min-width:0; overflow:hidden; font-size:.72rem; line-height:1.15; text-overflow:ellipsis; white-space:nowrap; }
 .character-hub-card img,.character-hub-card span { width:100%; aspect-ratio:3/4; object-fit:contain; background:var(--surface-subtle); display:grid; place-items:center; text-align:center; color:var(--text-muted); }
 .character-overview-setup-actions { display:flex; justify-content:flex-start; }

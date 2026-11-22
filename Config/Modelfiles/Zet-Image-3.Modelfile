@@ -1,0 +1,11 @@
+# Inkling 2 Mini candidate for the RTX 5060 Ti (16 GB VRAM).
+# Blocked on Ollama 0.40.16: requires Inkling GGUF and vision projector support.
+# Memory fit and performance are unverified; see README.md before creating.
+FROM hf.co/bartowski/thinkingmachines_Inkling-2-Mini-GGUF:IQ3_XS
+
+PARAMETER num_ctx 65536
+PARAMETER num_predict 12288
+PARAMETER temperature 1.0
+PARAMETER top_p 1.0
+PARAMETER top_k 0
+PARAMETER min_p 0.0

@@ -53,7 +53,6 @@
           Phase
           <select id="phase-select"></select>
         </label>
-        <button id="delete-phase" class="navigation-action" type="button">Delete Phase</button>
       </div>
       <div id="story-context" class="workspace-context" hidden>
         <label>
@@ -230,7 +229,7 @@
         <div id="onboarding-status" class="status-text"></div>
       </div>
       <div id="onboarding-message" class="action-message" hidden></div>
-      <p id="character-overview-status" class="status-text" role="status" aria-live="polite"></p>
+      <div class="page-title-row"><p id="character-overview-status" class="status-text" role="status" aria-live="polite"></p><div class="button-row compact"><button id="character-overview-rename-character" type="button">Rename Character</button><button id="character-overview-rename-phase" type="button">Rename Phase</button><button id="character-overview-delete-phase" type="button" class="danger-action">Delete Phase</button><button id="character-overview-delete-character" type="button" class="danger-action">Delete Character</button></div></div>
         <dialog id="character-wizard" class="costume-wizard-dialog" aria-labelledby="character-wizard-title">
           <div class="page-title-row">
             <h2 id="character-wizard-title">Character Wizard</h2>
@@ -305,7 +304,6 @@
         </dialog>
       <details id="character-setup-details" class="overview-details character-overview-section">
         <summary>Setup</summary>
-        <div class="character-overview-setup-actions"><button id="onboarding-edit-template" type="button" hidden>Edit character template</button></div>
         <div id="character-setup-forms">
         <div class="onboarding-layout">
         <section class="control-panel">
@@ -357,7 +355,7 @@
         </div>
       </details>
       <details id="character-base-images" class="overview-details character-overview-section">
-        <summary>Base Images</summary><div id="character-base-groups"></div>
+        <summary><span>Base Images</span><button id="onboarding-edit-template" type="button" hidden>Edit character template</button></summary><div id="character-base-groups"></div>
       </details>
       <details id="character-costumes-details" class="overview-details character-overview-section" open>
         <summary>Costumes</summary><div id="character-costume-groups"></div>

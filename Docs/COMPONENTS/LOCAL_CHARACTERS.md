@@ -40,9 +40,15 @@ existing containers remain readable when display ordering changes. Reads return
 the current display order, and the next write stores it.
 New Costume Dressing view settings default to Doll-dressing (w/ Ref) and use
 FRONT as the reference view; the selector follows the same display order.
-The dashboard links each view card to its owning Asset Container and uses bounded
-cached previews. Setup creation/upload controls are visible until Character.md is
-valid. The page refreshes on entry/context change and has no active polling.
+The card title links to its owning Asset Container; a locked image opens the shared
+fullscreen viewer through a universe-confined original-image endpoint. The Base
+Images summary keeps the Character.md editor action available while collapsed.
+Overview management renames a character or phase and archives a phase or the whole
+character. Rename preserves catalog identities and rewrites structured workflow
+paths. Interrupted renames leave a recovery journal under universe state. Character
+archive reviews catalog image usage and refuses active container work. Setup
+creation/upload controls are visible until Character.md is valid. The page refreshes
+on entry/context change and has no active polling.
 
 ## Character Asset Container workflow (2026-11-06)
 

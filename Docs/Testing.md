@@ -1174,3 +1174,13 @@ queued. No permanent test scenario or live AI/render call was added.
 ## Template input formatting (2026-11-14)
 
 A disposable replay confirmed the formatter splits Gemma's packed Character.md sections into 7 Body Facts bullets and 10 bullets in each Head Edit description and preservation section. It also verified idempotence, explicit view-tag separation, literal inline asterisk preservation, newline normalization including legacy CRCRLF, platform CRLF serialization, and wizard response splitting. Python compilation, JavaScript syntax and git diff checks passed. The approved four-scenario E2E suite passed (46.5 seconds). No library templates, permanent tests, frozen prompts, live inference or renders were changed. The E2E suite did not directly exercise packed-bullet save/proposal acceptance or master conflict handling.
+
+## Character overview management (2026-11-22)
+
+The approved `npm.cmd run test:e2e` suite passed all four scenarios (42.0s) after
+removing a stale responsive-header reference to the moved Delete Phase control.
+The first run timed out all four scenarios in the Narrative readiness hook for
+that same stale reference. JavaScript syntax, Python AST parsing and
+`git diff --check` passed. The existing scenarios do not directly exercise
+overview rename, archive, or fullscreen-card actions; no permanent scenario or
+live model/render call was added.

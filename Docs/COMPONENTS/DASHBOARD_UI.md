@@ -141,6 +141,13 @@ These checks used isolated storage and no live AI calls.
 
 ## Character Overview Hub
 
+Character cards use a title link for the owning Asset Container and open locked
+images in the shared fullscreen viewer. Character template editing is available
+beside the Base Images summary. Character and phase rename/archive actions live in
+the overview; phase deletion is no longer in the global header. See the
+[Local Characters component](LOCAL_CHARACTERS.md#character-overview-hub) and
+[ADR 0055](../DECISIONS/0055-character-overview-management.md).
+
 Character Overview is the selected character/phase hub. Setup retains draft,
 upload and validation controls until Character.md is valid, then exposes the
 character template editor. Base Images and each costume show eight view cards for

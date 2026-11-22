@@ -83,6 +83,20 @@ class LocalCharacterOverviewService:
             raise LocalCharacterOverviewError("The locked image is unavailable.")
         return _thumbnail(image, self.thumbnail_cache, version)
 
+    def image(self, character: str, phase: str, pipeline: str, view: str,
+              costume: str = "", universe_id: str = "") -> Path:
+        if universe_id and universe_id != str(self.app.universe_id):
+            raise LocalCharacterOverviewError("The requested universe is not active.")
+        row = next((item for item in self.sources.list_sources(character, phase, pipeline=pipeline)
+                    if str(item.get("view") or "").upper() == view.upper()
+                    and str(item.get("costume") or "").replace("_", " ").casefold() == costume.replace("_", " ").casefold()), None)
+        if not row:
+            raise LocalCharacterOverviewError("No locked image exists for this view.")
+        image = Path(row["image_path"]).resolve()
+        if not image.is_relative_to(self.library_root) or not image.is_file():
+            raise LocalCharacterOverviewError("The locked image is unavailable.")
+        return image
+
 
 def _thumbnail(source: Path, cache: Path, version: str) -> Path:
     from zet.services.image_thumbnail_service import ImageThumbnailService
