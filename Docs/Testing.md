@@ -1,5 +1,15 @@
 # Local testing
 
+## Narrative Candidate Board initialization (2026-11-22)
+
+The fast suite reproduced S3 timing out before the first interview job existed;
+the board adapter called the controller-scoped `boardRatio()` and aborted target
+initialization. The adapter now reads its supplied detail and draft values.
+`npm.cmd run test:e2e` passed all four approved scenarios (40.5s).
+Disposable adapter checks passed saved/edited subscene ratios and read-only scene
+ratios for backdrops and assemblies. JavaScript syntax and `git diff --check`
+passed. No permanent test, live AI/render call, or normal-library change was added.
+
 ## Minor Character management controls (2026-11-15)
 
 Python compilation, Minor Character controller JavaScript syntax, and

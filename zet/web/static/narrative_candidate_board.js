@@ -131,7 +131,7 @@ export function narrativeBoardModel({detail, scopeKey, revision, drafts, busy, l
         .map((entry, index) => [entry.candidate_id, {rank: index + 1, assessment: entry.review}]))},
     renderControls: {promptFields: [{key: 'prompt_model', label: 'Prompt model', type: 'text',
       placeholder: 'Default: ' + defaultModel, value: value('prompt_model'), suggestions: models}],
-    aspectRatio:{value:boardRatio(),readOnly:detail.kind !== 'subscene',description:detail.kind !== 'subscene' ? 'Inherited from the scene canvas. Change it in Scene settings.' : ''}, fields: [
+    aspectRatio:{value:detail.kind === 'subscene' ? value('aspect_ratio') : detail.scene_canvas,readOnly:detail.kind !== 'subscene',description:detail.kind !== 'subscene' ? 'Inherited from the scene canvas. Change it in Scene settings.' : ''}, fields: [
       ...(!unmodified ? [{key: 'prompt', label: 'Final Qwen prompt', type: 'textarea', value: value('prompt'), disabled: llmBusy}] : []),
       ...(assembly ? [{key: 'assembly_mode', label: 'Assembly mode', type: 'select', value: value('assembly_mode'),
         options: assemblyModes.map(([value, label]) => ({value, label}))}] : []),
