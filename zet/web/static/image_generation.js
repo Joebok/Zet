@@ -1,4 +1,4 @@
-import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261115-candidate-identities";
+import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261122-aspect-ratio";
 
 const api = "/api/image-generation";
 const assets = api + "/assets";
@@ -105,7 +105,7 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
       scope:{key:owner + ":" + data.asset_id, title:data.name}, revision:data.revision,
       selectedId:candidateId(selection()),
       renderControls:{
-        promptFields:[field("prompt", "Prompt", "textarea"), field("negative_prompt", "Negative prompt", "textarea")],
+        promptFields:[field("prompt", "Prompt", "textarea"), {...field("negative_prompt", "Negative prompt", "textarea"), collapsed:true, rows:2}],
         fields:[], aspectRatio:{value:input.aspect_ratio || "1:1"},
         readiness:{draft:readiness, final:readiness}, renderStatus:data.busy ? "Renders in progress" : "",
       },
@@ -115,7 +115,7 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
             disabledReason:selected?.job?.reconstruction?.target_hash ? "" : "Select a reconstructed image."},
         ] : [{key:"reconstruct", label:"Reconstruct selected image", group:"prompt",
           disabledReason:selected?.image ? "" : "Select a completed candidate."}]),
-        {key:"references", label:"References (" + (input.reference_images || []).filter(ref => ref.image).length + "/10)", placement:["controls"], disabledReason:input.mode === "img2img" ? "" : "Choose Image to image."},
+        ...(view() === "generate" ? [{key:"references", label:"References (" + (input.reference_images || []).filter(ref => ref.image).length + "/10)", placement:["controls"], disabledReason:input.mode === "img2img" ? "" : "Choose Image to image."}] : []),
       ],
       slots:data.slots.map((item, index) => {
         const entry = result(index);

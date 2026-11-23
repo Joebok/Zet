@@ -1,5 +1,5 @@
 # Image Generation UI improvements
-Status: active
+Status: complete
 Related issue/specification: none
 
 ## Goal
@@ -45,16 +45,16 @@ Preserve asset revision saves, ordered references, frozen retries, selected cand
 - Work: record shared contract, subscriber behavior, completion and validation.
 - Acceptance: docs match implementation and diff is scoped.
 - Validation: git diff --check.
-- Status: in progress.
+- Status: complete.
 
 ## Validation
-`node --check` passed for all six changed JavaScript modules. `git diff --check` passed. The approved `npm.cmd run test:e2e` baseline ran 4 scenarios: 3 passed and the Narrative interview/prompt/render scenario failed twice while waiting for an interview job to enter QUEUED. The failure context showed the Narrative workspace still at Loading; its cause is unresolved. No live model calls. Browser visual verification of the Image Generation route remains outstanding.
+`node --check` passed for all six changed JavaScript modules. `git diff --check` passed. The approved `npm.cmd run test:e2e` baseline passed all 4 scenarios (42.4s). An isolated browser fixture verified generation setup, prompt sizing, collapsed negative prompt, visible aspect ratio, eight-slot board, and the asset-scoped reconstruction view. No live model calls or normal-library edits.
 
 ## Risks and alternatives
-Read-only Narrative target ratios need an obvious route to the scene canvas editor.
+Read-only Narrative target ratios direct operators to the scene settings editor.
 
 ## Progress and decisions
 Joe selected an asset subpage for reconstruction.
 
 ## Final results
-Moved aspect ratio into shared board presentation, migrated Character/Minor/Narrative/Image Generation subscribers, added Image Generation page setup and an asset-scoped reconstruction route/view, and updated owning UI docs. Leave active until the Narrative E2E failure is diagnosed and the Image Generation view is visually verified.
+Moved aspect ratio into shared board presentation, migrated Character/Minor/Narrative/Image Generation subscribers, added Image Generation page setup and an asset-scoped reconstruction route/view, compacted the prompt editor, and updated owning UI docs. All approved fast scenarios, JavaScript syntax checks, diff checks, and isolated browser inspection passed.

@@ -1185,7 +1185,7 @@ async function modifyEntityLibraryImageWithGenerator() {
   const asset = entityLibrarySelectedAsset;
   if (!asset || asset.origin === "pipeline" || asset.status === "archived") return;
   try {
-    const {createAsset, readImage} = await import("/static/image_generation.js?v=20261115-unique-review-controls");
+    const {createAsset, readImage} = await import("/static/image_generation.js?v=20261122-reconstruction-view");
     const response = await fetch(fileUrl(asset.image_path, asset.checksum));
     if (!response.ok) throw new Error("Unable to read the Inventory image.");
     const image = await readImage(await response.blob());
@@ -3640,7 +3640,7 @@ if (page === "onboarding") void window.ZetCharacterHub?.activate({fetchJson, cha
     await loadAiControls();
   } else window.ZetAIQueue?.stop();
   if (page === "image-generation") {
-    const controller = await import("/static/image_generation.js?v=20261115-unique-review-controls");
+    const controller = await import("/static/image_generation.js?v=20261122-reconstruction-view");
     window.ZetImageGeneration ||= controller.setup({
       fetchJson, universe:() => state.universeId,
       style:variant => state.universes.find(item => (item.id || item.universe_id) === state.universeId)?.[

@@ -196,7 +196,7 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
           `<label><input ${attrs} type="radio" value="${escape(option.value)}">${escape(option.label)}</label>`).join('')}</fieldset>`;
       }
       const list = `zcb-${boardId}-${escape(field.key)}`;
-      const input = field.type === 'textarea' ? `<textarea ${attrs}></textarea>`
+      const input = field.type === 'textarea' ? `<textarea ${attrs} rows="${Number(field.rows) || 5}"></textarea>`
         : field.type === 'select' ? `<select ${attrs}>${(field.options || []).map(option =>
           `<option value="${escape(option.value)}">${escape(option.label)}</option>`).join('')}</select>`
           : `<input ${attrs} type="${field.type === 'checkbox' ? 'checkbox' : 'text'}" placeholder="${escape(field.placeholder)}" ${field.suggestions ? `list="${list}"` : ''}>`;
@@ -208,7 +208,9 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
     const authoring = part(board, 'authoring');
     const split = Boolean(controls.promptFields);
     patch(authoring, split ? `<section aria-label="Prompt authoring"><h3>Prompt authoring</h3>
-      ${controls.promptFields.map(fieldMarkup).join('')}<div class="zcb-tools">${actions.filter(action => action.group === 'prompt').map(action => actionMarkup(action)).join('')}</div>
+      ${controls.promptFields.map(field => field.collapsed
+        ? `<details class="zcb-prompt-optional"><summary>${escape(field.label)}</summary>${fieldMarkup(field)}</details>`
+        : fieldMarkup(field)).join('')}<div class="zcb-tools">${actions.filter(action => action.group === 'prompt').map(action => actionMarkup(action)).join('')}</div>
       <p role="status"></p><div role="status"></div></section>` : '');
     if (split) {
       const [status, outcome] = authoring.querySelectorAll('[role="status"]');

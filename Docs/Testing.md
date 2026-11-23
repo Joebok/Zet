@@ -1,5 +1,13 @@
 # Local testing
 
+## Image Generation Candidate Board controls (2026-11-22)
+
+The approved fast suite passed all four scenarios (42.4s). An isolated fast-mode
+browser fixture inspected the Image Generation generation and reconstruction
+views, including compact setup, prompt, aspect-ratio, slot, and disclosure layout.
+JavaScript syntax and `git diff --check` passed. No live AI/render request or
+normal-library change was made.
+
 ## Narrative Candidate Board initialization (2026-11-22)
 
 The fast suite reproduced S3 timing out before the first interview job existed;
