@@ -110,6 +110,8 @@ Index refresh requests debounce for 250 ms on the existing reconciler, retaining
 its 60-second discovery cycle and last successfully published generation. Pending
 usage maintenance replays there, including after restart. Image dependencies use
 availability/catalog version metadata; text/JSON dependency fingerprints remain.
+Pending-marker replay takes the consumer lock derived from the marker filename
+before opening the file, preventing Windows sharing conflicts with writer cleanup.
 Primary saves return without synchronous index rebuilds. See
 [ADR 0023](../DECISIONS/0023-streamlined-image-integrity.md).
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import atexit
 import json
 import os
@@ -478,7 +479,18 @@ def main() -> int:
         parser.error("--port must be between 1024 and 65535")
     if args.open_library:
         threading.Timer(1.0, webbrowser.open, args=(f"http://127.0.0.1:{port}/narrative",)).start()
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+    if os.name == "nt" and mode == "fast":
+        # Fast fixtures use prepared responses, with no asyncio subprocesses.
+        # Selector sockets avoid Proactor shutdown errors when Chromium closes
+        # requests during navigation or context teardown.
+        loop = asyncio.SelectorEventLoop()
+        try:
+            server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
+            loop.run_until_complete(server.serve())
+        finally:
+            loop.close()
+    else:
+        uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
     return 0
 
 

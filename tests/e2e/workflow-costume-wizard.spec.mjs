@@ -5,10 +5,12 @@ import { createHash } from "node:crypto";
 import { resultsRoot } from "./results-path.mjs";
 
 test.afterEach(async ({ page }, testInfo) => {
-  if (testInfo.status !== testInfo.expectedStatus) {
+  const errors = page.__zetPageErrors ?? [];
+  if (testInfo.status !== testInfo.expectedStatus || errors.length) {
     await page.request.post("/__test/retain-failure", { data: { title: testInfo.title } });
-  } else {
-    expect(page.__zetPageErrors ?? [], "uncaught browser exceptions").toEqual([]);
+  }
+  if (testInfo.status === testInfo.expectedStatus) {
+    expect(errors, "uncaught browser exceptions").toEqual([]);
   }
 });
 

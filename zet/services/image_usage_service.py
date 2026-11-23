@@ -142,7 +142,10 @@ class ImageUsageService:
         return self.pending / (hashlib.sha256(consumer.encode()).hexdigest() + ".json")
 
     def _lock(self, consumer):
-        number = int(hashlib.sha256(consumer.encode()).hexdigest()[:8], 16) % 32
+        return self._marker_lock(self._marker(consumer))
+
+    def _marker_lock(self, marker):
+        number = int(marker.stem[:8], 16) % 32
         return file_lock(self.pending / f"usage-{number:02d}.lock")
 
     @contextmanager
@@ -187,13 +190,15 @@ class ImageUsageService:
         """Replay only coalesced pending consumers after restart or catalog recovery."""
         for marker in sorted(self.pending.glob("*.json")):
             try:
-                row = json.loads(marker.read_text(encoding="utf-8"))
-                consumer = row["consumer_id"]
-                self._consumer(self.root / consumer)
-                with self._lock(consumer):
-                    # Re-read after locking: a writer may have completed this marker.
+                # The filename carries the consumer hash. Lock before opening it
+                # so Windows writers can replace/delete the marker safely.
+                with self._marker_lock(marker):
                     if marker.is_file():
                         row = json.loads(marker.read_text(encoding="utf-8"))
+                        consumer = row["consumer_id"]
+                        self._consumer(self.root / consumer)
+                        if self._marker(consumer) != marker:
+                            raise ValueError("Usage marker does not match its consumer.")
                         self._complete(consumer, bool(row.get("tree")))
             except Exception as exc:
                 self._failed(exc)

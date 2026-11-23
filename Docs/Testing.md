@@ -1,5 +1,22 @@
 # Local testing
 
+## Testing process review (2026-11-23)
+
+Reviewed commit `b1f1166` and the completed coverage plan. Fixed a Windows
+image-usage marker read/delete race, retained fixtures for browser-error assertion
+failures, and selected the selector loop for the Windows fast fixture. Final
+`npm.cmd run test:e2e` passed all 20 scenarios in 2.0 minutes without the prior
+usage-maintenance warning or socket-reset traceback. Node still printed its
+harmless conflicting color-environment warning. Discovery listed 20 tests in
+17 files; Python/JavaScript syntax and `git diff --check` passed.
+
+Disposable checks verified marker lock ordering and concurrent deletion, browser
+failure fixture/trace retention, Character/phase rename controls through reload,
+and release-output buffering/streaming/exit propagation. The browser-error probe
+failed intentionally and retained evidence under ignored `test-results/e2e-review-probe`.
+No maintained scenarios were added. Live AI/rendering and production deployment
+were not invoked. See the [review plan](../plans/completed/e2e-process-review.md).
+
 ## Maintained E2E baseline (2026-11-23)
 
 The approved suite now has twenty fast scenarios. The runner forwards Playwright
@@ -7,7 +24,11 @@ arguments, so `npm.cmd run test:e2e -- --grep "character-to-costume"` runs a
 focused scenario. Fast discovery includes `fast.spec.mjs` and future
 `workflow-*.spec.mjs` files while keeping the separately invoked live spec out of
 the fast suite. Scenarios no longer navigate through Narrative in a shared
-setup hook, and passing scenarios fail on uncaught browser exceptions.
+setup hook, and browser journeys with page-error guards fail on uncaught browser exceptions.
+Those guards retain the fixture before failing their final assertion.
+On Windows, the prepared-response fast fixture uses a selector event loop to
+avoid Proactor socket-shutdown tracebacks during browser navigation. Live and
+inspection servers retain their normal Uvicorn loop selection.
 
 S1 verifies appearance notes after reload. S3 verifies a failed render retry
 retains its prompt, seed and dimensions. S4 verifies completed jobs retain their
@@ -910,12 +931,12 @@ The current style alignment -> selected style -> independent view alignment -> s
 
 ## Approved fast scenarios
 
-All four are implemented in [fast.spec.mjs](../tests/e2e/fast.spec.mjs). The S1–S4 names below are navigation labels for those existing scenarios, not extra tests.
+The twenty approved scenarios are implemented in [fast.spec.mjs](../tests/e2e/fast.spec.mjs) and `workflow-*.spec.mjs`. The S1-S4 names below describe the original four; the additional sixteen are described in the maintained-baseline section above. Some workflows exercise APIs and persistence directly rather than every dashboard control.
 
 | Label / exact test title | User task and assertions | Scope limit |
 | --- | --- | --- |
 | S1 — `library and narrative authoring save and reload through the dashboard` | Upload/restore the Traveler character template; edit/restore costume name; save story title, scene setting, and element appearance; reload and display the reference image; inspect persisted source files | Uses seeded library images/records. Does not cover every catalog operation, merge, migration or universe lifecycle |
-| S2 — `character-to-costume workflow uses manual container boards and publishes outputs` | Seed locked Body/Head outputs. Generate Draft and Final Assembly FRONT candidates in Chromium, inspect frozen inputs in Review, select and lock Final, and check its approved Inventory record. Choose a costume and generate and lock Dressing using the published Assembly input. Verify the Dressing deep link and retired endpoints. | Prepared image responses. Browser polling applies Character results. Recovery and wider view coverage use isolated disposable checks |
+| S2 — `character-to-costume workflow uses manual container boards and publishes outputs` | Seed locked Body/Head outputs. Generate Draft and Final Assembly FRONT candidates in Chromium, inspect frozen inputs in Review, select and lock Final, and check its approved Inventory record. Choose a costume and generate and lock Dressing using the published Assembly input. Verify the Dressing deep link and retired endpoints. | Prepared image responses. Browser polling applies Character results. Recovery and representative upstream views have maintained workflow scenarios |
 | S3 — `narrative interview, prompt, render, retry, and final assembly persist` | Dashboard interview proposals, review/Apply and synthesis; render backdrop/subscene; fail and retry a subscene render; select/lock sources; add assembly layers, synthesize/render/select/lock final assembly; reload and verify story summary/image availability | Prepared text/image answers exercise persisted job/application flow, not actual LLM synthesis, image quality, or every provenance/protection case |
 
 S4 — `unified AI queue collects all universes in the background and shares model selection`
@@ -936,7 +957,7 @@ Run the default suite with:
 npm run test:e2e
 ```
 
-On Windows, `npm.cmd run test:e2e` avoids PowerShell script-policy restrictions. Its pretest setup uses `npm ci` when the locked Playwright packages are missing and installs Chromium only when the matching browser executable is absent. Browser downloads use Playwright's shared user cache, while npm packages are installed into the current checkout or worktree. [package.json](../package.json) calls [run-e2e.mjs](../Scripts/run-e2e.mjs) and [playwright.config.mjs](../playwright.config.mjs), which run only `fast.spec.mjs` on Chromium with one worker, a 90-second scenario timeout, 8-second default assertion timeout, and port **8765**. Each run writes to a unique folder under the system temp directory's `Zet-test-results/<checkout-name>/`; `ZET_TEST_RESULTS_ROOT` overrides that parent path. Successful runs delete their folder; failed runs retain it for diagnosis. The local-front helper has a bounded 70-second poll. Reuse of an existing server is disabled; keep suites serial across worktrees and resolve port conflicts before rerunning.
+On Windows, `npm.cmd run test:e2e` avoids PowerShell script-policy restrictions. Its pretest setup uses `npm ci` when the locked Playwright packages are missing and installs Chromium only when the matching browser executable is absent. Browser downloads use Playwright's shared user cache, while npm packages are installed into the current checkout or worktree. [package.json](../package.json) calls [run-e2e.mjs](../Scripts/run-e2e.mjs) and [playwright.config.mjs](../playwright.config.mjs), which discover `fast.spec.mjs` and `workflow-*.spec.mjs` on Chromium with one worker, a 90-second scenario timeout, 8-second default assertion timeout, and port **8765**. Each run writes to a unique folder under the system temp directory's `Zet-test-results/<checkout-name>/`; `ZET_TEST_RESULTS_ROOT` overrides that parent path. Successful runs delete their folder; failed runs retain it for diagnosis. The local-front helper has a bounded 70-second poll. Reuse of an existing server is disabled; keep suites serial across worktrees and resolve port conflicts before rerunning.
 
 The bootstrap removes only the lifecycle-exported `npm_config_allow_scripts`
 override (including case and hyphen variants) from its nested `npm ci`

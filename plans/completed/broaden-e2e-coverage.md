@@ -1,5 +1,5 @@
 # Broaden Zet E2E task coverage
-Status: active
+Status: complete
 Related issue/specification: approved test coverage expansion in Codex conversation
 
 ## Goal
