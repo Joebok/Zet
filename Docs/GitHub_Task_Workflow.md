@@ -144,8 +144,9 @@ latest merged `origin/main`, runs the approved isolated validation, then restart
 Zet and its harvester. `./Update_Release.ps1 -StageOnly` validates without promotion;
 `-RuntimeRoot C:\path\to\Zet_Runtime` overrides Runtime.Root from the project config.
 Pass `-SkipTests` to stop all processes listening on TCP port 8765 and skip the
-E2E suite. Other release, Python and compatibility checks still run. This option
-also applies with `-StageOnly` and `-Offline`.
+complete `npm run test:e2e` invocation, including Playwright and browser setup.
+Other release, Python and compatibility checks still run. This option also
+applies with `-StageOnly` and `-Offline`.
 The script can also be invoked by absolute path from another working directory.
 
 The wrapper requires the project's Python 3 virtual environment and an already
@@ -157,11 +158,14 @@ code comes from merged main; the active production config and template-edit guar
 remain authoritative. The CLI verifies the serving boot/config/revision and managed
 dashboard process before starting; it does not construct the creative application.
 
-Progress includes the operation ID and status-file path. The command waits through
-any rollback, returns zero only after successful promotion or requested staging,
-and returns nonzero for failure, rollback, recovery-required, or controller exit.
-Interrupting or timing out the wait does not cancel a launched deployment; inspect
-the printed status file before retrying. Logs remain in Runtime.Root/state.
+Progress includes the operation ID, status-file path, controller log path, state
+changes, and live Playwright scenario start/result lines. The E2E timeout is 15
+minutes and the command waits up to 45 minutes for the full deployment lifecycle.
+It waits through any rollback, returns zero only after successful promotion or
+requested staging, and returns nonzero for failure, rollback, recovery-required,
+or controller exit. Interrupting or timing out the wait does not cancel a launched
+deployment; inspect the printed status and log files before retrying. Logs remain
+in Runtime.Root/state.
 
 ### Accepted template edits and update recovery
 

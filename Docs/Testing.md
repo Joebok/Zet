@@ -1,5 +1,50 @@
 # Local testing
 
+## Maintained E2E baseline (2026-11-23)
+
+The approved suite now has twenty fast scenarios. The runner forwards Playwright
+arguments, so `npm.cmd run test:e2e -- --grep "character-to-costume"` runs a
+focused scenario. Fast discovery includes `fast.spec.mjs` and future
+`workflow-*.spec.mjs` files while keeping the separately invoked live spec out of
+the fast suite. Scenarios no longer navigate through Narrative in a shared
+setup hook, and passing scenarios fail on uncaught browser exceptions.
+
+S1 verifies appearance notes after reload. S3 verifies a failed render retry
+retains its prompt, seed and dimensions. S4 verifies completed jobs retain their
+universe ownership. Additional journeys cover Minor Character lifecycle,
+Image Generation setup and prepared Draft publication, universe and species
+revision fencing, Character template save/conflict, and Inventory reference
+editing with byte preservation. Image Generation verifies queued render
+cancellation clears the slot and withdraws the ask. Reconstruction preserves
+analysis-only evidence, applies an edited prompt, compares a prepared result and
+retains correction ancestry after reload. Character Wizard resumes a
+prepared section interview after reload, previews the resulting canonical
+template, and publishes it only after explicit acceptance. Costume Wizard completes
+a prepared interview, privately renders against a published Assembly FRONT, confirms
+the ordinary Dressing board remains untouched, accepts the costume, and opens its
+new Dressing board. Narrative finishing crops a pinned backdrop, renders a 16:9
+Final assembly at its frozen dimensions, rejects stale lettering confirmation,
+and verifies locked lettering survives reload without changing original artwork.
+Published Body Reference locks feed an Identity Key and partial Turnaround; after
+unlock the source leaves new choices while the saved Inventory key still resolves.
+Narrative animation pins a locked lettered assembly, saves timed camera/text tracks,
+rejects stale revisions, and verifies its HTML export embeds the pinned assets.
+Narrative zines assign a finished locked source to pages, persist and regenerate the
+print layout, and leave the source bytes unchanged. The shared Character board checks
+multi-candidate review, queued upscale cancellation, and stale/incomplete/fresh protected
+Draft cleanup confirmation. A separately owned server process recovers queued work from
+the same fixture and fences a late response from a failed retry attempt. Upstream Body
+and Head candidates retain published source identities, including a non-FRONT binding
+and cross-phase Head source. The cross-phase source path had an undefined-variable
+failure; a localized guard fix unblocks the workflow and is covered by that scenario.
+Character and phase rename verifies the overview and Body container remain available, then restores the
+fixture names. The same Character management scenario then blocks archive during
+active work, requires explicit image confirmation versions, and verifies the
+archived template. This destructive scenario runs last. `npm.cmd run test:e2e`
+passed all 20 scenarios in 2.1 minutes. Windows logged two non-fatal image usage
+maintenance file-sharing warnings. `npm.cmd run test:e2e -- --list` listed 20 tests;
+`git diff --check` passed. The separately invoked live check was not run.
+
 ## Image Generation Candidate Board controls (2026-11-22)
 
 The approved fast suite passed all four scenarios (42.4s). An isolated fast-mode
@@ -261,6 +306,14 @@ prompt ID is sent to `/interrupt` and replacement cannot proceed until history
 settles. The existing S2 scenario and full S1–S4 baseline passed. This does not
 exercise a live ComfyUI backend, cross-process shared-queue cancellation, or a
 browser confirmation with master drift; those remain unverified.
+
+## Command-line release update progress (2026-11-23)
+
+The updater follows the per-operation controller log and prints Playwright scenario
+start and result lines while the approved 20-scenario suite runs. The suite timeout
+is 15 minutes; the outer updater waits up to 45 minutes for staging, promotion, or
+rollback. `-SkipTests` bypasses the complete npm E2E invocation, including pretest
+browser setup, while the other release validation remains active.
 
 ## Command-line release update (2026-11-01)
 

@@ -148,6 +148,15 @@ the overview; phase deletion is no longer in the global header. See the
 [Local Characters component](LOCAL_CHARACTERS.md#character-overview-hub) and
 [ADR 0055](../DECISIONS/0055-character-overview-management.md).
 
+Rename shows local progress while files and saved references are updated, then
+refreshes the character/phase selectors and selects the server-returned scope
+without reloading the page. The shell also updates the URL and stored selection.
+Rename/delete actions and the universe/character/phase selectors are disabled
+until the request and refresh settle. A persistent success message confirms
+completion and survives ordinary overview refreshes. If the rename succeeds but
+the dashboard refresh fails, the message reports that distinction and asks for a
+page refresh. Page navigation does not cancel the rename request.
+
 Character Overview is the selected character/phase hub. Setup retains draft,
 upload and validation controls until Character.md is valid, then exposes the
 character template editor. Base Images and each costume show eight view cards for

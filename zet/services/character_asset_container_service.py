@@ -938,7 +938,7 @@ class CharacterAssetContainerService:
                     raise CharacterAssetContainerError("The phase-change upload must be a verified image managed by this container.")
             else:
                 source_phase = str(source.get("phase") or "").strip()
-                if not source_phase or source_phase == phase or source_pipeline != "head-image-edit":
+                if not source_phase or source_phase == phase:
                     raise CharacterAssetContainerError("Choose a Head FRONT from another phase of this character.")
                 source = {"phase": source_phase}
         if source_name == "dressing_settings":

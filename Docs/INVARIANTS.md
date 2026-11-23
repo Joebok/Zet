@@ -22,7 +22,7 @@ harvested, a finished image is judged by ownership, slot membership, availabilit
 and publication integrity, not equality with current source choices. Source-change
 markers are advisory. See [ADR 0045](DECISIONS/0045-finished-image-source-policy.md).
 
-These are supported by implementation and repository instructions, with earlier test evidence retained in Git history. [Testing](Testing.md) owns the current S1–S4 baseline and coverage approval. A scenario verifies only its named assertions; many contracts below require source inspection because dedicated tests were retired. Do not add coverage without explicit approval. See [DEVELOPMENT](DEVELOPMENT.md) for observed results.
+These are supported by implementation and repository instructions, with earlier test evidence retained in Git history. [Testing](Testing.md) owns the current twenty-scenario fast suite and coverage approval; S1-S4 remain the original baseline. A scenario verifies only its named assertions; many contracts below require source inspection because dedicated tests were retired. Do not add coverage without explicit approval. See [DEVELOPMENT](DEVELOPMENT.md) for observed results.
 
 ## 1. Reusable behavior belongs behind the web layer
 
@@ -97,7 +97,7 @@ this completion barrier and its isolated validation boundary.
 - **Rule/why:** machine-local operational state and disposable indexes resolve beneath `[Storage].Root` through [StoragePathService](../zet/services/storage_path_service.py); relative child paths cannot escape or overlap the creative library/shared queue. Missing configured volumes fail clearly rather than redirecting writes to the old C: location. The shared `BaseAIQueuePath` remains transport-owned.
 - **Retention:** keep one published index generation and parsed payloads only for current source fingerprints. Retain completed queue details for seven days by original completion time, and prune only after a verified success receipt. Missing receipts, errors, unknown ownership, image-admission proof and lock files are protected. `catalog.sqlite3`, authored library data, and library-owned workflow records are outside machine-storage maintenance.
 - **Implementation/impact:** [ConfigService](../zet/services/config_service.py), [LibraryIndexRepository](../zet/repositories/library_index_repository.py), [StorageMaintenanceService](../zet/services/storage_maintenance_service.py), [manage_storage](../zet/scripts/manage_storage.py), queue lifecycle/coordinator and task workflow root.
-- **Verify:** the four fast E2E scenarios run on isolated configured storage. Use the read-only storage report/preview before migration. `--apply`, `--rebuild-index` and `--compact-indexes` are explicit operations; old storage removal requires a reviewed, quiescent cutover manifest.
+- **Verify:** the twenty maintained fast E2E scenarios run on isolated configured storage. Use the read-only storage report/preview before migration. `--apply`, `--rebuild-index` and `--compact-indexes` are explicit operations; old storage removal requires a reviewed, quiescent cutover manifest.
 
 Qwen Image 2.1 prepared references are job-local derivative snapshots: source bytes
 and ordering remain intact, dimensions only shrink to aligned sizes, and pending

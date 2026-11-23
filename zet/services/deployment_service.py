@@ -81,6 +81,7 @@ class DeploymentService:
             shutil.copy2(Path(__file__).with_name("template_publication_core.py"), state / "template_publication_core.py")
             identifier = uuid4().hex
             request_path = state / f"deployment-{identifier}.json"
+            controller_log_path = state / f"deployment-{identifier}.log"
             role_state = self.app.config.runtime_state_path or str(self.app.config_path.resolve().parent / "Config")
             request = {"id": identifier, "state": "pending", "runtime_root": str(self.root), "source_root": str(process.project_root),
                        "workflow_state_root": str(self.store.root),
@@ -98,9 +99,11 @@ class DeploymentService:
             self.store.write(db, "deployment", "current", {**request, "status_path": str(request_path.with_name(request_path.stem + "-status.json"))})
             db.commit()
             try:
-                self.controller_process = subprocess.Popen([sys.executable, "-B", str(helper), "--request", str(request_path)],
-                                 cwd=state, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), start_new_session=os.name != "nt")
+                with controller_log_path.open("ab") as controller_log:
+                    self.controller_process = subprocess.Popen(
+                        [sys.executable, "-B", str(helper), "--request", str(request_path)],
+                        cwd=state, stdin=subprocess.DEVNULL, stdout=controller_log, stderr=subprocess.STDOUT,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), start_new_session=os.name != "nt")
             except OSError as exc:
                 self.store.put("deployment", "current", {"id": identifier, "state": "failed", "error": "Could not launch the deployment controller."})
                 raise TaskServiceError("Could not launch the deployment controller.", 503) from exc

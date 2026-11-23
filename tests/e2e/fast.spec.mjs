@@ -9,13 +9,17 @@ const image = (width, height) => path.join(resultsRoot, "narrative-e2e", "fast",
 test.beforeEach(async ({ page }) => {
   const reset = await page.request.post("/__test/reset");
   expect(reset.ok()).toBeTruthy();
-  await page.goto("/narrative");
-  await page.waitForFunction(() => document.body.dataset.narrativeReady === "true");
+  page.on("pageerror", error => {
+    page.__zetPageErrors ??= [];
+    page.__zetPageErrors.push(error.message);
+  });
 });
 
 test.afterEach(async ({ page }, testInfo) => {
   if (testInfo.status !== testInfo.expectedStatus) {
     await page.request.post("/__test/retain-failure", { data: { title: testInfo.title } });
+  } else {
+    expect(page.__zetPageErrors ?? [], "uncaught browser exceptions").toEqual([]);
   }
 });
 
@@ -90,6 +94,8 @@ test("library and narrative authoring save and reload through the dashboard", as
   await page.goto(`/narrative?story=${context.ids.story}&scene=${context.ids.scene}`);
   await page.waitForFunction(() => document.body.dataset.narrativeReady === "true");
   await expect(page.locator("#narrative-setting")).toHaveValue("A pine forest beside the test road");
+  await page.getByRole("button", { name: "Edit Subject Traveler", exact: true }).click();
+  await expect(page.locator("#element-appearance")).toHaveValue("Blue travel coat, dark trousers, brown boots.");
   await expect(page.locator("#narrative-elements img").first()).toBeVisible();
   await expect(page.locator("#narrative-elements img").first()).toHaveJSProperty("naturalWidth", 256);
   expect(context.ids.story).toMatch(/^[a-f0-9]{32}$/);
@@ -136,9 +142,22 @@ test("narrative interview, prompt, render, retry, and final assembly persist", a
       await page.getByRole("textbox", { name: "Final Qwen prompt" }).fill("The traveler reaches the forest gate.");
       await page.getByRole("button", { name: "Save direction inputs" }).click();
       await page.getByRole("button", { name: "Draft 1" }).click();
+      const failedCandidate = await waitForJob(page, scene, targetId, "image", "QUEUED");
       await answerRender(page, scene, targetId, null, true);
       await expect(page.locator(".zet-candidate-board [data-slot]").first()).toContainText("failed");
       await page.locator(".zet-candidate-board [data-slot]").first().getByRole("button", { name: "Retry" }).click();
+      await expect.poll(async () => {
+        const jobs = (await (await page.request.get(`${scene}/targets/${targetId}?universe_id=Test`)).json()).jobs;
+        return Object.values(jobs).filter(job => job.kind === "image").at(-1)?.status;
+      }).toBe("QUEUED");
+      const retryDetail = await (await page.request.get(`${scene}/targets/${targetId}?universe_id=Test`)).json();
+      const retryJob = Object.values(retryDetail.jobs).filter(job => job.kind === "image").at(-1);
+      const originalJob = retryDetail.jobs[failedCandidate.id];
+      expect(retryJob.id).not.toBe(failedCandidate.id);
+      expect(retryJob.prompt).toBe(originalJob.prompt);
+      expect(retryJob.seed).toBe(originalJob.seed);
+      expect(retryJob.width).toBe(originalJob.width);
+      expect(retryJob.height).toBe(originalJob.height);
       await answerRender(page, scene, targetId, image(1184, 896));
     }
     await page.locator(".zet-candidate-board [data-slot]").first().getByRole("button", { name: "Select" }).click();
@@ -260,6 +279,16 @@ async function answerRender(page, scene, target, imagePath, failed = false) {
   }).toBe(failed ? "FAILED" : "COMPLETE");
 }
 
+async function waitForJob(page, scene, target, kind, status) {
+  let job;
+  await expect.poll(async () => {
+    const detail = await (await page.request.get(`${scene}/targets/${target}?universe_id=Test`)).json();
+    job = Object.values(detail.jobs).filter(item => item.kind === kind).at(-1);
+    return job?.status;
+  }).toBe(status);
+  return job;
+}
+
 async function deliverEnvelope(page, id, output, failed = false) {
   const context = await (await page.request.get("/__test/context")).json();
   const ask = path.join(context.queue, "File_Proxy", "Ask", "zet", id);
@@ -346,9 +375,11 @@ test("unified AI queue collects all universes in the background and shares model
   }, { timeout: 12000 }).toBe(true);
   await page.goto("/?page=ai-controls");
   await expect(page.locator(`#ai-jobs-table tr[data-job-id="${first}"]`)).toContainText("COMPLETE");
+  expect((await (await page.request.get("/api/ai/jobs")).json()).items.find(item => item.ask_id === first).universe_id).toBe("Test");
   await expect(page.locator("#recent-harvest-table")).toContainText(first);
   await page.reload();
   await expect(page.locator(`#ai-jobs-table tr[data-job-id="${second}"]`)).toContainText("COMPLETE");
+  expect((await (await page.request.get("/api/ai/jobs")).json()).items.find(item => item.ask_id === second).universe_id).toBe("TestOther");
   await page.locator("#ai-filter-universe").selectOption("TestOther");
   await expect(page.locator(`#ai-jobs-table tr[data-job-id="${first}"]`)).toHaveCount(0);
   await expect(page.locator(`#ai-jobs-table tr[data-job-id="${second}"]`)).toBeVisible();

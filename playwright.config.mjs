@@ -4,7 +4,7 @@ import { resultsRoot } from "./tests/e2e/results-path.mjs";
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  testMatch: "fast.spec.mjs",
+  testMatch: /(?:fast|workflow-.*)\.spec\.mjs$/,
   workers: 1,
   outputDir: path.join(resultsRoot, "playwright"),
   timeout: 90_000,

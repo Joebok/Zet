@@ -2496,8 +2496,9 @@ async function loadContext() {
   updatePhaseSelect();
   characterSelect.dataset.contextStatus = "ready";
   saveStoredContext();
-  renderOnboarding();
+  const overviewReady = await renderOnboarding();
   applyWorkspaceChrome();
+  return overviewReady;
 }
 
 function updateHeaderFitmentPreview() {
@@ -2609,15 +2610,30 @@ function renderOnboarding() {
   } else {
     onboardingValidation.textContent = "Create a new character or phase to begin.";
   }
-  void window.ZetCharacterHub?.activate({fetchJson, character: state.character, phase: state.phase, universeId: state.universeId, openImage: window.ZetOpenFullscreenImage, refresh: refreshCurrentContext});
+  return window.ZetCharacterHub?.activate({fetchJson, character: state.character, phase: state.phase, universeId: state.universeId, openImage: window.ZetOpenFullscreenImage, refresh: refreshCurrentContext, onRenamed: refreshRenamedCharacter});
 }
 
 async function refreshCurrentContext() {
-  await loadContext();
+  const overviewReady = await loadContext();
   if (selectedPhaseReady()) {
     await loadAssets();
   }
   await loadWorkspaceSummary();
+  return overviewReady;
+}
+
+async function refreshRenamedCharacter(result, previous) {
+  if (state.universeId !== previous.universeId || state.character !== previous.character || state.phase !== previous.phase) return;
+  state.character = result.character;
+  state.phase = result.phase;
+  state.selectedAssetId = null;
+  state.onboardingMode = null;
+  saveStoredContext();
+  const url = new URL(location.href);
+  url.searchParams.set("character", result.character);
+  url.searchParams.set("phase", result.phase);
+  history.replaceState({}, "", url);
+  return refreshCurrentContext();
 }
 
 async function prefillOnboarding(character, sourcePhase = "") {
@@ -3629,7 +3645,7 @@ async function activatePage(page, options = {}) {
     const entry = options.containerPipeline ? {view: "", costume: ""} : {};
     window.ZetCharacterAssetContainer?.activate(pipeline, {...entry, sync: false});
   } else window.ZetCharacterAssetContainer?.deactivate();
-if (page === "onboarding") void window.ZetCharacterHub?.activate({fetchJson, character: state.character, phase: state.phase, universeId: state.universeId, openImage: window.ZetOpenFullscreenImage, refresh: refreshCurrentContext});
+if (page === "onboarding") void window.ZetCharacterHub?.activate({fetchJson, character: state.character, phase: state.phase, universeId: state.universeId, openImage: window.ZetOpenFullscreenImage, refresh: refreshCurrentContext, onRenamed: refreshRenamedCharacter});
   renderResponsiveSectionMenu(page);
   if (options.updateHistory !== false && !options.fromHistory) syncBrowserRoute();
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);

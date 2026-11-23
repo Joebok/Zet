@@ -8,7 +8,7 @@ const config = process.argv[2] === "live" ? "playwright.live.config.mjs" : "play
 const runRoot = path.join(resultsRoot, `run-${process.pid}-${Date.now()}`);
 const require = createRequire(import.meta.url);
 const cli = path.join(path.dirname(require.resolve("playwright")), "cli.js");
-const result = spawnSync(process.execPath, [cli, "test", "--config", config], {
+const result = spawnSync(process.execPath, [cli, "test", "--config", config, ...process.argv.slice(3)], {
   stdio: "inherit",
   env: { ...process.env, ZET_TEST_RESULTS_ROOT: runRoot },
 });

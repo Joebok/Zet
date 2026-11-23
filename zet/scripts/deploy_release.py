@@ -19,6 +19,9 @@ except ImportError:
     from zet.services.template_publication_core import change_lock, guard
 
 
+E2E_TEST_TIMEOUT_SECONDS = 900
+
+
 @contextmanager
 def test_lock(state_root):
     """Serialize the approved fixed-port suite across workers and release staging."""
@@ -90,7 +93,13 @@ def merge_render_presets(defaults_path, target_path, source_path=None):
     atomic_json(target_path, merged)
 
 
-def run(command, cwd=None, env=None, timeout=600):
+def run(command, cwd=None, env=None, timeout=600, *, stream_output=False):
+    if stream_output:
+        result = subprocess.run(command, cwd=cwd, env=env, timeout=timeout,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        if result.returncode:
+            raise RuntimeError(f"{Path(command[0]).name} failed with exit code {result.returncode}.")
+        return ""
     result = subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True, encoding="utf-8",
                             errors="replace", timeout=timeout, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     if result.returncode:
@@ -167,7 +176,8 @@ def validation_command(env):
         raise RuntimeError("npm is unavailable; production was not stopped.")
     env["PATH"] = str(Path(npm).parent) + os.pathsep + env["PATH"]
     # Keep the Windows shell command fixed; paths are supplied through the environment.
-    return ["cmd.exe", "/d", "/c", "npm.cmd run test:e2e"] if os.name == "nt" else [npm, "run", "test:e2e"]
+    command = "npm.cmd run test:e2e -- --reporter=line" if os.name == "nt" else [npm, "run", "test:e2e", "--", "--reporter=line"]
+    return ["cmd.exe", "/d", "/c", command] if os.name == "nt" else command
 
 
 def library_reference_version(container):
@@ -278,17 +288,20 @@ def stage(request, update):
     validation_root = root / "state" / "validation" / request["id"]
     results_root = validation_root / "test-results"
     env["ZET_TEST_RESULTS_ROOT"] = str(results_root)
+    # The release controller writes to a file, so force Playwright to print
+    # each scenario start/result on its own line instead of terminal redraws.
+    env["PW_TEST_DEBUG_REPORTERS"] = "1"
     env.pop("PYTHONPATH", None)
     env.pop("ZET_WORKER_MODE", None)
     if request.get("skip_tests"):
         stopped = stop_port_8765_listeners()
         update("validating", validation=f"E2E skipped; stopped {len(stopped)} TCP 8765 listener process(es)")
     else:
-        update("validating")
+        update("validating", validation="Running approved 20-scenario E2E suite")
         command = validation_command(env)
         try:
             with test_lock(request["workflow_state_root"]):
-                run(command, cwd=release, env=env, timeout=600)
+                run(command, cwd=release, env=env, timeout=E2E_TEST_TIMEOUT_SECONDS, stream_output=True)
         finally:
             packages = release / "node_modules"
             if packages.is_dir() and packages.resolve().parent == release.resolve():

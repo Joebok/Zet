@@ -112,10 +112,9 @@ def start_private_proxy(root: Path, config: Path, comfy_url: str):
         log.close()
 
 
-def prepare(mode: str) -> Path:
-    root = RUN_ROOT / mode
-    expected_parent = RESULTS_ROOT
-    if root.resolve().parent.parent != expected_parent:
+def prepare(mode: str, fixture_root: Path | None = None) -> Path:
+    root = (fixture_root or RUN_ROOT / mode).resolve()
+    if fixture_root and (root == RESULTS_ROOT or not root.is_relative_to(RESULTS_ROOT)):
         raise RuntimeError(f"Refusing to prepare unexpected test path: {root}")
     if root.exists():
         shutil.rmtree(root)
@@ -146,7 +145,7 @@ def prepare(mode: str) -> Path:
         'BasePipelinePath = "PipelineCandidates"\n'
         f'BaseAIQueuePath = "{queue_path}"\n\n'
         "[Storage]\n"
-        f'Root = {json.dumps(str((Path(tempfile.gettempdir()) / f"Zet-E2E-{os.getpid()}-{mode}").as_posix()))}\n'
+        f'Root = {json.dumps(str(((root / "Storage") if fixture_root else (Path(tempfile.gettempdir()) / f"Zet-E2E-{os.getpid()}-{mode}")).as_posix()))}\n'
         'Indexes = "Indexes"\nQueueState = "QueueState"\n'
         'MigrationState = "MigrationState"\nWorkflowState = "WorkflowState"\n\n'
         "[AIHarvest]\nAutoEnabled = false\n\n"
@@ -161,10 +160,13 @@ def prepare(mode: str) -> Path:
     shutil.copy2(library / "Test" / "responses" / "render-1216x832.png", root / "render-1216x832.png")
     with Image.open(root / "render-1344x768.png") as prepared:
         prepared.resize((1184, 896)).save(root / "render-1184x896.png")
+        prepared.resize((2720, 1536)).save(root / "render-2720x1536.png")
+        prepared.resize((832, 1248)).save(root / "render-832x1248.png")
+        prepared.resize((1024, 1024)).save(root / "render-1024x1024.png")
     return config
 
 
-def build_app(config: Path, index_root: Path):
+def build_app(config: Path, index_root: Path, resume_fixtures: bool = False):
     os.environ["ZET_CONFIG_PATH"] = str(config.resolve())
     os.chdir(config.parent)
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -186,8 +188,16 @@ def build_app(config: Path, index_root: Path):
             "comfyui_node_types": ["UNETLoader", "CLIPLoader", "VAELoader", "LoadImage", "TextEncodeQwenImage21",
                                     "EmptyLatentImage", "KSampler", "VAEDecode", "SaveImage", "QwenImage21Cache"]})
 
-    seed_catalog()
-    catalog_fixture = json.loads((config.parent / "Queue/File_Proxy/Control/model_catalog.json").read_text(encoding="utf-8"))
+    context_path = config.parent / "test-context.json"
+    if resume_fixtures:
+        if not config.is_file() or not context_path.is_file():
+            raise RuntimeError("Fixture resume requires the original config.toml and test-context.json.")
+        catalog_fixture = json.loads((config.parent / "Queue/File_Proxy/Control/model_catalog.json").read_text(encoding="utf-8"))
+        persisted_ids = json.loads(context_path.read_text(encoding="utf-8"))
+    else:
+        seed_catalog()
+        catalog_fixture = json.loads((config.parent / "Queue/File_Proxy/Control/model_catalog.json").read_text(encoding="utf-8"))
+        persisted_ids = None
 
     OllamaModelService.refresh_model_catalog = lambda self: {"models": [], "vision_models": []}
 
@@ -206,22 +216,28 @@ def build_app(config: Path, index_root: Path):
 
     zet_app = ZetApp.from_config(config, validate_catalog=False, universe_id="Test")
     prerequisite_image = config.parent / "Library" / "Test" / "images" / "traveler-reference.png"
-    for pipeline in ("body-reference", "head-image-edit"):
-        seed_character_container(zet_app, pipeline, "", prerequisite_image)
-    author = zet_app.narrative_scene_service
-    asset = zet_app.entity_library_service.import_asset(
-        "Traveler reference", "image/png", (config.parent / "Library" / "Test" / "images" / "traveler-reference.png").read_bytes(),
-        origin="import", origin_key="test-traveler-reference",
-    )
-    ids = seed_narrative(author, asset["asset_id"])
+    if resume_fixtures:
+        ids = persisted_ids
+    else:
+        for pipeline in ("body-reference", "head-image-edit"):
+            seed_character_container(zet_app, pipeline, "", prerequisite_image)
+        author = zet_app.narrative_scene_service
+        asset = zet_app.entity_library_service.import_asset(
+            "Traveler reference", "image/png", (config.parent / "Library" / "Test" / "images" / "traveler-reference.png").read_bytes(),
+            origin="import", origin_key="test-traveler-reference",
+        )
+        ids = seed_narrative(author, asset["asset_id"])
+    asset_id = ids.get("asset") if resume_fixtures else asset["asset_id"]
     application = create_app(config, validate_catalog_on_create=False)
     application.state.ai_catalog_fixture = catalog_fixture
     application.state.test_ids = {
         **ids,
-        "asset": asset["asset_id"], "library": str(config.parent / "Library"),
+        "asset": asset_id, "library": str(config.parent / "Library"),
         "queue": str(config.parent / "Queue"),
         "local_asset_state": str(config.parent / "Library" / "_state" / "LocalAssets"),
     }
+    if not resume_fixtures:
+        context_path.write_text(json.dumps(application.state.test_ids, indent=2), encoding="utf-8")
     return application
 
 
@@ -275,15 +291,31 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=("fast", "live"), default="fast")
     parser.add_argument("--open-library", action="store_true")
+    parser.add_argument("--port", type=int)
+    parser.add_argument("--fixture-root", type=Path)
+    parser.add_argument("--resume-fixtures", action="store_true")
     args = parser.parse_args()
     mode = "inspection" if args.open_library else args.mode
-    config = prepare(mode)
-    index_root = Path(tempfile.gettempdir()) / f"Zet-E2E-{os.getpid()}-{mode}" / "Indexes"
+    if args.resume_fixtures and not args.fixture_root:
+        parser.error("--resume-fixtures requires --fixture-root")
+    if args.fixture_root and not args.fixture_root.resolve().is_relative_to(RESULTS_ROOT):
+        parser.error("--fixture-root must be inside the selected E2E results root")
+    if args.resume_fixtures:
+        config = args.fixture_root.resolve() / "config.toml"
+        index_root = args.fixture_root.resolve() / "Storage" / "Indexes"
+    else:
+        config = prepare(mode, args.fixture_root)
+        index_root = (args.fixture_root.resolve() / "Storage" / "Indexes" if args.fixture_root
+                      else Path(tempfile.gettempdir()) / f"Zet-E2E-{os.getpid()}-{mode}" / "Indexes")
     storage_root = index_root.parent.resolve()
-    if storage_root.parent != Path(tempfile.gettempdir()).resolve():
-        raise RuntimeError(f"Refusing to clean unexpected isolated storage: {storage_root}")
-    atexit.register(shutil.rmtree, storage_root, ignore_errors=True)
-    app = build_app(config, index_root)
+    if args.fixture_root:
+        if storage_root != (args.fixture_root.resolve() / "Storage"):
+            raise RuntimeError(f"Refusing to use unexpected fixture storage: {storage_root}")
+    else:
+        if storage_root.parent != Path(tempfile.gettempdir()).resolve():
+            raise RuntimeError(f"Refusing to clean unexpected isolated storage: {storage_root}")
+        atexit.register(shutil.rmtree, storage_root, ignore_errors=True)
+    app = build_app(config, index_root, resume_fixtures=args.resume_fixtures)
     scenario_number = 0
     live_blockers = []
     proxy_process = None
@@ -346,6 +378,54 @@ def main() -> int:
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
 
+    @app.post("/__test/seed-published-body-views")
+    def seed_published_body_views():
+        runtime = app.state.zet_app
+        image = Path(runtime.config.base_library_path) / "images" / "traveler-reference.png"
+        from uuid import uuid4
+        from zet.services.character_asset_container_service import CharacterAssetContainerService
+        service = CharacterAssetContainerService(runtime)
+        detail = service.detail("Traveler", "Adult", "body-reference", "")
+        for view in list(detail["boards"]):
+            detail = service.detail("Traveler", "Adult", "body-reference", "")
+            board = detail["boards"][view]
+            selected = board.get("selected_id")
+            if selected and board["candidates"].get(selected, {}).get("locked"):
+                continue
+            candidate_id = uuid4().hex
+            board["slots"][0] = candidate_id
+            board["candidates"][candidate_id] = {
+                "candidate_id": candidate_id, "slot": 1, "status": "COMPLETE",
+                "render_mode": "draft", "image_path": str(image.resolve()),
+                "prompt": f"Prepared body reference {view} fixture.", "locked": False,
+            }
+            board["revision"] += 1
+            detail = service.save("Traveler", "Adult", "body-reference", "", detail,
+                                  expected_revision=detail["revision"])
+            detail = service.board_action("Traveler", "Adult", "body-reference", "", view, candidate_id,
+                                          "select", expected_revision=detail["revision"])
+            detail = service.board_action("Traveler", "Adult", "body-reference", "", view, candidate_id,
+                                          "lock", expected_revision=detail["revision"])
+        return {"container": detail}
+
+    @app.post("/__test/seed-cross-phase-head-source")
+    def seed_cross_phase_head_source():
+        runtime = app.state.zet_app
+        from shutil import copy2
+        from zet.services.character_asset_container_service import CharacterAssetContainerService
+        source = runtime.path_service.character_template_path("Traveler", "Adult")
+        destination = runtime.path_service.character_template_path("Traveler", "E2E_Young")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        copy2(source, destination)
+        with destination.open("a", encoding="utf-8", newline="") as template:
+            template.write("\n## Head Edit Phase Changes\n\n"
+                "<!-- ZET:BEGIN HEAD_EDIT_PHASE_CHANGES -->\n"
+                "Present Traveler as a younger adult while preserving the same recognizable identity.\n"
+                "<!-- ZET:END HEAD_EDIT_PHASE_CHANGES -->\n")
+        service = CharacterAssetContainerService(runtime)
+        detail = service.detail("Traveler", "E2E_Young", "head-image-edit", "")
+        return {"phase": "E2E_Young", "container": detail}
+
     @app.post("/__test/reset")
     def reset_test_scenario():
         nonlocal scenario_number
@@ -360,11 +440,13 @@ def main() -> int:
             raise RuntimeError(f"Refusing to reset unexpected test library: {test_root}")
         for relative in ("_state/LocalAssets/Traveler/Adult",
                          "_state/CharacterAssetContainers/Traveler/Adult",
+                         "_state/CharacterAssetContainers/Traveler/E2E_Young",
                          "PipelineCandidates/Character-Pipeline/Traveler/Adult"):
             target = (test_root / relative).resolve()
             if not target.is_relative_to(test_root):
                 raise RuntimeError(f"Refusing to remove unexpected test data: {target}")
             shutil.rmtree(target, ignore_errors=True)
+        shutil.rmtree((test_root / "Characters" / "Traveler" / "E2E_Young").resolve(), ignore_errors=True)
         shutil.rmtree(Path(previous["queue"]) / "File_Proxy", ignore_errors=True)
         from zet.services.atomic_file_service import write_json_atomic
         catalog = app.state.ai_catalog_fixture
@@ -372,6 +454,7 @@ def main() -> int:
         scenario_number += 1
         ids = seed_narrative(runtime.narrative_scene_service, previous["asset"])
         app.state.test_ids = {**previous, **ids}
+        (config.parent / "test-context.json").write_text(json.dumps(app.state.test_ids, indent=2), encoding="utf-8")
         for pipeline in ("body-reference", "head-image-edit"):
             seed_character_container(runtime, pipeline, "", test_root / "images" / "traveler-reference.png")
         app.state.ai_job_coordinator.start()
@@ -390,7 +473,9 @@ def main() -> int:
         shutil.copy2(config, failure_root / "config.toml")
         return {"retained": str(failure_root)}
 
-    port = 8766 if mode in {"live", "inspection"} else 8765
+    port = args.port or (8766 if mode in {"live", "inspection"} else 8765)
+    if not 1024 <= port <= 65535:
+        parser.error("--port must be between 1024 and 65535")
     if args.open_library:
         threading.Timer(1.0, webbrowser.open, args=(f"http://127.0.0.1:{port}/narrative",)).start()
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")

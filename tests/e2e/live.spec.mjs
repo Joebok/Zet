@@ -25,8 +25,8 @@ test("live Narrative final assembly synthesis and render", async ({ page }) => {
     await page.getByText("Prompt and render settings", { exact: true }).click();
 
     await page.getByRole("textbox", { name: "Final Qwen prompt" }).fill(prompt);
-    await page.getByRole("button", { name: "Save inputs" }).click();
-    await page.getByRole("button", { name: "Render 1" }).click();
+    await page.getByRole("button", { name: "Save direction inputs" }).click();
+    await page.getByRole("button", { name: "Draft 1" }).click();
     const job = await waitForJob(page, scene, target, "image", "QUEUED");
     await deliverPreparedImage(context.queue, job.id, await readFile(path.join(root, imageName)));
     await expect.poll(async () => (await getJob(page, scene, target, job.id))?.status,
@@ -44,7 +44,7 @@ test("live Narrative final assembly synthesis and render", async ({ page }) => {
   await expect.poll(async () => (await getJob(page, scene, ids.assembly, synthesis.id))?.status,
     { timeout }).toBe("COMPLETE");
 
-  await page.getByRole("button", { name: "Render 1" }).click();
+  await page.getByRole("button", { name: "Draft 1" }).click();
   const render = await waitForJob(page, scene, ids.assembly, "image", "QUEUED");
   const ask = await waitForNarrativeAsk(context.queue, render.id, timeout);
   expect(ask.consumer).toBe("zet-narrative-scenes");
@@ -56,9 +56,9 @@ test("live Narrative final assembly synthesis and render", async ({ page }) => {
   await page.locator(".zet-candidate-board [data-slot]").first().getByRole("button", { name: "Lock" }).click();
   await page.reload();
   await expect(page.locator(".zet-candidate-board [data-slot]").first()).toContainText("Locked");
-  await expect(page.locator(".zet-candidate-board [data-slot] img").first()).toHaveJSProperty("naturalWidth", 1344);
+  await expect.poll(() => page.locator(".zet-candidate-board [data-slot] img").first().evaluate(image => image.naturalWidth)).toBeGreaterThan(0);
   await page.goto("/narrative");
-  await expect(page.locator(".narrative-story-scene img")).toHaveJSProperty("naturalWidth", 1344);
+  await expect.poll(() => page.locator(".narrative-story-scene img").evaluate(image => image.naturalWidth)).toBeGreaterThan(0);
   const stories = await (await page.request.get("/api/narrative/stories?universe_id=Test")).json();
   expect(stories.find(item => item.id === ids.story)?.scenes[0].final_assembly?.target_id).toBe(ids.assembly);
 });

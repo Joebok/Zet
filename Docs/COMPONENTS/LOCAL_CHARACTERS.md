@@ -49,6 +49,10 @@ paths. Interrupted renames leave a recovery journal under universe state. Charac
 archive reviews catalog image usage and refuses active container work. Setup
 creation/upload controls are visible until Character.md is valid. The page refreshes
 on entry/context change and has no active polling.
+Rename feedback stays visible through the synchronous mutation and the subsequent
+dashboard refresh. Completion selects the returned character and phase and retains
+a positive acknowledgement. See [Dashboard UI](DASHBOARD_UI.md#character-overview-hub)
+for the interaction and refresh-failure behavior.
 
 ## Character Asset Container workflow (2026-11-06)
 

@@ -19,6 +19,9 @@ from zet.services.runtime_state_service import workflow_root
 from zet.services.task_service import TaskService
 
 
+UPDATE_OPERATION_TIMEOUT_SECONDS = 2700
+
+
 def active_runtime(runtime_root):
     root = Path(runtime_root).resolve()
     active_path = root / "state" / "active-release.json"
@@ -45,17 +48,47 @@ def active_runtime(runtime_root):
     return DeploymentService(context), (host, port)
 
 
-def wait_for_update(service, operation, *, stage_only=False, timeout=1800):
+def emit_controller_output(path, offset, pending="", *, final=False):
+    if not path.is_file():
+        if final and pending:
+            print(f"Update output: {pending}", flush=True)
+            pending = ""
+        return offset, pending
+    with path.open("rb") as log:
+        log.seek(offset)
+        contents = log.read()
+    if not contents:
+        if final and pending:
+            print(f"Update output: {pending}", flush=True)
+            pending = ""
+        return offset, pending
+    offset += len(contents)
+    text = pending + contents.decode("utf-8", errors="replace")
+    lines = text.splitlines(keepends=True)
+    pending = ""
+    if lines and not lines[-1].endswith(("\n", "\r")) and not final:
+        pending = lines.pop()
+    for line in lines:
+        print(f"Update output: {line.rstrip()}", flush=True)
+    return offset, pending
+
+
+def wait_for_update(service, operation, *, stage_only=False, timeout=UPDATE_OPERATION_TIMEOUT_SECONDS):
     path = service.root / "state" / f"deployment-{operation['id']}-status.json"
-    print(f"Operation {operation['id']}\nStatus: {path}", flush=True)
+    controller_log = service.root / "state" / f"deployment-{operation['id']}.log"
+    print(f"Operation {operation['id']}\nStatus: {path}\nOutput: {controller_log}", flush=True)
     deadline = time.monotonic() + timeout
     last_state = None
     last_validation = None
+    output_offset = 0
+    pending_output = ""
     while time.monotonic() < deadline:
         # Read final status after observing exit, avoiding a stale in-flight
         # snapshot if the controller finishes between these two operations.
         exited = service.controller_process.poll() is not None
         status = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else operation
+        output_offset, pending_output = emit_controller_output(
+            controller_log, output_offset, pending_output, final=exited)
         if status.get("id") != operation["id"]:
             raise ValueError("Deployment status belongs to a different operation.")
         state = status.get("state")
