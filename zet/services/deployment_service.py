@@ -36,7 +36,7 @@ class DeploymentService:
                 "operation": {key: record[key] for key in ("id", "state", "target_revision", "error", "recovery_error", "boot_id") if key in record},
                 "local_edits": self.templates.status()}
 
-    def start(self, boot_id, *, stage_only=False, runtime_address=None):
+    def start(self, boot_id, *, stage_only=False, skip_tests=False, runtime_address=None):
         """Start from the dashboard, or a terminal with verified live identity."""
         if not self.root or self.app.config.runtime_role == "development":
             raise TaskServiceError("Production deployment is not configured for this instance.", 409)
@@ -45,9 +45,10 @@ class DeploymentService:
             if self.templates.record().get("state") in BUSY:
                 raise TaskServiceError("A template publication is active or interrupted. Finish or retry it before updating.", 409)
             receipt = self.templates.deployment_receipt()
-            return self._start(boot_id, stage_only=stage_only, receipt=receipt, runtime_address=runtime_address)
+            return self._start(boot_id, stage_only=stage_only, skip_tests=skip_tests,
+                               receipt=receipt, runtime_address=runtime_address)
 
-    def _start(self, boot_id, *, stage_only, receipt, runtime_address=None):
+    def _start(self, boot_id, *, stage_only, skip_tests, receipt, runtime_address=None):
         with self.store.transaction() as db:
             existing = self.store.read(db, "deployment", "current", {})
             if existing.get("status_path") and Path(existing["status_path"]).is_file():
@@ -91,7 +92,8 @@ class DeploymentService:
                        "old_boot": boot_id, "pids": pids, "host": host,
                        "owned_processes": [{"pid": info.pid, "command_line": info.command_line} for info in owned],
                        "port": port, "health_url": f"http://127.0.0.1:{port}",
-                       "original_command": process.specs()[0].command, "original_harvester_command": process.specs()[1].command, "stage_only": stage_only}
+                       "original_command": process.specs()[0].command, "original_harvester_command": process.specs()[1].command,
+                       "stage_only": stage_only, "skip_tests": skip_tests}
             write_json_atomic(request_path, request)
             self.store.write(db, "deployment", "current", {**request, "status_path": str(request_path.with_name(request_path.stem + "-status.json"))})
             db.commit()

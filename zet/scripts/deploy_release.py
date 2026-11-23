@@ -94,8 +94,50 @@ def run(command, cwd=None, env=None, timeout=600):
     result = subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True, encoding="utf-8",
                             errors="replace", timeout=timeout, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     if result.returncode:
-        raise RuntimeError(f"{Path(command[0]).name} failed: {(result.stderr or result.stdout)[-1800:]}")
+        output = "\n".join(part.strip() for part in (result.stderr, result.stdout) if part.strip())
+        raise RuntimeError(f"{Path(command[0]).name} failed: {output[-1800:]}")
     return result.stdout.strip()
+
+
+def stop_port_8765_listeners():
+    """Terminate every Windows process listening on the fixed E2E port."""
+    if os.name != "nt":
+        raise RuntimeError("--skip-tests port cleanup is supported only on Windows.")
+
+    def listeners():
+        result = subprocess.run(["netstat.exe", "-ano", "-p", "tcp"], capture_output=True, text=True,
+                                encoding="utf-8", errors="replace",
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        if result.returncode:
+            raise RuntimeError(f"Could not inspect TCP listeners: {(result.stderr or result.stdout).strip()}")
+        found = set()
+        for line in result.stdout.splitlines():
+            fields = line.split()
+            if (len(fields) >= 5 and fields[0].upper() == "TCP"
+                    and fields[1].rsplit(":", 1)[-1] == "8765" and fields[3].upper() == "LISTENING"
+                    and fields[4].isdigit()):
+                found.add(int(fields[4]))
+        return found
+
+    stopped = set()
+    for _ in range(3):
+        current = listeners()
+        if not current:
+            return sorted(stopped)
+        for pid in sorted(current):
+            result = subprocess.run(["taskkill.exe", "/PID", str(pid), "/F"], capture_output=True, text=True,
+                                    encoding="utf-8", errors="replace",
+                                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            if result.returncode:
+                if pid in listeners():
+                    detail = (result.stderr or result.stdout).strip()
+                    raise RuntimeError(f"Could not stop process {pid} listening on TCP 8765: {detail}")
+            else:
+                stopped.add(pid)
+    remaining = listeners()
+    if remaining:
+        raise RuntimeError("TCP port 8765 still has listening process(es): " + ", ".join(map(str, sorted(remaining))))
+    return sorted(stopped)
 
 
 def release_python(release):
@@ -238,15 +280,19 @@ def stage(request, update):
     env["ZET_TEST_RESULTS_ROOT"] = str(results_root)
     env.pop("PYTHONPATH", None)
     env.pop("ZET_WORKER_MODE", None)
-    update("validating")
-    command = validation_command(env)
-    try:
-        with test_lock(request["workflow_state_root"]):
-            run(command, cwd=release, env=env, timeout=600)
-    finally:
-        packages = release / "node_modules"
-        if packages.is_dir() and packages.resolve().parent == release.resolve():
-            shutil.rmtree(packages)
+    if request.get("skip_tests"):
+        stopped = stop_port_8765_listeners()
+        update("validating", validation=f"E2E skipped; stopped {len(stopped)} TCP 8765 listener process(es)")
+    else:
+        update("validating")
+        command = validation_command(env)
+        try:
+            with test_lock(request["workflow_state_root"]):
+                run(command, cwd=release, env=env, timeout=600)
+        finally:
+            packages = release / "node_modules"
+            if packages.is_dir() and packages.resolve().parent == release.resolve():
+                shutil.rmtree(packages)
     if validation_root.is_dir() and validation_root.resolve().parent == (root / "state" / "validation").resolve():
         shutil.rmtree(validation_root)
     run(["git", "-C", str(release), "diff", "--check"])

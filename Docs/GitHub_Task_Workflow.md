@@ -143,6 +143,9 @@ From the project root, run `./Update_Release.ps1` in PowerShell. It deploys the
 latest merged `origin/main`, runs the approved isolated validation, then restarts
 Zet and its harvester. `./Update_Release.ps1 -StageOnly` validates without promotion;
 `-RuntimeRoot C:\path\to\Zet_Runtime` overrides Runtime.Root from the project config.
+Pass `-SkipTests` to stop all processes listening on TCP port 8765 and skip the
+E2E suite. Other release, Python and compatibility checks still run. This option
+also applies with `-StageOnly` and `-Offline`.
 The script can also be invoked by absolute path from another working directory.
 
 The wrapper requires the project's Python 3 virtual environment and an already

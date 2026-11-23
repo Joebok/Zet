@@ -50,6 +50,7 @@ def wait_for_update(service, operation, *, stage_only=False, timeout=1800):
     print(f"Operation {operation['id']}\nStatus: {path}", flush=True)
     deadline = time.monotonic() + timeout
     last_state = None
+    last_validation = None
     while time.monotonic() < deadline:
         # Read final status after observing exit, avoiding a stale in-flight
         # snapshot if the controller finishes between these two operations.
@@ -61,6 +62,10 @@ def wait_for_update(service, operation, *, stage_only=False, timeout=1800):
         if state != last_state:
             print(f"Update: {state}", flush=True)
             last_state = state
+        validation = status.get("validation")
+        if validation and validation != last_validation:
+            print(f"Validation: {validation}", flush=True)
+            last_validation = validation
         # The controller briefly reports failed before attempting rollback. Wait
         # for its exit so the terminal reports the completed recovery outcome.
         if exited and (state == "succeeded" or (stage_only and state == "staged")):
@@ -91,7 +96,7 @@ def require_available_bind(host, port):
         raise ValueError(f"Cannot bind the production address {host}:{port}: {exc}") from exc
 
 
-def deploy_stopped(service, address, *, stage_only=False):
+def deploy_stopped(service, address, *, stage_only=False, skip_tests=False):
     """Stage and start a compatible release when the old release cannot boot."""
     from contextlib import closing
     from zet.scripts.deploy_release import atomic_json, healthy, release_python, run, stage, start_harvester, start_release
@@ -124,8 +129,13 @@ def deploy_stopped(service, address, *, stage_only=False):
                    "mutable_state_root": config.runtime_state_path or str(source / "Config"),
                    "template_receipt": service.templates.deployment_receipt(),
                    "library_root": str(library), "library_container": str(container),
-                   "previous_release": str(source)}
-        release, revision = stage(request, lambda status, **_: print(f"Update: {status}", flush=True))
+                   "previous_release": str(source), "skip_tests": skip_tests}
+        def report(status, **details):
+            print(f"Update: {status}", flush=True)
+            if details.get("validation"):
+                print(f"Validation: {details['validation']}", flush=True)
+
+        release, revision = stage(request, report)
         supported = int(run([str(release_python(release)), "-B", "-c",
                              "from zet.repositories.entity_library_repository import EntityLibraryRepository; "
                              "print(EntityLibraryRepository.SCHEMA_VERSION)"], cwd=release))
@@ -164,6 +174,8 @@ def main(argv=None):
     parser.add_argument("--runtime-root", type=Path, help="Defaults to Runtime.Root in the project config.toml.")
     parser.add_argument("--stage-only", action="store_true", help="Validate without stopping or promoting production.")
     parser.add_argument("--offline", action="store_true", help="Stage and start with production stopped.")
+    parser.add_argument("--skip-tests", action="store_true",
+                        help="Skip the E2E suite and stop every process listening on TCP port 8765.")
     args = parser.parse_args(argv)
     try:
         root = args.runtime_root
@@ -173,13 +185,14 @@ def main(argv=None):
                 raise ValueError("Runtime.Root is not configured; pass --runtime-root.")
         service, address = active_runtime(root)
         if args.offline:
-            return deploy_stopped(service, address, stage_only=args.stage_only)
+            return deploy_stopped(service, address, stage_only=args.stage_only, skip_tests=args.skip_tests)
         with urlopen(f"http://127.0.0.1:{address[1]}/api/health", timeout=5) as response:
             health = json.load(response)
         if not health.get("boot_id"):
             raise ValueError("The running dashboard did not report its boot identity.")
         print("Validating merged origin/main" if args.stage_only else "Updating production from merged origin/main", flush=True)
-        operation = service.start(health["boot_id"], stage_only=args.stage_only, runtime_address=address)
+        operation = service.start(health["boot_id"], stage_only=args.stage_only,
+                                  skip_tests=args.skip_tests, runtime_address=address)
         return wait_for_update(service, operation, stage_only=args.stage_only)
     except (OSError, ValueError, KeyError, TypeError, RuntimeError, ConfigServiceError) as exc:
         print(f"Update failed: {exc}", file=sys.stderr, flush=True)

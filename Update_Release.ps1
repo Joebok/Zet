@@ -10,6 +10,8 @@ Override Runtime.Root from the project's config.toml.
 Stage and start a compatible release with the dashboard and harvester stopped.
 .PARAMETER StageOnly
 Run release validation without stopping or promoting production.
+.PARAMETER SkipTests
+Skip the E2E suite and stop every process listening on TCP port 8765.
 .EXAMPLE
 .\Update_Release.ps1
 .EXAMPLE
@@ -19,7 +21,8 @@ Run release validation without stopping or promoting production.
 param(
     [string]$RuntimeRoot,
     [switch]$StageOnly,
-    [switch]$Offline
+    [switch]$Offline,
+    [switch]$SkipTests
 )
 
 $ErrorActionPreference = "Stop"
@@ -36,6 +39,7 @@ $updateArguments = @("-B", "-u", "-m", "zet.scripts.update_release")
 if ($RuntimeRoot) { $updateArguments += @("--runtime-root", $RuntimeRoot) }
 if ($Offline) { $updateArguments += "--offline" }
 if ($StageOnly) { $updateArguments += "--stage-only" }
+if ($SkipTests) { $updateArguments += "--skip-tests" }
 
 Push-Location $PSScriptRoot
 try {

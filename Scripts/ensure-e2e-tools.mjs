@@ -28,8 +28,8 @@ if (!canResolve("playwright") || !canResolve("@playwright/test")) {
   const installEnv = Object.fromEntries(Object.entries(process.env).filter(
     ([key]) => !/^npm_config_allow[-_]scripts$/i.test(key),
   ));
-  run(process.platform === "win32" ? "npm.cmd" : "npm", ["ci"], {
-    shell: process.platform === "win32",
+  run(process.platform === "win32" ? "cmd.exe" : "npm",
+    process.platform === "win32" ? ["/d", "/s", "/c", "npm.cmd ci"] : ["ci"], {
     env: installEnv,
   });
 }
