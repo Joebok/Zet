@@ -405,9 +405,8 @@ function boardModel(current) {
     comparisonDefaults:["selected", comparisons[0]?.key].filter(Boolean),
     lunaReview:{status:luna?.status, error:luna?.error, criteria:luna?.prompt || current.luna_criteria,
       entries:Object.fromEntries((luna?.entries || []).map((entry, index) => [entry.candidate_id, {rank:index+1, assessment:entry.review}]))},
-    renderControls:{fields:[
+    renderControls:{aspectRatio:{value:edits.get("aspect_ratio") ?? current.aspect_ratio},fields:[
       {key:"prompt", label:"Prompt text", type:"textarea", value:promptDrafts.get(promptKey()) ?? current.prompt_body ?? ""},
-      {key:"aspect_ratio", label:"Aspect ratio", type:"text", value:edits.get("aspect_ratio") ?? current.aspect_ratio},
     ], readiness:{draft:renderReason, final:renderReason}, promptStatus,
     renderStatus:renderReason || (view === "STYLE" ? `Source reference · ${character.source.label}` : `Locked Style reference · slot ${lockedStyle?.slot ?? ""}`)},
   };

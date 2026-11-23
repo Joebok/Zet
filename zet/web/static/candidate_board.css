@@ -21,6 +21,11 @@
 .zet-candidate-board .zcb-fields-inline input,
 .zet-candidate-board .zcb-fields-inline select { box-sizing: border-box; max-width: 100%; }
 .zet-candidate-board .zcb-settings-actions { margin-top: .5rem; }
+.zet-candidate-board .zcb-aspect-ratio { display: flex; flex-wrap: wrap; align-items: end; gap: .5rem; margin: .5rem 0; }
+.zet-candidate-board .zcb-aspect-ratio label { display: grid; gap: .25rem; margin: 0; }
+.zet-candidate-board .zcb-aspect-ratio input { box-sizing: border-box; width: 8rem; max-width: 100%; }
+.zet-candidate-board .zcb-aspect-ratio small { color: var(--text-muted); max-width: 48ch; }
+.zet-candidate-board [data-part="authoring"] textarea { box-sizing: border-box; width: min(100%, 72ch); min-height: 7rem; }
 .zet-candidate-board .zcb-radio-group {
   display: flex;
   flex-wrap: wrap;

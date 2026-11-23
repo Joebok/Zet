@@ -216,9 +216,10 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
       showFeedback(outcome, feedback.get('prompt'));
       decorate(authoring);
     }
-    patch(host, fields.length || settingsActions.length ? `<details><summary>Prompt and render settings</summary>
+    const aspect = controls.aspectRatio;
+    patch(host, aspect || fields.length || settingsActions.length ? `${aspect ? `<div class="zcb-aspect-ratio"><label>Aspect ratio${aspect.readOnly ? `<input type="text" value="${escape(aspect.value)}" readonly aria-describedby="zcb-aspect-note">` : `<input type="text" name="aspect_ratio" value="${escape(aspect.value)}" aria-label="Aspect ratio">`}</label>${aspect.description ? `<small id="zcb-aspect-note">${escape(aspect.description)}</small>` : ''}</div>` : ''}${fields.length || settingsActions.length ? `<details><summary>Prompt and render settings</summary>
       ${fields.length ? `<div class="zcb-fields ${controls.fieldsLayout === 'inline' ? 'zcb-fields-inline' : ''}">${fields.map(fieldMarkup).join('')}</div>` : ''}
-      ${settingsActions.length ? `<div class="zcb-tools zcb-settings-actions">${settingsActions.map(action => actionMarkup(action)).join('')}</div>` : ''}</details>` : '');
+      ${settingsActions.length ? `<div class="zcb-tools zcb-settings-actions">${settingsActions.map(action => actionMarkup(action)).join('')}</div>` : ''}</details>` : ''}` : '');
     const fieldsByName = new Map([...(controls.promptFields || []), ...fields].map(field => [field.key, field]));
     for (const control of board.querySelectorAll('[name]')) {
       const field = fieldsByName.get(control.name);
@@ -229,6 +230,8 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
         else if (control.value !== String(field.value ?? '')) control.value = field.value ?? '';
       }
     }
+    const ratio = board.querySelector('[name="aspect_ratio"]');
+    if (ratio && document.activeElement !== ratio && ratio.value !== String(aspect?.value ?? '')) ratio.value = aspect?.value ?? '';
     const toolbar = part(board, 'toolbar');
     patch(toolbar, `<div class="zcb-tools">${actions.filter(action => (!action.placement || action.placement.includes('controls')) && action.group !== 'bulk' && (!split || action.group !== 'prompt')).map(action => actionMarkup(action)).join('')}
       <div class="zcb-bulk">${actions.filter(action => action.group === 'bulk').map(action => actionMarkup(action)).join('')}</div></div>`);
@@ -647,7 +650,7 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
     window.ZetImageCardUI.decorate(control, glyph, control.textContent);
   }
   update(initialModel);
-  return {update, openReview, moveReview, closeReview, setComparisons, resetZoom:() => zoom.reset(),
+  return {board, update, openReview, moveReview, closeReview, setComparisons, resetZoom:() => zoom.reset(),
     dispose() {
       if (disposed) return;
       disposed = true;

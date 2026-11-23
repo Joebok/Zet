@@ -260,6 +260,11 @@ current proposed template. Closing the image viewer restores thumbnail focus.
 
 ## Compact image cards and review (2026-10-20)
 
+Candidate Board aspect ratio remains visible above render shortcuts for every
+subscriber. Narrative backdrops and assemblies show their inherited scene canvas
+ratio as read-only. Image Generation owns generation mode, universe style, and
+reference management in page setup; reconstruction is an asset-scoped subview.
+
 Character view action rows retain the text button **Stage in Image Generator**,
 including on completed views. `local_asset_pipeline.js` supplies the batch, view,
 costume and Recompile context; `zet.js` initializes Image Generation, applies the

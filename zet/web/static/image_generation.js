@@ -69,8 +69,10 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
   function url(assetId) {
     const params = new URLSearchParams({page:"image-generation", universe_id:universe()});
     if (assetId) params.set("generation_asset", assetId);
+    if (assetId && view() === "reconstruction") params.set("generation_view", "reconstruction");
     return "/?" + params;
   }
+  const view = () => new URLSearchParams(location.search).get("generation_view") === "reconstruction" ? "reconstruction" : "generate";
 
   function result(index) {
     const assignment = data?.slots[index];
@@ -85,6 +87,11 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
     if (!data) return;
     el("title").textContent = " - " + data.name;
     el("references").hidden = data.inputs.mode !== "img2img";
+    el("generate-view").hidden = view() === "reconstruction";
+    el("reconstruction-view").hidden = view() !== "reconstruction";
+    el("mode").value = data.inputs.mode || "txt2img";
+    el("style-variant").value = data.inputs.universe_style_variant || "canonical";
+    el("reference-list").hidden = data.inputs.mode !== "img2img";
     const input = data.inputs;
     const selected = result(data.selected_slot);
     const readiness = !input.prompt?.trim() ? "Enter a prompt."
@@ -99,18 +106,16 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
       selectedId:candidateId(selection()),
       renderControls:{
         promptFields:[field("prompt", "Prompt", "textarea"), field("negative_prompt", "Negative prompt", "textarea")],
-        fields:[field("mode", "Generation mode", "radio", [["txt2img", "Text to image"], ["img2img", "Image to image"]]),
-          field("aspect_ratio", "Aspect ratio", "text"),
-          field("universe_style_variant", "Universe style", "select", [["canonical", "Canonical"], ["environmental", "Environmental"]])],
+        fields:[], aspectRatio:{value:input.aspect_ratio || "1:1"},
         readiness:{draft:readiness, final:readiness}, renderStatus:data.busy ? "Renders in progress" : "",
       },
       actions:[
-        {key:"style", label:"Add Universe art style", group:"prompt"},
-        {key:"reconstruct", label:"Reconstruct selected image in universe style", group:"prompt",
-          disabledReason:selected?.image ? "" : "Select a completed candidate."},
-        {key:"compare", label:"Compare selected reconstruction", group:"prompt",
-          disabledReason:selected?.job?.reconstruction?.target_hash ? "" : "Select a reconstructed image."},
-        {key:"references", label:"Manage reference images", placement:["settings"], disabledReason:input.mode === "img2img" ? "" : "Choose Image to image."},
+        ...(view() === "reconstruction" ? [
+          {key:"compare", label:"Compare selected reconstruction", group:"prompt",
+            disabledReason:selected?.job?.reconstruction?.target_hash ? "" : "Select a reconstructed image."},
+        ] : [{key:"reconstruct", label:"Reconstruct selected image", group:"prompt",
+          disabledReason:selected?.image ? "" : "Select a completed candidate."}]),
+        {key:"references", label:"References (" + (input.reference_images || []).filter(ref => ref.image).length + "/10)", placement:["controls"], disabledReason:input.mode === "img2img" ? "" : "Choose Image to image."},
       ],
       slots:data.slots.map((item, index) => {
         const entry = result(index);
@@ -159,6 +164,8 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
         else if (type === "review-open" || type === "candidate-change") reviewed = candidateId;
       },
     });
+    const boardHost = el(view() === "reconstruction" ? "board-reconstruction" : "board");
+    if (component.board.parentElement !== boardHost) boardHost.append(component.board);
     renderAuthoring();
     renderRefinement();
     schedulePoll();
@@ -320,6 +327,16 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
     if (intent.key === "references") { showPanel("references"); return {status:"cancelled"}; }
     busy = true;
     try {
+      if (!await flush() || !live(token)) return {status:"cancelled"};
+      if (intent.key === "reconstruct") {
+        author().source = {selected_result:selection(), label:"Selected candidate"};
+        markDirty();
+        if (!await flush() || !live(token)) return {status:"cancelled"};
+        const route = new URL(url(data.asset_id), location.href); route.searchParams.set("generation_view", "reconstruction");
+        history.pushState({}, "", route);
+        render();
+        return {status:"success", message:"Reconstruction source selected. Review the instructions, then analyze it."};
+      }
       if (intent.key === "style") {
         const text = style(data.inputs.universe_style_variant);
         if (!text?.trim()) throw new Error("The universe has no style for this variant.");
@@ -328,17 +345,9 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
         const prefix = text.trim() + "\n\n";
         data.inputs.prompt = prefix + (old && prompt.startsWith(old) ? prompt.slice(old.length) : prompt);
         data.inputs.managed_style = prefix;
-        markDirty();
-        render();
-        return {status:"success", message:"Universe style added."};
-      }
-      if (!await flush() || !live(token)) return {status:"cancelled"};
-      if (intent.key === "reconstruct") {
-        author().source = {selected_result:selection(), label:"Selected candidate"};
-        markDirty();
-        showPanel("authoring");
-        await analyze();
-        return {status:"success", message:"Reconstruction analysis started."};
+        markDirty(); render();
+        status("Universe style inserted into prompt.");
+        return {status:"success", message:"Universe style inserted into prompt."};
       }
       if (intent.key === "compare") {
         const expectedSelection = selection();
@@ -347,7 +356,7 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
         Object.assign(refinement(), {report_id:started.id, task_id:started.task_id, selected_id:candidateId(expectedSelection), item_ids:[]});
         report = started;
         markDirty();
-        showPanel("true-up");
+        el("true-up").open = true;
         render();
         return {status:"success", message:"Comparison started."};
       }
@@ -672,6 +681,11 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
       renderAuthoring();
     });
   };
+  el("mode").onchange = () => { data.inputs.mode = el("mode").value; if (data.inputs.mode === "txt2img") el("references").open = false; markDirty(); render(); };
+  el("style-variant").onchange = () => { data.inputs.universe_style_variant = el("style-variant").value; delete data.inputs.universe_style; markDirty(); status("Saving universe style choice…"); };
+  click("style", () => onAction({key:"style"}));
+  click("back-to-generation", () => { const route = new URL(url(data.asset_id), location.href); route.searchParams.delete("generation_view"); history.pushState({}, "", route); render(); });
+  window.addEventListener("popstate", () => { if (data && new URLSearchParams(location.search).get("generation_asset") === data.asset_id) render(); });
   document.addEventListener("visibilitychange", () => {
     if (!data || document.hidden || !live(scope)) return;
     schedulePoll();

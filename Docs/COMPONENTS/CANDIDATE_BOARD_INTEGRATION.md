@@ -63,6 +63,10 @@ retain the local elapsed-time value.
   supplies the four render shortcuts. Provide known disabled reasons in
   `renderControls.readiness` by shortcut key such as `render-draft-4` or
   mode such as `draft`. Supply `promptStatus` and `renderStatus` as needed.
+- `renderControls.aspectRatio` places the ratio control above the shortcuts:
+  `{value, readOnly?, description?}`. Editable values are reported through the
+  standard `onEdit` callback as `aspect_ratio`; read-only values may explain
+  their source.
 - `comparisons` lists eligible `{key, label, image}` records and
   `comparisonDefaults` optionally lists initially shown keys. Use
   `selected` to recommend the board's automatic Selected

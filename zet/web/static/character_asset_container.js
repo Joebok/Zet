@@ -319,7 +319,7 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
       return {key:`${view}:${id}`,label:`${view.replaceAll("_"," ")} · Slot ${item.slot} · ${item.render_mode} · Selected`,role:"Selected view",image:{url:comparisonImageUrl(view,id),label:`${view} slot ${item.slot}`,version:item.image_path}};
     }).filter(Boolean).sort((a,b)=>(order.includes(a.key.split(":")[0])?order.indexOf(a.key.split(":")[0]):order.length)-(order.includes(b.key.split(":")[0])?order.indexOf(b.key.split(":")[0]):order.length));
     const luna=board.luna_review||{};
-    const fields=[{key:"aspect_ratio",label:"Aspect ratio",type:"text",value:state.aspectRatio}];
+    const fields=[];
     const renderBlock = phaseChangeBlock();
     const actions=[{key:"luna-review",label:"Luna Review",group:"luna",placement:["controls"]},
       {key:"stage-image-generation",label:"Stage in Image Generator",placement:["settings"],disabledReason:renderBlock}];
@@ -337,7 +337,7 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
     }
     return {scope:{key:`${state.detail.container_id}:${state.view}`,title:pipelineLabels[state.pipeline],view:state.view},revision:state.detail.revision,slots,selectedId:board.selected_id,
       lunaReview:{status:luna.status,criteria:luna.prompt,error:luna.error,entries:Object.fromEntries((luna.entries||[]).map((entry,index)=>[entry.candidate_id,{rank:index+1,assessment:entry.review}]))},
-      renderControls:{fields,fieldsLayout:dressing&&state.view!=="FRONT"?"inline":undefined,
+      renderControls:{fields,aspectRatio:{value:state.aspectRatio},fieldsLayout:dressing&&state.view!=="FRONT"?"inline":undefined,
         readiness:{draft:renderBlock,final:renderBlock},promptStatus:"",renderStatus:""},actions,comparisons,comparisonDefaults:comparisons[0]?[comparisons[0].key]:[]};
   }
 

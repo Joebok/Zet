@@ -1874,36 +1874,42 @@
         <div class="button-row compact image-generation-asset-actions"><button type="button" data-ig-rename>Rename</button>
           <button type="button" class="danger-action" data-ig-delete>Delete asset</button>
           <button type="button" data-ig-refresh>Refresh</button></div>
-        <div data-ig-board></div>
-        <details data-ig-references hidden><summary>Reference images</summary>
-          <div data-ig-reference-list></div>
-        </details>
-        <details data-ig-authoring><summary>Reconstruction</summary>
-          <div class="button-row"><button type="button" data-ig-pick aria-label="Choose reconstruction source from Inventory">Choose Inventory source</button>
-            <label>Upload reconstruction source <input type="file" accept="image/*" data-ig-upload aria-label="Upload reconstruction source image"></label>
-            <button type="button" data-ig-paste aria-label="Paste reconstruction source image">Focus to paste a source</button>
+        <section data-ig-generate-view>
+          <div class="image-generation-setup">
+            <label>Generation mode<select data-ig-mode><option value="txt2img">Text to image</option><option value="img2img">Image to image</option></select></label>
+            <label>Universe style<select data-ig-style-variant><option value="canonical">Canonical</option><option value="environmental">Environmental</option></select></label>
+            <button type="button" data-ig-style>Insert universe style</button>
           </div>
-          <p data-ig-source></p>
-          <label>Analysis model <select data-ig-model></select></label>
-          <label>Artistic direction <textarea data-ig-notes></textarea></label>
-          <label>Preserve <textarea data-ig-preserve></textarea></label>
-          <label>Required changes <textarea data-ig-changes></textarea></label>
-          <button type="button" data-ig-analyze>Analyze source</button>
-          <p data-ig-analysis role="status"></p>
-          <label>Reconstruction prompt <textarea rows="6" data-ig-draft></textarea></label>
-          <button type="button" data-ig-use>Use reviewed prompt</button>
-        </details>
-        <details data-ig-true-up><summary>Compare and correct reconstruction</summary>
-          <p data-ig-report role="status"></p>
-          <div class="image-generation-gallery" data-ig-comparison hidden>
-            <figure><img data-ig-original alt="Original reconstruction evidence"><figcaption>Original evidence</figcaption></figure>
-            <figure><img data-ig-compared alt="Selected reconstruction"><figcaption>Selected reconstruction</figcaption></figure>
-          </div>
-          <div data-ig-findings></div>
-          <label>Additional corrections <textarea data-ig-corrections></textarea></label>
-          <label>Correction quality <select data-ig-quality><option value="draft">Draft</option><option value="final">Final</option></select></label>
-          <button type="button" data-ig-correct>Render correction</button>
-        </details>
+          <div data-ig-board></div>
+          <details data-ig-references hidden><summary>Reference images</summary>
+            <div data-ig-reference-list></div>
+          </details>
+        </section>
+        <section data-ig-reconstruction-view hidden>
+          <div class="page-title-row"><h2>Reconstruction</h2><button type="button" data-ig-back-to-generation>Back to generation</button></div>
+          <p>Choose a source, describe what to preserve and change, then review the proposed prompt before rendering.</p>
+          <details data-ig-authoring><summary>Source and intent</summary>
+            <div class="button-row"><button type="button" data-ig-pick aria-label="Choose reconstruction source from Inventory">Choose Inventory source</button>
+              <label>Upload source <input type="file" accept="image/*" data-ig-upload></label>
+              <button type="button" data-ig-paste>Paste source</button></div>
+            <p data-ig-source role="status"></p><label>Analysis model <select data-ig-model></select></label>
+            <label>Artistic direction <textarea data-ig-notes rows="2"></textarea></label>
+            <label>Preserve <textarea data-ig-preserve rows="2"></textarea></label>
+            <label>Required changes <textarea data-ig-changes rows="2"></textarea></label>
+            <button type="button" data-ig-analyze>Analyze source</button><p data-ig-analysis role="status"></p>
+            <label>Reconstruction prompt <textarea rows="5" data-ig-draft></textarea></label>
+            <button type="button" data-ig-use>Apply reconstruction prompt</button>
+          </details>
+          <div data-ig-board-reconstruction></div>
+          <details data-ig-true-up><summary>Compare and correct reconstruction</summary>
+            <p data-ig-report role="status"></p><div class="image-generation-gallery" data-ig-comparison hidden>
+              <figure><img data-ig-original alt="Original reconstruction source"><figcaption>Original source</figcaption></figure>
+              <figure><img data-ig-compared alt="Selected reconstruction"><figcaption>Selected reconstruction</figcaption></figure></div>
+            <div data-ig-findings></div><label>Additional corrections <textarea data-ig-corrections rows="3"></textarea></label>
+            <label>Correction quality <select data-ig-quality><option value="draft">Draft</option><option value="final">Final</option></select></label>
+            <button type="button" data-ig-correct>Render correction</button>
+          </details>
+        </section>
       </div>
       <div data-ig-dialog></div>
     </section>

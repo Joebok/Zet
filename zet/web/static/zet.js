@@ -2806,6 +2806,7 @@ function browserRouteUrl() {
   if (page === "image-generation") {
     const id = new URLSearchParams(location.search).get("generation_asset");
     if (id) params.set("generation_asset", id);
+    if (new URLSearchParams(location.search).get("generation_view") === "reconstruction") params.set("generation_view", "reconstruction");
   }
   if (page === "minor-characters") {
     const current = new URLSearchParams(location.search);
