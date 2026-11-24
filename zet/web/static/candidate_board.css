@@ -85,6 +85,14 @@
   background: #50317f;
   border-color: #50317f;
 }
+:is(.zet-candidate-board, .zet-candidate-review) button:not(:disabled)[data-key="upscale"] {
+  background: #eee8f5;
+  border-color: var(--render-final);
+  color: var(--render-final);
+}
+:is(.zet-candidate-board, .zet-candidate-review) button:not(:disabled)[data-key="upscale"]:hover {
+  background: #e0d5ee;
+}
 .zet-candidate-board button[data-key^="render-"]:is([data-quality="draft"], [data-quality="final"]) {
   display: inline-flex;
   align-items: center;

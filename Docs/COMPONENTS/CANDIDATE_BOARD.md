@@ -82,7 +82,9 @@ path as the **Review** eye glyph.
   supported, then Clear. Share the applicable subset and order in the review
   dialog. Distinguish **Retry** of a failed request, **Regen Draft/Final** with
   current inputs, and **Upscale Draft** using the completed Draft. The shared
-  board offers Upscale Draft on candidate cards and in review when a Draft
+  replacement order is **Regen Draft**, **Upscale Draft**, **Regen Final**.
+  Upscale uses the Final deep violet glyph and outline on a pale violet background.
+  The shared board offers Upscale Draft on candidate cards and in review when a Draft
   image is available. A locked or active candidate shows the disabled reason.
   Preserve policy-specific reasons when actions are disabled.
   Character and Minor Character boards show **Deselect** for the selected,
