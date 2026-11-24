@@ -8,10 +8,12 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+import traceback
 from urllib.request import urlopen
 from uuid import uuid4
 
-from zet.scripts.deploy_release import atomic_json, healthy, release_python, stage, start_harvester, start_release
+from zet.scripts.deploy_release import (atomic_json, healthy, progress, release_python, stage,
+                                       start_harvester, start_release, update_log)
 from zet.services.config_service import ConfigService
 from zet.services.process_service import ProcessService
 
@@ -70,11 +72,13 @@ def require_port_free() -> None:
 
 
 def stop_release(release: Path) -> None:
+    progress(f"Stopping verified Test processes for {release}")
     service = test_process_service(release / "config.runtime.toml")
     processes = matching_processes(service)
     process_ids = {process.pid for process in processes}
     roots = [process for process in processes if process.parent_pid not in process_ids]
     for process in roots:
+        progress(f"Stopping Test process tree {process.pid}")
         if os.name == "nt":
             command = ("Get-CimInstance Win32_Process -Filter 'ProcessId = " + str(process.pid)
                        + "' | Select-Object -ExpandProperty CommandLine")
@@ -96,11 +100,13 @@ def stop_release(release: Path) -> None:
 
 
 def start_release_checked(release: Path, old_boot: str | None) -> dict:
+    progress("Checking Test port ownership before starting dashboard")
     require_port_free()
     STATE.mkdir(parents=True, exist_ok=True)
     process = start_release(release, HOST, PORT, STATE)
     try:
-        health = healthy(f"http://{HOST}:{PORT}", release.name, old_boot, timeout=90)
+        health = healthy(f"http://{HOST}:{PORT}", release.name, old_boot, timeout=90,
+                         log_path=STATE / "production.log")
         expected = "local:" + str((release / "config.runtime.toml").resolve())
         if health.get("instance") != expected:
             raise RuntimeError("Port 8082 did not report the expected Test release config.")
@@ -114,6 +120,7 @@ def start_release_checked(release: Path, old_boot: str | None) -> dict:
 
 
 def deploy() -> None:
+    progress(f"Checking isolated Test configuration: {CONFIG_SOURCE}")
     if not CONFIG_SOURCE.is_file():
         raise ValueError(f"Test config is missing: {CONFIG_SOURCE}")
     config = ConfigService.load(CONFIG_SOURCE)
@@ -122,6 +129,7 @@ def deploy() -> None:
             or config.ai_proxy_subscriber_id != "zet_test"):
         raise ValueError("Test config paths differ from the provisioned Test library and queue.")
     if (STATE / "active-release.json").is_file():
+        progress("Checking current Test release and serving identity")
         previous, previous_release = read_active(allow_previous_queue=True)
         with urlopen(f"http://{HOST}:{PORT}/api/health", timeout=3) as response:
             previous_health = json.load(response)
@@ -140,7 +148,13 @@ def deploy() -> None:
                "config_path": str(CONFIG_SOURCE), "mutable_state_root": str(STATE),
                "library_root": str(LIBRARY), "library_container": str(LIBRARY),
                "previous_release": str(previous_release) if previous_release else ""}
-    release, revision = stage(request, lambda state, **_: print(f"Test update: {state}", flush=True))
+    def report(state, **details):
+        progress(f"Test update: {state}")
+        if details.get("validation"):
+            progress(f"Validation: {details['validation']}")
+
+    release, revision = stage(request, report)
+    progress("Preparing isolated Test runtime configuration")
     original_runtime_config = (release / "config.runtime.toml").read_bytes()
     test_runtime_config = CONFIG_SOURCE.read_text(encoding="utf-8-sig")
     import re
@@ -152,16 +166,20 @@ def deploy() -> None:
         if previous_release:
             stop_release(previous_release)
         health = start_release_checked(release, old_boot)
+        progress("Recording healthy Test release identity")
         atomic_json(STATE / "active-release.json", {"release": str(release), "revision": revision,
                     "host": HOST, "port": PORT, "config_path": str(release / "config.runtime.toml"),
                     "boot_id": health["boot_id"]})
         print(f"Test release {revision} is running at http://{HOST}:{PORT}")
-    except Exception:
+    except Exception as startup_error:
+        progress(f"Test startup failed: {startup_error}")
         if previous_release:
             try:
+                progress(f"Recovering previous Test release: {previous_release}")
                 start_release_checked(previous_release, None)
+                progress("Previous Test release recovered")
             except Exception as recovery:
-                raise RuntimeError(f"Test start failed and prior release recovery failed: {recovery}")
+                raise RuntimeError(f"Test start failed: {startup_error}. Prior release recovery failed: {recovery}") from recovery
         else:
             (release / "config.runtime.toml").write_bytes(original_runtime_config)
         raise
@@ -171,6 +189,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("Deploy", "Start", "Stop"), nargs="?", default="Deploy")
     action = parser.parse_args().action
+    with update_log(STATE / f"test-update-{uuid4().hex}.log"):
+        return manage(action)
+
+
+def manage(action: str) -> int:
     print(f"Test release manager action: {action} ({Path(__file__).resolve()})", flush=True)
     try:
         if action == "Deploy":
@@ -189,7 +212,8 @@ def main() -> int:
                 atomic_json(STATE / "active-release.json", active)
                 print(f"Test release {active['revision']} is running at http://{HOST}:{PORT}")
     except (OSError, ValueError, KeyError, TypeError, RuntimeError) as exc:
-        print(f"Test update failed: {exc}", file=sys.stderr)
+        traceback.print_exc()
+        print(f"Test update failed: {exc}", file=sys.stderr, flush=True)
         return 1
     return 0
 

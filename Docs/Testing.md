@@ -1,5 +1,28 @@
 # Local testing
 
+## Update diagnostics and release validation cleanup (2026-11-24)
+
+Read-only inspection of the two latest retained Test update failures identified
+`EBUSY` while removing the Character recovery scenario's disposable fixture.
+Its existing cleanup now retries transient Windows locks for a bounded period;
+the scenario's workflow assertions and failure behavior are unchanged.
+
+`npm.cmd run test:e2e -- --reporter=line`, invoked through the shared release
+runner with the verified venv Python, passed all 20 scenarios in 2.1 minutes.
+The recovery scenario also passed two repeated focused executions. The retained
+diagnostic transcript is `test-results/update-diagnostics-validation.log`.
+Node emitted its existing conflicting color-environment warning.
+
+Disposable checks passed live Windows hidden-process stdout/stderr streaming,
+query stdout preservation, nonzero error details, heartbeat, timeout and owned
+descendant listener termination, Test/offline transcripts, incremental controller
+log tailing, health/startup failure details, skip-test command isolation, prepared
+success/rollback/recovery outcomes and actual copied standalone-controller
+failure/status/traceback reporting. Python/JavaScript syntax and `git diff --check`
+passed. No permanent scenario, live AI call or deployed-instance restart was
+added or performed. These results validate local changes; staged release tests
+still come from merged `origin/main`.
+
 ## Testing process review (2026-11-23)
 
 Reviewed commit `b1f1166` and the completed coverage plan. Fixed a Windows

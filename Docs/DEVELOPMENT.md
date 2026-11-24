@@ -15,6 +15,25 @@ harvesting separate from production. The private AI_Proxy runtime journal is on 
 not depend on the D: queue volume. Both proxy instances share Ollama and
 ComfyUI, so schedule Test inference while production inference is idle.
 
+### Update diagnostics
+
+Both `./Update_Test.ps1 -Action Deploy` and `./Update_Release.ps1` print timestamped
+steps, command starts/completions and elapsed time, dependency/setup output,
+named Playwright scenarios, errors and recovery progress. Long commands report
+that they are still running every 15 seconds. Failures include the command's
+exit code or timeout, captured output and a traceback. Startup failures include
+the last health observation and a tail of the runtime's `state/production.log`.
+
+Each invocation prints its retained log path. Test uses
+`Zet_Runtime_Test/state/test-update-<id>.log`; online production uses
+`Runtime.Root/state/deployment-<id>.log` and its matching status JSON; offline
+production uses `Runtime.Root/state/offline-update-<id>.log`. Failed E2E artifacts
+remain under the printed `state/validation/<operation-id>/test-results` path.
+Updates still stage merged `origin/main`: local updater changes apply when the
+wrapper is run from this checkout, while scenario repairs must also reach merged
+main to be included in the staged release. Existing tracked-edit guards still
+require the source checkout to be clean before staging can proceed.
+
 ## Minor Character view true-ups (2026-10-27)
 
 The four approved fast scenarios passed (44.1s), with focused isolated

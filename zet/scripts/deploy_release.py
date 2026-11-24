@@ -2,15 +2,18 @@
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 import json
 import os
+import queue
 from pathlib import Path
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import tomllib
+import traceback
 from urllib.request import urlopen
 
 try:  # The installed controller lives outside the release and imports its sibling.
@@ -20,6 +23,34 @@ except ImportError:
 
 
 E2E_TEST_TIMEOUT_SECONDS = 900
+COMMAND_HEARTBEAT_SECONDS = 15
+
+
+def progress(message):
+    print(f"[{time.strftime('%H:%M:%S')}] {message}", flush=True)
+
+
+@contextmanager
+def update_log(path):
+    """Keep direct Test/offline execution as observable as the detached controller."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8", buffering=1) as log:
+        class Tee:
+            def __init__(self, terminal):
+                self.terminal = terminal
+
+            def write(self, text):
+                self.terminal.write(text)
+                log.write(text)
+                return len(text)
+
+            def flush(self):
+                self.terminal.flush()
+                log.flush()
+
+        with redirect_stdout(Tee(sys.stdout)), redirect_stderr(Tee(sys.stderr)):
+            progress(f"Update log: {path}")
+            yield
 
 
 @contextmanager
@@ -93,19 +124,105 @@ def merge_render_presets(defaults_path, target_path, source_path=None):
     atomic_json(target_path, merged)
 
 
-def run(command, cwd=None, env=None, timeout=600, *, stream_output=False):
-    if stream_output:
-        result = subprocess.run(command, cwd=cwd, env=env, timeout=timeout,
-                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        if result.returncode:
-            raise RuntimeError(f"{Path(command[0]).name} failed with exit code {result.returncode}.")
-        return ""
-    result = subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True, encoding="utf-8",
-                            errors="replace", timeout=timeout, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    if result.returncode:
-        output = "\n".join(part.strip() for part in (result.stderr, result.stdout) if part.strip())
-        raise RuntimeError(f"{Path(command[0]).name} failed: {output[-1800:]}")
-    return result.stdout.strip()
+def run(command, cwd=None, env=None, timeout=600, *, stream_output=False, label=None):
+    description = label or subprocess.list2cmdline(list(map(str, command)))
+    progress(f"START {description} (timeout {timeout}s; cwd {cwd or Path.cwd()})")
+    started = time.monotonic()
+    # Explicit pipes are essential with CREATE_NO_WINDOW: inherited console
+    # handles can silently discard npm/Playwright output in an ordinary terminal.
+    try:
+        process = subprocess.Popen(command, cwd=cwd, env=env, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
+                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                                   start_new_session=os.name != "nt")
+    except OSError as exc:
+        raise RuntimeError(f"Could not start {description}: {exc}") from exc
+    messages = queue.Queue()
+
+    def read_output(pipe, channel):
+        try:
+            for line in pipe:
+                messages.put((channel, line))
+        finally:
+            messages.put(None)
+
+    readers = [threading.Thread(target=read_output, args=(pipe, channel), daemon=True)
+               for pipe, channel in ((process.stdout, "stdout"), (process.stderr, "stderr"))]
+    for reader in readers:
+        reader.start()
+    output = []
+    stdout = []
+    closed = 0
+    next_heartbeat = started + COMMAND_HEARTBEAT_SECONDS
+    timed_out = False
+    try:
+        while True:
+            now = time.monotonic()
+            if now - started >= timeout:
+                timed_out = True
+                raise TimeoutError(f"{description} timed out after {timeout}s.")
+            try:
+                message = messages.get(timeout=min(.2, max(.01, timeout - (now - started))))
+            except queue.Empty:
+                message = ("", "")
+            if message is None:
+                closed += 1
+                if closed == len(readers):
+                    break
+                continue
+            channel, line = message
+            if line:
+                output.append(line)
+                if channel == "stdout":
+                    stdout.append(line)
+                if stream_output:
+                    print(line, end="", flush=True)
+            if now >= next_heartbeat:
+                progress(f"RUNNING {description} ({now - started:.0f}s elapsed)")
+                next_heartbeat = now + COMMAND_HEARTBEAT_SECONDS
+        process.wait(timeout=max(.01, timeout - (time.monotonic() - started)))
+    except (TimeoutError, subprocess.TimeoutExpired, KeyboardInterrupt) as exc:
+        # Only this command's process tree is ours to stop. Release locks after
+        # its fixtures have exited, rather than orphaning a listener on timeout.
+        if os.name == "nt":
+            subprocess.run(["taskkill.exe", "/PID", str(process.pid), "/T", "/F"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           timeout=15, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        else:
+            import signal
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=15)
+        for reader in readers:
+            reader.join(timeout=5)
+        while not messages.empty():
+            message = messages.get_nowait()
+            if message:
+                _, line = message
+                output.append(line)
+                if stream_output:
+                    print(line, end="", flush=True)
+        if isinstance(exc, KeyboardInterrupt):
+            raise
+        timed_out = True
+    finally:
+        if not any(reader.is_alive() for reader in readers):
+            process.stdout.close()
+            process.stderr.close()
+    detail = "".join(output).strip()
+    elapsed = time.monotonic() - started
+    if timed_out or process.returncode:
+        if not stream_output and detail:
+            print(detail, flush=True)
+        reason = f"timed out after {timeout}s" if timed_out else f"failed with exit code {process.returncode}"
+        progress(f"FAILED {description}: {reason} ({elapsed:.1f}s)")
+        raise RuntimeError(f"{description} {reason}.\n{detail[-6000:] or 'No command output was received.'}")
+    progress(f"OK {description} ({elapsed:.1f}s)")
+    return "".join(stdout).strip()
 
 
 def stop_port_8765_listeners():
@@ -194,23 +311,37 @@ def library_reference_version(container):
     return max(versions, default=0)
 
 
-def healthy(url, revision, old_boot, timeout=300):
+def healthy(url, revision, old_boot, timeout=300, *, log_path=None):
+    progress(f"Waiting for ready release {revision} at {url}/api/health (timeout {timeout}s)")
     deadline = time.monotonic() + timeout
+    next_report = time.monotonic() + COMMAND_HEARTBEAT_SECONDS
+    last_observation = "No health response received."
     while time.monotonic() < deadline:
         try:
             with urlopen(url + "/api/health", timeout=2) as response:
                 value = json.load(response)
             if value.get("ready") and value.get("revision") == revision and value.get("boot_id") != old_boot:
+                progress(f"Health check passed: revision {revision}, boot {value.get('boot_id')}")
                 return value
-        except (OSError, ValueError):
-            pass
+            last_observation = f"ready={value.get('ready')}, revision={value.get('revision')}, boot={value.get('boot_id')}"
+        except (OSError, ValueError) as exc:
+            last_observation = str(exc)
+        if time.monotonic() >= next_report:
+            progress(f"Waiting for health: {last_observation}")
+            next_report = time.monotonic() + COMMAND_HEARTBEAT_SECONDS
         time.sleep(.8)
-    raise RuntimeError("The expected release did not report a new ready boot before the deadline.")
+    if log_path and Path(log_path).is_file():
+        with Path(log_path).open("rb") as log:
+            log.seek(max(0, log.seek(0, 2) - 12000))
+            progress(f"Startup log tail ({log_path}):\n{log.read().decode('utf-8', errors='replace')}")
+    raise RuntimeError(f"The expected release {revision} did not report a new ready boot at {url} before {timeout}s. "
+                       f"Last health observation: {last_observation}. Startup log: {log_path or 'unavailable'}")
 
 
 def start_release(release, host, port, log_root):
     command = [str(release_python(release)), "-B", "-m", "zet.web.app", "--config", str(release / "config.runtime.toml"),
                "--host", host, "--port", str(port)]
+    progress(f"Starting dashboard from {release} on {host}:{port}; startup log: {log_root / 'production.log'}")
     log = (log_root / "production.log").open("ab")
     env = os.environ.copy()
     env.pop("PYTHONPATH", None)
@@ -243,18 +374,28 @@ def stop_owned(processes):
 
 def stage(request, update):
     root, source = Path(request["runtime_root"]), Path(request["source_root"])
-    run(["git", "-C", str(source), "fetch", "origin", "main"], timeout=120)
+    def step(state, message, **values):
+        update(state, step=message, **values)
+        progress(message)
+
+    step("staging", "Fetching merged origin/main")
+    run(["git", "-C", str(source), "fetch", "origin", "main"], timeout=120,
+        stream_output=True, label="Fetch origin/main")
     revision = run(["git", "-C", str(source), "rev-parse", "FETCH_HEAD"])
     release = root / "releases" / revision
     releases = (root / "releases").resolve()
     if release.resolve().parent != releases:
         raise RuntimeError("Release target escaped the runtime releases directory.")
     if not release.exists():
+        step("staging", f"Creating release checkout: {release}", target_revision=revision, target_release=str(release))
         release.parent.mkdir(parents=True, exist_ok=True)
-        run(["git", "-c", "core.longpaths=true", "clone", "--config", "core.longpaths=true", "--no-checkout", "--no-hardlinks", str(source), str(release)], timeout=120)
-        run(["git", "-C", str(release), "checkout", "--detach", revision])
+        run(["git", "-c", "core.longpaths=true", "clone", "--config", "core.longpaths=true", "--no-checkout", "--no-hardlinks", str(source), str(release)], timeout=120,
+            stream_output=True, label="Clone release checkout")
+        run(["git", "-C", str(release), "checkout", "--detach", revision], stream_output=True, label="Check out release revision")
         origin = run(["git", "-C", str(source), "remote", "get-url", "origin"])
-        run(["git", "-C", str(release), "remote", "set-url", "origin", origin])
+        run(["git", "-C", str(release), "remote", "set-url", "origin", origin], label="Set release Git origin")
+    step("staging", "Checking release contract, library compatibility and saved template guards",
+         target_revision=revision, target_release=str(release))
     contract_path = release / "Config" / "Runtime_Contract.json"
     if not contract_path.exists():
         raise RuntimeError("Merged main does not yet contain the deployment contract. Merge the workflow implementation before updating.")
@@ -276,13 +417,15 @@ def stage(request, update):
     guard(source, release, request.get("template_receipt"), request.get("config_path"))
     if request.get("previous_release") and Path(request["previous_release"]).resolve() != source.resolve():
         guard(Path(request["previous_release"]), release, request.get("template_receipt"))
-    update("staging", target_revision=revision, target_release=str(release))
+    step("staging", "Preparing Python environment and installing declared dependencies")
     python = release_python(release)
     if not python.exists():
-        run([sys.executable, "-m", "venv", str(release / ".venv")], timeout=120)
-    run([str(python), "-c", "import sys; assert sys.version_info.major == 3"])
-    run([str(python), "-m", "pip", "install", "-r", str(release / "requirements.txt")], timeout=600)
-    run([str(python), "-m", "pip", "install", "-e", str(release), "--no-deps"], timeout=180)
+        run([sys.executable, "-m", "venv", str(release / ".venv")], timeout=120, stream_output=True, label="Create Python virtual environment")
+    run([str(python), "-c", "import sys; assert sys.version_info.major == 3"], label="Verify Python 3")
+    run([str(python), "-u", "-m", "pip", "install", "-r", str(release / "requirements.txt")], timeout=600,
+        stream_output=True, label="Install requirements.txt")
+    run([str(python), "-u", "-m", "pip", "install", "-e", str(release), "--no-deps"], timeout=180,
+        stream_output=True, label="Install Zet package")
     env = os.environ.copy()
     env["ZET_TEST_PYTHON"] = str(python)
     validation_root = root / "state" / "validation" / request["id"]
@@ -291,24 +434,42 @@ def stage(request, update):
     # The release controller writes to a file, so force Playwright to print
     # each scenario start/result on its own line instead of terminal redraws.
     env["PW_TEST_DEBUG_REPORTERS"] = "1"
+    env["PYTHONUNBUFFERED"] = "1"
     env.pop("PYTHONPATH", None)
     env.pop("ZET_WORKER_MODE", None)
     if request.get("skip_tests"):
+        step("validating", "Skipping E2E by request; checking TCP 8765 listener cleanup")
         stopped = stop_port_8765_listeners()
-        update("validating", validation=f"E2E skipped; stopped {len(stopped)} TCP 8765 listener process(es)")
+        step("validating", "E2E skipped", validation=f"E2E skipped; stopped {len(stopped)} TCP 8765 listener process(es)")
     else:
-        update("validating", validation="Running approved 20-scenario E2E suite")
+        step("validating", "Resolving Node/npm for approved E2E validation", validation="Running approved 20-scenario E2E suite")
         command = validation_command(env)
+        progress(f"E2E failure evidence: {results_root}")
         try:
+            step("validating", "Acquiring E2E validation lock")
             with test_lock(request["workflow_state_root"]):
-                run(command, cwd=release, env=env, timeout=E2E_TEST_TIMEOUT_SECONDS, stream_output=True)
+                step("validating", "Running npm setup/browser checks and named Playwright scenarios")
+                run(command, cwd=release, env=env, timeout=E2E_TEST_TIMEOUT_SECONDS, stream_output=True,
+                    label="Approved E2E suite: npm run test:e2e")
+        except Exception:
+            progress(f"E2E validation failed; retained evidence: {results_root}")
+            raise
         finally:
             packages = release / "node_modules"
             if packages.is_dir() and packages.resolve().parent == release.resolve():
-                shutil.rmtree(packages)
+                progress(f"Cleaning generated release dependencies: {packages}")
+                validation_failed = sys.exc_info()[0] is not None
+                try:
+                    shutil.rmtree(packages)
+                except OSError:
+                    if not validation_failed:
+                        raise
+                    progress("Dependency cleanup also failed; preserving the original validation error")
+                    traceback.print_exc()
     if validation_root.is_dir() and validation_root.resolve().parent == (root / "state" / "validation").resolve():
         shutil.rmtree(validation_root)
-    run(["git", "-C", str(release), "diff", "--check"])
+    step("validating", "Checking Git diff and preparing runtime configuration")
+    run(["git", "-C", str(release), "diff", "--check"], label="Check release diff whitespace")
     config = Path(request["config_path"]).read_text(encoding="utf-8")
     if "[Runtime]" in config:
         import re
@@ -324,7 +485,7 @@ def stage(request, update):
             elif (release / "Config" / filename).exists():
                 shutil.copy2(release / "Config" / filename, target)
     # No app is constructed against production data during staging.
-    update("staged", target_revision=revision, target_release=str(release))
+    step("staged", f"Release validation complete: {revision}", target_revision=revision, target_release=str(release))
     return release, revision
 
 
@@ -335,6 +496,10 @@ def execute(request_path):
     def update(state, **values):
         status.update(state=state, updated_at=time.time(), **values)
         atomic_json(status_path, status)
+        progress(f"Update: {state}" + (f" - {values['step']}" if values.get("step") else ""))
+        for key in ("error", "recovery_error"):
+            if values.get(key):
+                progress(f"{key}: {values[key]}")
     try:
         release, revision = stage(request, update)
         if request.get("stage_only"):
@@ -342,6 +507,7 @@ def execute(request_path):
         # Hold the cross-process master-write fence through stop/start. The old
         # release remains byte-for-byte intact, including verified template edits.
         with change_lock(Path(request["runtime_root"]) / "state"):
+            update("validating", step="Rechecking checkout and template guards before promotion")
             if run(["git", "-C", str(release), "diff", "--name-only", "HEAD"]):
                 raise RuntimeError("Staged release changed during validation; production was not stopped.")
             guard(Path(request["source_root"]), release, request.get("template_receipt"))
@@ -349,6 +515,7 @@ def execute(request_path):
                 guard(Path(request["previous_release"]), release, request.get("template_receipt"))
             promote(request, release, revision, update)
     except Exception as exc:
+        traceback.print_exc()
         update("failed", error=str(exc))
 
 
@@ -361,10 +528,11 @@ def promote(request, release, revision, update):
             old = json.load(response)
         if old.get("boot_id") != request["old_boot"]:
             raise RuntimeError("Production boot changed during staging; no processes were stopped.")
-        update("restarting")
+        update("restarting", step="Verifying old boot and stopping owned dashboard/harvester processes")
         time.sleep(1)
         stopped = True
         stop_owned(request["owned_processes"])
+        update("restarting", step="Preparing mutable state and promoting active-release record")
         for filename in ("universe-selection.json", "Local_Render_Presets.json", "ollama-models-cache.json"):
             source = Path(request["mutable_state_root"]) / filename
             target = Path(request["runtime_root"]) / "state" / filename
@@ -375,12 +543,16 @@ def promote(request, release, revision, update):
         active_path = Path(request["runtime_root"]) / "state" / "active-release.json"
         atomic_json(active_path, {"release": str(release), "revision": revision, "host": request["host"], "port": request["port"]})
         started = start_release(release, request["host"], request["port"], active_path.parent)
-        health = healthy(request["health_url"], revision, request["old_boot"])
+        health = healthy(request["health_url"], revision, request["old_boot"],
+                         log_path=active_path.parent / "production.log")
+        update("restarting", step="Starting configured AI answer harvester")
         start_harvester(release)
         update("succeeded", boot_id=health["boot_id"])
     except Exception as exc:
+        traceback.print_exc()
         update("failed", error=str(exc))
         if stopped and request.get("previous_release"):
+            progress(f"Recovering previous release: {request['previous_release']}")
             if started and started.poll() is None:
                 started.terminate()
                 started.wait(timeout=15)
@@ -389,14 +561,17 @@ def promote(request, release, revision, update):
             atomic_json(active_path, {"release": str(previous), "revision": request["previous_revision"], "host": request["host"], "port": request["port"]})
             try:
                 start_release(previous, request["host"], request["port"], active_path.parent)
-                health = healthy(request["health_url"], request["previous_revision"], request["old_boot"])
+                health = healthy(request["health_url"], request["previous_revision"], request["old_boot"],
+                                 log_path=active_path.parent / "production.log")
                 start_harvester(previous)
                 update("rolled-back", boot_id=health["boot_id"])
             except Exception as recovery:
+                traceback.print_exc()
                 update("recovery-required", recovery_error=str(recovery))
         elif stopped:
             # First adoption has no managed previous release; relaunch the original exact command.
             try:
+                progress("Recovering original dashboard command")
                 subprocess.Popen(request["original_command"], cwd=request["source_root"],
                                  creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                 health = healthy(request["health_url"], request["previous_revision"], request["old_boot"])
@@ -405,10 +580,12 @@ def promote(request, release, revision, update):
                                      creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                 update("rolled-back", boot_id=health["boot_id"])
             except Exception as recovery:
+                traceback.print_exc()
                 update("recovery-required", recovery_error=str(recovery))
 
 
 def start_harvester(release):
+    progress(f"Checking AI answer harvester configuration: {release / 'config.runtime.toml'}")
     with (release / "config.runtime.toml").open("rb") as handle:
         config = tomllib.load(handle)
     if config.get("AIHarvest", {}).get("AutoEnabled", True):
@@ -418,6 +595,9 @@ def start_harvester(release):
         subprocess.Popen([str(release_python(release)), "-B", "-m", "zet.scripts.auto_harvest_ai_answers", "--config", str(release / "config.runtime.toml")],
                          cwd=release, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        progress("AI answer harvester launched")
+    else:
+        progress("AI answer harvester disabled by configuration")
 
 
 def main():

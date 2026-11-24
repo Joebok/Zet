@@ -98,7 +98,8 @@ test("Character recovery resumes queued work and fences an old retry answer", as
     passed = true;
   } finally {
     if (server) await stopServer(server);
-    if (passed) await rm(fixtureRoot, { recursive: true, force: true });
+    // Windows can retain directory handles briefly after the server exits.
+    if (passed) await rm(fixtureRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });
 

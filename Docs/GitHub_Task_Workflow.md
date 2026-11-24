@@ -159,7 +159,14 @@ remain authoritative. The CLI verifies the serving boot/config/revision and mana
 dashboard process before starting; it does not construct the creative application.
 
 Progress includes the operation ID, status-file path, controller log path, state
-changes, and live Playwright scenario start/result lines. The E2E timeout is 15
+changes, timestamped steps and command start/completion with elapsed time. Git,
+pip, npm/browser setup and Playwright diagnostics stream through explicit child
+output pipes, including on Windows with hidden subprocesses. Long commands report
+every 15 seconds; failures retain exit/timeout details, command output and
+tracebacks. Health failures print the last observation and startup log tail;
+rollback progress is also logged. Offline updates retain an
+`offline-update-<id>.log` transcript. See [Development](DEVELOPMENT.md#update-diagnostics)
+for Test and production log locations. The E2E timeout is 15
 minutes and the command waits up to 45 minutes for the full deployment lifecycle.
 It waits through any rollback, returns zero only after successful promotion or
 requested staging, and returns nonzero for failure, rollback, recovery-required,

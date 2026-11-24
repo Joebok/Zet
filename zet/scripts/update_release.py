@@ -8,6 +8,7 @@ import sqlite3
 from pathlib import Path
 import sys
 import time
+import traceback
 from types import SimpleNamespace
 from urllib.request import urlopen
 from uuid import uuid4
@@ -80,6 +81,7 @@ def wait_for_update(service, operation, *, stage_only=False, timeout=UPDATE_OPER
     deadline = time.monotonic() + timeout
     last_state = None
     last_validation = None
+    last_step = None
     output_offset = 0
     pending_output = ""
     while time.monotonic() < deadline:
@@ -99,6 +101,10 @@ def wait_for_update(service, operation, *, stage_only=False, timeout=UPDATE_OPER
         if validation and validation != last_validation:
             print(f"Validation: {validation}", flush=True)
             last_validation = validation
+        step = status.get("step")
+        if step and step != last_step:
+            print(f"Step: {step}", flush=True)
+            last_step = step
         # The controller briefly reports failed before attempting rollback. Wait
         # for its exit so the terminal reports the completed recovery outcome.
         if exited and (state == "succeeded" or (stage_only and state == "staged")):
@@ -110,7 +116,8 @@ def wait_for_update(service, operation, *, stage_only=False, timeout=UPDATE_OPER
                 print(status["recovery_error"], file=sys.stderr, flush=True)
             return 1
         if exited:
-            raise ValueError(f"Deployment controller exited before completing the update. Inspect {path}.")
+            raise ValueError(f"Deployment controller exited with code {service.controller_process.returncode} "
+                             f"before completing the update. Inspect {path} and {controller_log}.")
         time.sleep(1)
     raise TimeoutError(f"Stopped waiting; deployment may still be running. Inspect {path} before retrying.")
 
@@ -132,7 +139,7 @@ def require_available_bind(host, port):
 def deploy_stopped(service, address, *, stage_only=False, skip_tests=False):
     """Stage and start a compatible release when the old release cannot boot."""
     from contextlib import closing
-    from zet.scripts.deploy_release import atomic_json, healthy, release_python, run, stage, start_harvester, start_release
+    from zet.scripts.deploy_release import atomic_json, healthy, progress, release_python, run, stage, start_harvester, start_release
     from zet.services.template_publication_core import BUSY, change_lock, guard
 
     host, port = address
@@ -169,14 +176,16 @@ def deploy_stopped(service, address, *, stage_only=False, skip_tests=False):
                 print(f"Validation: {details['validation']}", flush=True)
 
         release, revision = stage(request, report)
+        progress("Checking staged reader against configured library catalog versions (read-only)")
         supported = int(run([str(release_python(release)), "-B", "-c",
                              "from zet.repositories.entity_library_repository import EntityLibraryRepository; "
-                             "print(EntityLibraryRepository.SCHEMA_VERSION)"], cwd=release))
+                             "print(EntityLibraryRepository.SCHEMA_VERSION)"], cwd=release, label="Read supported catalog schema version"))
         roots = [container, *(path for path in container.iterdir()
                               if path.is_dir() and (path / "universe.json").is_file())]
         for root in {*roots, library}:
             catalog = root / "catalog.sqlite3"
             if catalog.is_file():
+                progress(f"Checking catalog compatibility: {catalog}")
                 with closing(sqlite3.connect(catalog.as_uri() + "?mode=ro", uri=True)) as db:
                     version = db.execute("PRAGMA user_version").fetchone()[0]
                 if version > supported:
@@ -189,7 +198,8 @@ def deploy_stopped(service, address, *, stage_only=False, skip_tests=False):
         print("Update: starting offline release", flush=True)
         started = start_release(release, host, port, state)
         try:
-            healthy(f"http://127.0.0.1:{port}", revision, None, timeout=60)
+            healthy(f"http://127.0.0.1:{port}", revision, None, timeout=60,
+                    log_path=state / "production.log")
             atomic_json(state / "active-release.json",
                         {"release": str(release), "revision": revision, "host": host, "port": port})
         except Exception:
@@ -216,9 +226,17 @@ def main(argv=None):
             root = ConfigService.load(Path(__file__).resolve().parents[2] / "config.toml").runtime_root
             if not root:
                 raise ValueError("Runtime.Root is not configured; pass --runtime-root.")
+        print(f"Update: checking active production runtime at {root}", flush=True)
         service, address = active_runtime(root)
         if args.offline:
-            return deploy_stopped(service, address, stage_only=args.stage_only, skip_tests=args.skip_tests)
+            from zet.scripts.deploy_release import update_log
+            with update_log(service.root / "state" / f"offline-update-{uuid4().hex}.log"):
+                try:
+                    return deploy_stopped(service, address, stage_only=args.stage_only, skip_tests=args.skip_tests)
+                except Exception:
+                    traceback.print_exc()
+                    raise
+        print(f"Update: checking production health and boot identity on port {address[1]}", flush=True)
         with urlopen(f"http://127.0.0.1:{address[1]}/api/health", timeout=5) as response:
             health = json.load(response)
         if not health.get("boot_id"):

@@ -99,10 +99,12 @@ class DeploymentService:
             self.store.write(db, "deployment", "current", {**request, "status_path": str(request_path.with_name(request_path.stem + "-status.json"))})
             db.commit()
             try:
+                controller_env = os.environ.copy()
+                controller_env["PYTHONIOENCODING"] = "utf-8"
                 with controller_log_path.open("ab") as controller_log:
                     self.controller_process = subprocess.Popen(
-                        [sys.executable, "-B", str(helper), "--request", str(request_path)],
-                        cwd=state, stdin=subprocess.DEVNULL, stdout=controller_log, stderr=subprocess.STDOUT,
+                        [sys.executable, "-B", "-u", str(helper), "--request", str(request_path)],
+                        cwd=state, env=controller_env, stdin=subprocess.DEVNULL, stdout=controller_log, stderr=subprocess.STDOUT,
                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), start_new_session=os.name != "nt")
             except OSError as exc:
                 self.store.put("deployment", "current", {"id": identifier, "state": "failed", "error": "Could not launch the deployment controller."})
