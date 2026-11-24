@@ -228,6 +228,12 @@ register the candidate image. Minor Characters attaches the helper without
 synchronizing its rendered images, so wheel zoom is unavailable there. The
 Candidate Board specification defines the common comparison and zoom behavior.
 
+The shared full-screen image viewer also uses this helper for mouse-wheel zoom
+from fit to 4x. Zoom resets when the image changes or the viewer closes.
+Character Overview supplies the available locked images in each base-image or
+costume group, preserving view order. Left/right buttons and arrow keys move
+within that group and stop at the first and last available views.
+
 Shared candidate review disables candidate/view navigation while saving a review
 decision and gives the pending action local status. Short-height, narrow review
 dialogs reserve a minimum image area while keeping decision controls reachable.

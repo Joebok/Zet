@@ -822,6 +822,15 @@ fullscreenImageOverlay.append(
   fullscreenCropBox,
 );
 document.body.append(fullscreenImageOverlay);
+const fullscreenImageZoom = window.ZetReviewImageZoom.attach(fullscreenImageOverlay, () => [fullscreenImage]);
+fullscreenImageZoom.sync("");
+fullscreenImage.addEventListener("load", () => {
+  const viewport = fullscreenImage.closest(".review-zoom-viewport");
+  const ratio = fullscreenImage.naturalWidth / fullscreenImage.naturalHeight;
+  viewport.style.width = `min(100vw, ${fullscreenImage.naturalWidth}px, calc(100vh * ${ratio}))`;
+  viewport.style.height = `min(100vh, ${fullscreenImage.naturalHeight}px, calc(100vw / ${ratio}))`;
+  fullscreenImageZoom.sync(fullscreenImage.src);
+});
 const auxResourceMessage = document.querySelector("#aux-resource-message");
 const entityLibrarySearch = document.querySelector("#entity-library-search");
 const entityLibraryFilterEntity = document.querySelector("#entity-library-filter-entity");
@@ -1687,9 +1696,12 @@ function closeFullscreenImage() {
 }
 
 let fullscreenSceneNavigation = null;
+let fullscreenViewNavigation = null;
 
 function resetFullscreenNavigation() {
   fullscreenSceneNavigation = null;
+  fullscreenViewNavigation = null;
+  fullscreenImageZoom.reset();
   fullscreenImagePrevious.hidden = true;
   fullscreenImageNext.hidden = true;
   fullscreenImageEmpty.hidden = true;
@@ -1698,16 +1710,24 @@ function resetFullscreenNavigation() {
 }
 
 function updateFullscreenNavigation() {
-  const index = fullscreenSceneNavigation?.index;
-  const scenes = fullscreenSceneNavigation?.scenes || [];
+  const focusedControl = document.activeElement;
+  const navigation = fullscreenViewNavigation || fullscreenSceneNavigation;
+  const index = navigation?.index;
+  const scenes = navigation?.images || navigation?.scenes || [];
+  fullscreenImagePrevious.setAttribute("aria-label", fullscreenViewNavigation ? "Previous view" : "Previous scene");
+  fullscreenImageNext.setAttribute("aria-label", fullscreenViewNavigation ? "Next view" : "Next scene");
   const enabled = Number.isInteger(index) && scenes.length > 0;
   fullscreenImagePrevious.hidden = !enabled;
   fullscreenImageNext.hidden = !enabled;
   fullscreenImagePrevious.disabled = !enabled || index === 0;
   fullscreenImageNext.disabled = !enabled || index === scenes.length - 1;
+  if ([fullscreenImagePrevious, fullscreenImageNext].includes(focusedControl) && focusedControl.disabled) {
+    fullscreenImageClose.focus();
+  }
 }
 
 function showFullscreenSceneDocument(document, scene) {
+  fullscreenImageZoom.reset();
   const sceneName = document.scene?.title || scene.title || scene.slug;
   if (document.image_exists && document.image_path) {
     fullscreenImage.src = fileUrl(document.image_path, Date.now().toString());
@@ -1725,6 +1745,18 @@ function showFullscreenSceneDocument(document, scene) {
 }
 
 async function navigateFullscreenScene(offset) {
+  if (fullscreenViewNavigation) {
+    const nextIndex = fullscreenViewNavigation.index + offset;
+    const image = fullscreenViewNavigation.images[nextIndex];
+    if (!image) return;
+    fullscreenViewNavigation.index = nextIndex;
+    fullscreenImageZoom.reset();
+    resetFullscreenCrop();
+    fullscreenImage.src = image.src;
+    fullscreenImage.alt = image.alt || "Image";
+    updateFullscreenNavigation();
+    return;
+  }
   if (!fullscreenSceneNavigation) return;
   const nextIndex = fullscreenSceneNavigation.index + offset;
   const scene = fullscreenSceneNavigation.scenes[nextIndex];
@@ -1787,6 +1819,11 @@ function openFullscreenImage(src, alt = "", options = {}) {
       scenes: options.scenes,
       storySlug: options.storySlug,
     };
+    updateFullscreenNavigation();
+  }
+  const imageIndex = options.images?.findIndex((image) => image.src === src) ?? -1;
+  if (imageIndex >= 0) {
+    fullscreenViewNavigation = {index: imageIndex, images: options.images};
     updateFullscreenNavigation();
   }
   resetFullscreenCrop();
