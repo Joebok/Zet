@@ -2966,8 +2966,9 @@ summary:focus-visible {
 
 .fullscreen-image-close {
   position: fixed;
-  right: 16px;
-  top: 16px;
+  left: max(16px, env(safe-area-inset-left));
+  right: auto;
+  top: max(16px, env(safe-area-inset-top));
   z-index: 10002;
 }
 

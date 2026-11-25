@@ -95,16 +95,22 @@
   function syncControl(control) {
     const button = attached.get(control);
     if (button) {
+      const value = control.value || "Use configured default";
       button.textContent = control.value || "Use configured default";
+      button.setAttribute("aria-label", `${button.dataset.modelLabel}: ${value}`);
       button.disabled = control.disabled;
     }
   }
   function attach(control, settings = {}) {
     if (attached.has(control)) return;
+    const controlLabel = control.getAttribute("aria-label")
+      || control.labels?.[0]?.textContent?.trim().replace(/\s+/g, " ")
+      || control.id;
     const button = document.createElement("button");
     button.type = "button";
     button.className = "navigation-action ai-model-control";
     button.dataset.modelFor = control.id;
+    button.dataset.modelLabel = controlLabel;
     control.hidden = true;
     control.after(button);
     const sync = () => syncControl(control);

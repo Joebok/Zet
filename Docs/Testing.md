@@ -1,5 +1,49 @@
 # Local testing
 
+## Latest UI consolidation Test evidence (2026-11-25)
+
+The active Test dashboard and release record both identify revision
+`f9fc7b0e1c60c5e76800c4629fb55ed6b1137440`, boot
+`bb4e7d0b15344574a598b70494ada5af`. The Test updater log records all 20 approved
+E2E scenarios passed for this release. This evidence pass did not rerun the E2E
+suite; Zet_Tester used fresh case runs because earlier captures used other
+releases. Their manifests all match the verified revision and boot. No
+Production action or permanent test change was made.
+
+Fresh Zet_Tester evidence is retained under
+`C:\Users\Joe\Projects\Zet_Tester\runs\ui-consolidation-f9fc-20261125\`:
+
+- Character creation, Body Reference correction, Head Image Edit and Assembly
+  FRONT/quarter views completed. Costume Wizard reached its first private FRONT
+  render, but a correction action was not uniquely addressable by the helper;
+  Costume acceptance and Dressing are incomplete.
+- Minor Character completed Style plus Front, Front Left 3/4 and Front Right 3/4
+  publication and verified those outputs after refresh. The landscape tablet
+  emulation remained usable with vertical scrolling. A reversed first left-angle
+  result was corrected and replaced.
+- Image Generation completed txt2img, img2img and canonical/environmental style
+  cases. Reconstruction and compare/correct were not run because the test case
+  did not select a completed candidate before expecting the Reconstruction
+  action. Source inspection confirms that selecting a completed candidate enables
+  that action; correct the case prerequisite before retrying.
+- Narrative verified fresh reference catalog entries and created a story and
+  scene shell, but no AI work ran. Both model selectors remained at
+  `general:latest`; six recovery waits, refreshes and a resumed field-scoped
+  attempt did not permit choosing `codex:gpt-6-luna`.
+
+The runs surfaced a full-size viewer close/zoom overlap, unnamed Inventory card
+scopes that prevent per-card Details targeting, repeated Narrative model-button
+names, and a Costume Wizard section-action locator ambiguity. Screenshots,
+manifests and reports are linked from the [UI evidence review](../plans/active/ui-consolidation/review.md).
+These are newly observed UI/accessibility or automation findings, not E2E
+failures. The test-created uniquely named workspaces and render outputs remain in
+the Zet Test universe as retained evidence; no reset was performed.
+
+The checkout now places the shared viewer Close control in a separate, safe-area-
+aware corner from zoom tools and gives replacement AI model buttons a field-specific
+accessible name. These changes are local and have not yet been deployed or
+browser-verified on Test.
+
 ## UI consolidation implementation checks (2026-11-25)
 
 Follow-up deployment: Test revision `3254602ce7f2b9b02ee67875f7769099be3f05f3`

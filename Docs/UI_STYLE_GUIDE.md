@@ -166,6 +166,9 @@ Existing emoji status markers can be aligned with the SVG vocabulary in later wo
   Icon-only controls belong primarily in familiar, repeated image toolbars.
 - Every icon-only control needs an accessible action name and a hover/focus label.
   On touch, essential meaning and disabled reasons must be available without hover.
+- When a custom widget replaces a labeled field, preserve the field label in the
+  replacement control's accessible name. Repeated controls with the same displayed
+  value must remain distinguishable by their field or action.
 - Use native buttons for actions and links for destinations. Give non-submit buttons
   an explicit type. Use `aria-pressed` for actual toggles and an appropriate current
   state for navigation. Decorative SVGs are hidden from assistive technology.

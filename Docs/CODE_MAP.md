@@ -402,7 +402,9 @@ images to their review viewports; comparison candidates share the focal position
 - `AIQueueQueryService`, `/api/ai/jobs` and `ai_queue.js` own all-universe activity,
   immediate activation, polling, filtering and durable recent history.
 - `AIModelCatalogService`, `/api/ai/models` and `ai_model_picker.js` own one cached
-  capability source and the shared Codex/Ollama popup. Native registrations retain
+  capability source and the shared Codex/Ollama popup. Replacement model buttons
+  retain the labeled source field and current value in their accessible name so
+  repeated controls remain independently addressable. Native registrations retain
   legacy worker aliases only for previously published envelopes.
 - S4 is the approved unified queue/background/history/selector scenario; S1-S3
   remain domain regressions. See [shared AI jobs](COMPONENTS/AI_JOBS.md).
