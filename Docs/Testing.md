@@ -2,6 +2,12 @@
 
 ## UI consolidation implementation checks (2026-11-25)
 
+Follow-up deployment: Test revision `3254602ce7f2b9b02ee67875f7769099be3f05f3`
+/ boot `3b880b6502b24ddfa6ac836c8ef11b3a` is health-verified against its active
+release record. The deployment log records 20/20 approved E2E scenarios passed.
+It includes WP02/WP03 focus and confirmation-message fixes. Production remains at
+its prior revision.
+
 The four approved fast E2E journeys passed (4/4) through
 `npm.cmd run test:e2e -- --grep "library and narrative authoring|narrative interview, prompt, render|character-to-costume workflow|unified AI queue"`.
 Staged Test revision `1cec0a6e9261fe9e27420bd95403d1c9eec46a1d` / boot
@@ -34,7 +40,7 @@ allowed Close. Focus returned to the invoking control. Earlier disposable checks
 passed dirty Close/Escape discard/continue and rejected-save recovery. No live AI
 was called. The focused check passed after the focus/error-message fix (1/1),
 JavaScript syntax passed, and the temporary spec was removed. These follow-up
-source changes have not yet been staged to Test.
+source changes were subsequently staged to Test revision `3254602ce7f2b9b02ee67875f7769099be3f05f3` and passed its 20-scenario approved suite.
 
 ## Update diagnostics and release validation cleanup (2026-11-24)
 

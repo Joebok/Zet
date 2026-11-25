@@ -147,7 +147,7 @@ Use the W3C [modal dialog pattern](https://www.w3.org/WAI/ARIA/apg/patterns/dial
 
 ## Staged Test evidence update (2026-11-25)
 
-The implementation was staged to Test at revision `1cec0a6e9261fe9e27420bd95403d1c9eec46a1d` / boot `63142226cd5943658cbda8d077305b29`. Production remained on its earlier revision. The final route sweep covers 22 dashboard pages at desktop 1920x911 and landscape tablet 1133x610, with 44 captures, zero activation errors and zero horizontal overflow. These are emulated viewports; no physical tablet or touch interaction was tested. Retained run reports and captures are under `E:\Zet\Zet_Tester\runs\ui-review-2026-11-24\`.
+The implementation was staged to Test at revision `3254602ce7f2b9b02ee67875f7769099be3f05f3` / boot `3b880b6502b24ddfa6ac836c8ef11b3a`; its active-release record matches and the deployment log reports 20/20 approved E2E scenarios passed. Production remains on `aa8737b1d81ff7c28999fc03463586a309109b0f`. The final route sweep on the preceding UI revision covers 22 dashboard pages at desktop 1920x911 and landscape tablet 1133x610, with 44 captures, zero activation errors and zero horizontal overflow. These are emulated viewports; no physical tablet or touch interaction was tested. Retained run reports and captures are under `E:\Zet\Zet_Tester\runs\ui-review-2026-11-24\`.
 
 Fresh staged workflows completed for Character/costume, Minor Character, Image Generation and Narrative. The Character run completed Body Reference, Head Image Edit, Assembly, Costume Wizard and Costume Dressing with locks verified. It noted that the rendered blouse remained longer than the source and embroidery was denser/higher; treat this as a design-fidelity correction for that output, not a shared UI defect. Narrative backdrop, subscene and assembly all rendered, reviewed, locked and survived reload. The layouts and inputs worked in landscape emulation, but portrait selectors were cramped; portrait is outside the agreed target and should not drive a redesign without a product need.
 
@@ -157,7 +157,11 @@ The first fresh Minor Character run found that switching to Style failed because
 
 ### Recommended follow-up order
 
-1. Resolve or reproduce the reconstruction report-save error using a disposable Test report; do not alter permissions without identifying why the initial write failed.
-2. WP02 and WP03 passed focused disposable browser/API checks using completed-image fixtures. The explicit focus-restoration and saved-draft confirmation-error changes remain to be staged to Test. Inspect the remaining deeper states listed above.
+1. The reconstruction report-save error did not recur: the report later persisted COMPLETE, and read-only ACL inspection found inherited Modify access. Do not change permissions based on this single transient error; retain the incident for monitoring if it recurs.
+2. WP02 and WP03 passed focused disposable browser/API checks using completed-image fixtures, and their changes are present in the current staged Test release. Inspect the remaining deeper states listed above as follow-up evidence, not as confirmed defects.
 3. Correct the costume and gown source-fidelity outputs only if those exact assets are needed; record new candidates and compare them before locking.
 4. Keep landscape tablet as the acceptance target. Revisit portrait selector layout only if portrait becomes a supported task profile.
+
+### Read-only disposition of remaining page states (2026-11-25)
+
+On the current healthy Test release, the Inventory organization endpoint returned zero collections and zero keywords, and Narrative candidate-source discovery returned no configured sources. The populated Inventory organization and populated importer states therefore have no existing Test data to inspect; the empty states are configuration/data conditions, not demonstrated UI defects. Do not invent an Adventure Log source or add persistent organization data solely for screenshots. The approved 20-scenario deployment suite passed its Narrative Zine preview and Universe/Species editing scenarios, so those behaviors have existing functional coverage, although their interaction states were not captured in the final pixel sweep. No physical tablet is available in the current evidence set; landscape emulation remains the agreed acceptance target.
