@@ -44,6 +44,15 @@ aware corner from zoom tools and gives replacement AI model buttons a field-spec
 accessible name. These changes are local and have not yet been deployed or
 browser-verified on Test.
 
+PR 84 containing those changes was merged as `7d78bc1c73f83fcbd0d9da8a54325c8c0559e3b7`.
+The subsequent `Update_Test.ps1 -Action Deploy` attempt stopped while loading the
+Test config because `ZET_WORKER_MODE=1` rejects non-development config loads. It
+stopped before staging or stopping Test; `/api/health` and
+`state/active-release.json` still match revision `f9fc7b0e1c60c5e76800c4629fb55ed6b1137440`
+and boot `bb4e7d0b15344574a598b70494ada5af`. Retained log:
+`C:\Users\Joe\Projects\Zet_Runtime_Test\state\test-update-8732278e12df4369a132d90986ef8153.log`.
+Do not clear the worker guard to retry from this session.
+
 ## UI consolidation implementation checks (2026-11-25)
 
 Follow-up deployment: Test revision `3254602ce7f2b9b02ee67875f7769099be3f05f3`
