@@ -1,5 +1,41 @@
 # Local testing
 
+## UI consolidation implementation checks (2026-11-25)
+
+The four approved fast E2E journeys passed (4/4) through
+`npm.cmd run test:e2e -- --grep "library and narrative authoring|narrative interview, prompt, render|character-to-costume workflow|unified AI queue"`.
+Staged Test revision `1cec0a6e9261fe9e27420bd95403d1c9eec46a1d` / boot
+`63142226cd5943658cbda8d077305b29` was health-verified. The final route sweep
+captured 22 pages at desktop 1920x911 and landscape tablet 1133x610 (44 captures),
+with zero activation errors and zero horizontal overflow. Fresh Zet_Tester runs
+completed the Character/costume, Minor Character, Image Generation, and Narrative
+workflows. Image Generation included txt2img, img2img, universe-style rendering,
+and reconstruction comparison. The comparison report is COMPLETE and records
+three major and one minor source-design drift findings. The comparison UI also
+reported an initial `Permission denied` writing its report; the report later
+appeared complete on disk, so this observed write failure still needs disposition.
+Read-only ACL inspection found inherited Modify access on the report directories;
+no ACL changes were made, and the tester process identity was not reproduced.
+
+The fresh Minor Character run found a form-ownership bug when opening Style. The
+workspace mount now remains inside `#mc-authoring`; its fresh rerun completed on
+the staged release. Production remained on its prior revision. Tablet captures
+use landscape viewport emulation, not a physical device. See the [active UI
+consolidation implementation](../plans/active/ui-consolidation/implementation.md)
+and retained evidence at E:/Zet/Zet_Tester/runs/ui-review-2026-11-24/.
+
+WP02 and WP03 follow-up: a disposable isolated Playwright check exercised the real
+scene-text save, preview and confirm endpoints against a file-backed fixture with
+two completed candidates. Finishing the unselected candidate preserved the locked
+selection and image bytes; explicit selection of that second candidate was rejected.
+Failed confirmation left the saved draft available and allowed Escape to exit.
+A successful draft save followed by preview failure reported both outcomes and
+allowed Close. Focus returned to the invoking control. Earlier disposable checks
+passed dirty Close/Escape discard/continue and rejected-save recovery. No live AI
+was called. The focused check passed after the focus/error-message fix (1/1),
+JavaScript syntax passed, and the temporary spec was removed. These follow-up
+source changes have not yet been staged to Test.
+
 ## Update diagnostics and release validation cleanup (2026-11-24)
 
 Read-only inspection of the two latest retained Test update failures identified

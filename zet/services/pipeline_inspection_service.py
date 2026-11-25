@@ -14,31 +14,85 @@ TEXT_EXTENSIONS = {".json", ".log", ".md", ".txt"}
 
 
 class PipelineInspectionService:
-    def __init__(self, base_pipeline_path: str | Path, asset_repository=None, path_service=None):
+    def __init__(
+        self,
+        base_pipeline_path: str | Path,
+        asset_repository=None,
+        path_service=None,
+        *,
+        library_root: str | Path | None = None,
+    ):
         self.base_path = Path(base_pipeline_path).resolve()
         self.asset_repository = asset_repository
         self.path_service = path_service
+        self.library_root = Path(library_root).resolve() if library_root else None
+        self.current_container_root = self.library_root / "_state" / "CharacterAssetContainers" if self.library_root else None
+        self.narrative_root = self.library_root / "NarrativeStories" if self.library_root else None
 
     def list_pipelines(self) -> list[dict[str, Any]]:
-        if not self.base_path.is_dir():
-            return []
         pipelines: list[dict[str, Any]] = []
-        stories_path = self.base_path / "Stories"
-        if stories_path.is_dir():
-            for story_path in self._directories(stories_path):
-                for scene_path in self._directories(story_path):
-                    pipelines.append(self._pipeline(scene_path, "scene"))
-        for character_path in self._directories(self.base_path, exclude={"Stories"}):
-            for phase_path in self._directories(character_path):
-                for pipeline_path in self._directories(phase_path):
-                    pipelines.append(self._character_pipeline(pipeline_path, character_path.name, phase_path.name))
+        if self.base_path.is_dir():
+            stories_path = self.base_path / "Stories"
+            if stories_path.is_dir():
+                for story_path in self._directories(stories_path):
+                    for scene_path in self._directories(story_path):
+                        pipelines.append(self._pipeline(scene_path, "scene"))
+            for character_path in self._directories(self.base_path, exclude={"Stories"}):
+                for phase_path in self._directories(character_path):
+                    for pipeline_path in self._directories(phase_path):
+                        pipelines.append(self._character_pipeline(pipeline_path, character_path.name, phase_path.name))
+        pipelines.extend(self._current_character_containers())
+        pipelines.extend(self._narrative_stories())
         return sorted(pipelines, key=lambda item: (item["kind"], item["label"].lower()))
+
+    def _current_character_containers(self) -> list[dict[str, str]]:
+        root = self.current_container_root
+        if root is None or not root.is_dir():
+            return []
+        result = []
+        for record in sorted(root.rglob("container.json"), key=lambda item: str(item).lower()):
+            folder = record.parent.resolve()
+            if not folder.is_relative_to(root.resolve()) or not record.is_file() or not record.resolve().is_relative_to(root.resolve()):
+                continue
+            try:
+                import json
+                payload = json.loads(record.read_text(encoding="utf-8"))
+                scope = payload.get("scope") or {}
+                label = " / ".join(str(scope.get(key) or "") for key in ("character", "phase", "pipeline", "costume") if scope.get(key))
+            except (OSError, ValueError, AttributeError, UnicodeDecodeError):
+                label = " / ".join(folder.relative_to(root).parts)
+            relative = folder.relative_to(root).as_posix()
+            result.append({"pipeline_id": f"@containers/{relative}", "label": label or relative,
+                           "path": str(folder), "kind": "current-character"})
+        return result
+
+    def _narrative_stories(self) -> list[dict[str, str]]:
+        root = self.narrative_root
+        if root is None or not root.is_dir():
+            return []
+        result = []
+        for record in sorted(root.glob("*/story.json"), key=lambda item: str(item).lower()):
+            folder = record.parent.resolve()
+            if not folder.is_relative_to(root.resolve()) or not record.is_file() or not record.resolve().is_relative_to(root.resolve()):
+                continue
+            try:
+                import json
+                payload = json.loads(record.read_text(encoding="utf-8"))
+                title = str(payload.get("title") or folder.name)
+            except (OSError, ValueError, AttributeError, UnicodeDecodeError):
+                title = folder.name
+            result.append({"pipeline_id": f"@narrative/{folder.name}", "label": title,
+                           "path": str(folder), "kind": "narrative"})
+        return result
 
     def list_files(self, pipeline_id: str) -> list[dict[str, str]]:
         pipeline_path = self._resolve_pipeline(pipeline_id)
         files = []
         for path in sorted(pipeline_path.rglob("*"), key=lambda item: str(item).lower()):
             if not path.is_file():
+                continue
+            resolved = path.resolve()
+            if not resolved.is_relative_to(pipeline_path.resolve()):
                 continue
             extension = path.suffix.lower()
             kind = "text" if extension in TEXT_EXTENSIONS else "image" if extension in IMAGE_EXTENSIONS else "other"
@@ -135,6 +189,14 @@ class PipelineInspectionService:
         return {"pipeline_id": path.relative_to(self.base_path).as_posix(), "path": str(path)}
 
     def _resolve_pipeline(self, pipeline_id: str) -> Path:
+        root, relative_id = self._root_and_relative_id(pipeline_id)
+        if root is not self.base_path:
+            path = (root / relative_id).resolve()
+            if not path.is_relative_to(root.resolve()) or not path.is_dir():
+                raise FileNotFoundError(f"Pipeline not found: {pipeline_id}")
+            if pipeline_id not in self._selectable_ids(self.list_pipelines()):
+                raise FileNotFoundError(f"Pipeline not found: {pipeline_id}")
+            return path
         path = (self.base_path / pipeline_id).resolve()
         if not path.is_relative_to(self.base_path) or not path.is_dir():
             raise FileNotFoundError(f"Pipeline not found: {pipeline_id}")
@@ -142,6 +204,13 @@ class PipelineInspectionService:
         if pipeline_id not in valid_ids:
             raise FileNotFoundError(f"Pipeline not found: {pipeline_id}")
         return path
+
+    def _root_and_relative_id(self, pipeline_id: str) -> tuple[Path, str]:
+        if pipeline_id.startswith("@containers/") and self.current_container_root is not None:
+            return self.current_container_root, pipeline_id.removeprefix("@containers/")
+        if pipeline_id.startswith("@narrative/") and self.narrative_root is not None:
+            return self.narrative_root, pipeline_id.removeprefix("@narrative/")
+        return self.base_path, pipeline_id
 
     @classmethod
     def _selectable_ids(cls, nodes: list[dict[str, Any]]) -> set[str]:

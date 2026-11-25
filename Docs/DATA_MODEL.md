@@ -146,6 +146,12 @@ Narrative target `board_version: 2` stores one eight-entry `slots` list and one
 `selected_id`; each candidate retains its own `render_mode` and frozen render
 inputs. Legacy targets require the dry-run/backup conversion command
 `python3 -B -m zet.scripts.migrate_narrative_image_board <library-root> [--apply]`.
+`prompt_provenance.input_basis` optionally stores a SHA-256 digest of effective
+target preparation when a prompt is written or explicitly saved. Target reads
+derive `prompt_state` as ready, stale, unknown, or missing without rewriting old
+records. Rendering requires a ready prompt; saving or updating a prompt adopts
+the current basis. Submitted render candidates and retries retain their frozen
+prompt and inputs. See [ADR 0054](DECISIONS/0054-narrative-prompt-freshness.md).
 | Zine documents/outputs | [ZineDocument/ZineRecord](../zet/models/zine.py), [ZineService](../zet/services/zine_service.py), `PathService.zines_path` | Source selections and page/spread layout. Use service validation and slot constants rather than inventing another ordering. |
 | Machine-local index `<library-hash>.sqlite3` | [LibraryIndexRepository](../zet/repositories/library_index_repository.py) | **Derived**, schema version 1, under `[Storage].Root/Indexes`; Windows config selects `E:/Zet/AppData`. Root rejected inside Git/Dropbox or the authored library. One published snapshot is kept; parsed-source payloads match current sources; completed history is limited to seven days. |
 | Producer-local queue state | [AIQueueLifecycleService](../zet/services/ai_queue_lifecycle_service.py), [StoragePathService](../zet/services/storage_path_service.py) | `[Storage].Root/AI_Queue/<queue-hash>/<producer>/`; shared queue transport remains at `BaseAIQueuePath`. Routes, receipts, requests, continuations and model cache are local state, not authored data. See [QUEUES](COMPONENTS/QUEUES.md) and [AI jobs](COMPONENTS/AI_JOBS.md). |

@@ -261,7 +261,12 @@ class ZetApp:
             asset_repository,
             pipeline_repository,
         )
-        self.pipeline_inspection_service = PipelineInspectionService(config.base_pipeline_path, asset_repository, path_service)
+        self.pipeline_inspection_service = PipelineInspectionService(
+            config.base_pipeline_path,
+            asset_repository,
+            path_service,
+            library_root=config.base_library_path,
+        )
 
     def create_task(self, payload: dict) -> dict:
         return self.task_service.create_task(payload)

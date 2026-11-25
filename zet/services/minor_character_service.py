@@ -539,6 +539,7 @@ class MinorCharacterService(QuickCharacterWizardService):
         sid = value["session_id"]
         changed = False
         harvested = []
+        harvested_thumbnails = {}
         self._cleanup(value)
         for item in list(board["candidates"].values()):
             if self.production.was_withdrawn(item.get("ask_id")):
@@ -564,7 +565,10 @@ class MinorCharacterService(QuickCharacterWizardService):
                 updates["image"] = True
                 board_policy.record_render_completion(item, duration_seconds=updates.get("render_duration_seconds"))
                 self._obsolete_review(board)
-                harvested.append(f"minor:{sid}:{item['id']}:{attempt}")
+                harvested_attempt = f"minor:{sid}:{item['id']}:{attempt}"
+                harvested.append(harvested_attempt)
+                if updates.get("image_path"):
+                    harvested_thumbnails[harvested_attempt] = updates["image_path"]
             elif updates["status"] == "FAILED":
                 self._failed(item, updates["error"])
                 changed = True
@@ -580,7 +584,7 @@ class MinorCharacterService(QuickCharacterWizardService):
                     name = sid
                 board_policy.record_harvests(
                     self.app, harvested, {"page": "minor-characters", "minor_character": sid, "view": view},
-                    f"{name} / {board['label']}",
+                    f"{name} / {board['label']}", thumbnail_paths=harvested_thumbnails,
                 )
         self._cleanup(value)
 

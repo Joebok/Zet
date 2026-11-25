@@ -315,6 +315,10 @@ class NarrativeSceneService:
                 job = record["jobs"].get(history_id, {})
                 if job.get("kind") not in {"synthesize", "generate"} or not isinstance(job.get("result"), str):
                     raise ValueError("Choose a completed prompt output.")
+                from zet.services.narrative_prompt_service import prompt_input_basis
+                current = self.target(story, scene, target)
+                if not job.get("prompt_input_basis") or job["prompt_input_basis"] != prompt_input_basis(current):
+                    raise ValueError("That prompt was written for different preparation. Update the prompt instead.")
                 record["prompt"] = job["result"]
                 record["prompt_provenance"] = {**job.get("provenance", {}), "job_id": history_id, "edited": False}
                 if record["kind"] == "assembly":
@@ -322,7 +326,13 @@ class NarrativeSceneService:
                     record["prompt_provenance"]["assembly_mode"] = record["assembly_mode"]
                 record["active_llm_job"] = None
             self.mark_prompt_change(record, previous_prompt)
-            return self.persist(record, story, scene, target)
+            saved = self.persist(record, story, scene, target)
+            if "prompt" in data or history_id:
+                from zet.services.narrative_prompt_service import prompt_input_basis
+                current = self.target(story, scene, target)
+                record["prompt_provenance"]["input_basis"] = prompt_input_basis(current)
+                saved = self.persist(record, story, scene, target)
+            return saved
 
     @staticmethod
     def _set_subscene_ratio(record: dict, data: dict) -> None:
@@ -420,6 +430,13 @@ class NarrativeSceneService:
             detail["assembly_element_sources"] = self.app.narrative_assembly_service.element_sources(story, scene)
             detail["source_groups"] = [{"title": layer["label"], "narrative": layer.get("narrative", ""),
                                         "role": layer["role"]} for layer in record["layers"] if layer["visible"]]
+        from zet.services.narrative_prompt_service import prompt_input_basis
+        current_basis = prompt_input_basis(detail)
+        saved_basis = record.get("prompt_provenance", {}).get("input_basis")
+        detail["prompt_state"] = ("missing" if not record.get("prompt", "").strip() else
+                                  "unknown" if not saved_basis else
+                                  "ready" if saved_basis == current_basis else "stale")
+        detail["prompt_current"] = detail["prompt_state"] == "ready"
         return detail
 
     def apply_interview(self, story: str, scene: str, target: str, data: dict) -> dict:

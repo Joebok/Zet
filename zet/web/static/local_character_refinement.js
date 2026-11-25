@@ -5,6 +5,7 @@
   const universe = params.get("universe_id") || "", costume = params.get("costume") || "";
   const renderMode = params.get("render_mode") || "draft";
   const $ = id => document.getElementById(`refine-${id}`);
+  window.ZetReviewImageZoom.enableStandalone($("image"));
   let data, current = "original", loading = false, acting = false, serial = 0, analysisSignature = "", comparisonsSignature = "", pollTimer = null;
   const key = `character-refinement:${universe}:${pipeline}:${runId}:${view}:${renderMode}`;
   let draft = {};
@@ -70,6 +71,7 @@
         const label = el("label"), input = el("input"); input.type = "checkbox"; input.value = comparison.view;
         input.checked = checked ? checked.includes(comparison.view) : true;
         const image = el("img"); image.alt = `Selected ${comparison.view}`; image.loading = "lazy";
+        window.ZetReviewImageZoom.enableStandalone(image);
         const query = new URLSearchParams({ universe_id: universe, costume });
         image.src = `/api/local/${encodeURIComponent(pipeline)}/runs/${encodeURIComponent(runId)}/images/${encodeURIComponent(comparison.candidate_id)}?${query}`;
         label.append(input, document.createTextNode(comparison.view.replaceAll("_", " ")), image);

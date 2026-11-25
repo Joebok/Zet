@@ -1,11 +1,13 @@
 import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261115-candidate-identities";
-import {renderProposalComparison} from "./interview_proposals.js";
+import {renderProposalAcceptance, renderProposalComparison} from "./interview_proposals.js";
+import {mountProductionWorkspace} from "./production_workspace.js?v=20261124-workspace-shell";
 
 const $ = id => document.getElementById(id);
 const page = $("minor-characters-page");
 const bridge = window.zetQuickCharacterWizard;
 const form = $("mc-authoring");
 let sharedBoard;
+let productionWorkspace;
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"})[char]);
 let character, universe, entryAsset, timer;
@@ -293,7 +295,16 @@ function render() {
   }
   $("mc-container").hidden = Boolean(view);
   $("mc-board-authoring").hidden = $("mc-board-panel").hidden = !view;
-  if (view) renderBoard(current);
+  if (view) {
+    if (!productionWorkspace) productionWorkspace = mountProductionWorkspace({
+      root:$('mc-authoring'), title:$('mc-page-title'),
+      context:[$('mc-back'), $('mc-view-wrap'), $('mc-rename').parentElement, $('mc-authoring-model').parentElement],
+      preparation:[$('mc-container'), $('mc-board-authoring')],
+      activity:[$('mc-message')], results:[$('mc-board-panel')],
+    });
+    productionWorkspace.setScope(promptKey(), false);
+    renderBoard(current);
+  }
   else renderContainer();
 }
 function renderContainer() {
@@ -336,13 +347,19 @@ function imageDescriptor(item, assetView, part = "image") {
 
 function boardModel(current) {
   const authorReason = authoringReason(current);
-  const renderReason = referenceReason() || (!current.prompt_current ? "Write or save the prompt for the current inputs." : "");
+  const promptReady = Boolean(current.prompt_current);
+  const hasPrompt = Boolean(current.prompt_body?.trim());
+  const promptLabel = hasPrompt ? "Update Prompt" : "Write Prompt";
+  const promptState = promptReady ? "Prompt ready for current inputs."
+    : hasPrompt ? "Preparation changed. Update prompt, then render."
+    : "Write or save a prompt for the current inputs.";
+  const renderReason = referenceReason() || (!promptReady ? promptState : "");
   const actions = [];
   const add = (key, label, group, disabledReason, role, placement = ["controls"]) =>
     actions.push({key, label, group, placement, disabledReason, role});
   const items = current.slots.filter(Boolean).map(id => current.candidates[id]);
   const completed = item => item.status === "COMPLETE" && item.image;
-  add("write-prompt", "Write Prompt", "prompt", authorReason || (pendingReview(current) ? "Review or dismiss the interview suggestions before writing a new prompt." : ""));
+  add("write-prompt", promptLabel, "prompt", authorReason || (pendingReview(current) ? "Review or dismiss the interview suggestions before updating the prompt." : ""));
   add("save-prompt", "Save Prompt", "prompt", authorReason);
   add("save-settings", "Save settings", "render", "", undefined, ["settings"]);
   const luna = current.luna_review;
@@ -397,9 +414,9 @@ function boardModel(current) {
   const style = character.boards.STYLE;
   const selectedStyle = style.candidates[style.selected_id];
   const lockedStyle = selectedStyle?.locked ? selectedStyle : Object.values(style.candidates).find(item => item.locked);
-  const promptStatus = job?.action === "write-prompt"
-    ? [job.error || ({RUNNING:"Writing prompt…", COMPLETE:"Prompt written."}[job.status] ?? ""), modelLabel(job)].filter(Boolean).join(" · ")
-    : "";
+  const promptStatus = [job?.action === "write-prompt"
+    ? job.error || ({RUNNING:"Writing prompt…", COMPLETE:"Prompt updated."}[job.status] ?? "")
+    : "", promptState, job?.action === "write-prompt" ? modelLabel(job) : ""].filter(Boolean).join(" · ");
   return {scope:{key:promptKey(), title:character.name, view:current.label}, revision:character.revision, slots, actions,
     selectedId:current.selected_id, comparisons,
     comparisonDefaults:["selected", comparisons[0]?.key].filter(Boolean),
@@ -451,13 +468,13 @@ function renderBoard(current) {
   const job = current.text_job;
   const proposals = job?.review?.proposals;
   $("mc-proposals").hidden = !proposals;
-  const proposalChoices = Object.fromEntries([...$("mc-proposals").querySelectorAll("select")].map(select => [select.dataset.proposal, select.value]));
+  const proposalChoices = Object.fromEntries([...$("mc-proposals").querySelectorAll("[data-proposal]")].map(control => [control.dataset.proposal, control.checked]));
   $("mc-proposals").innerHTML = proposals ? `<div id="mc-proposal-form"><h2>Review interview proposals</h2>${
     proposals.map((row,index) => `<article class="narrative-proposal"><h3>${escape(row.field === "style_alignment_changes" ? "Source-to-reference changes" : row.field)}</h3><p>${escape(row.reason)}</p>${renderProposalComparison(row, escape)}
-      <label>Decision for ${escape(row.field)} proposal ${index+1}<select aria-label="Decision for ${escape(row.field)} proposal ${index+1}" data-proposal="${escape(row.id)}"><option value="reject">Reject</option><option value="accept">Accept</option></select></label></article>`).join("")
+      ${renderProposalAcceptance(row.id, row.field, Boolean(proposalChoices[row.id]), escape)}</article>`).join("")
       || "<p>No field changes proposed.</p>"}<button type="button" data-apply-proposals>Apply accepted changes</button><button type="button" data-dismiss-proposals>Dismiss suggestions</button></div>` : "";
-  for (const select of $("mc-proposals").querySelectorAll("select")) {
-    if (proposalChoices[select.dataset.proposal]) select.value = proposalChoices[select.dataset.proposal];
+  for (const control of $("mc-proposals").querySelectorAll("[data-proposal]")) {
+    control.checked = Boolean(proposalChoices[control.dataset.proposal]);
   }
   $("mc-authoring-status").textContent = [
     job?.action === "interview" && (job.error || (job.status === "RUNNING" ? "Interview in progress…" : "")),
@@ -563,6 +580,54 @@ async function setSource(source) {
   const result = await api(base(),"PATCH",{revision:character.revision,template_hash:character.template_hash,source});
   if (token === epoch) adopt(result.character);
 }
+const sourceImportInput = $("mc-source-import-file");
+const sourceImportZone = $("mc-source-import-zone");
+const sourceImportLabel = $("mc-source-import-label");
+const sourceImportPreview = $("mc-source-import-preview");
+const sourceImportButton = $("mc-source-import-use");
+const sourceImportStatus = $("mc-source-import-status");
+let sourceImportFile, sourceImportUrl;
+window.ZetImageInput?.attach(sourceImportZone, sourceImportInput);
+sourceImportInput.addEventListener("change", () => {
+  sourceImportFile = sourceImportInput.files?.[0] || null;
+  if (sourceImportUrl) URL.revokeObjectURL(sourceImportUrl);
+  sourceImportUrl = sourceImportFile ? URL.createObjectURL(sourceImportFile) : null;
+  sourceImportPreview.hidden = !sourceImportFile;
+  if (sourceImportFile) {
+    sourceImportPreview.src = sourceImportUrl;
+    if (!sourceImportLabel.value.trim()) sourceImportLabel.value = sourceImportFile.name.replace(/\.[^.]+$/, "");
+  }
+  sourceImportButton.disabled = !sourceImportFile;
+  sourceImportStatus.textContent = sourceImportFile ? "Ready to import. Importing adds this image to Image Inventory." : "";
+});
+sourceImportButton.addEventListener("click", () => run(async () => {
+  const token = epoch;
+  const file = sourceImportFile;
+  const label = sourceImportLabel.value.trim();
+  if (!file || !label) throw new Error("Choose an image and enter its Inventory label.");
+  sourceImportButton.disabled = true;
+  sourceImportStatus.textContent = "Importing image and setting it as this workspace's source…";
+  try {
+    const params = new URLSearchParams({label});
+    const response = await fetch(`/api/entity-library/assets?${params}`, {method:"POST", headers:{"Content-Type":file.type}, body:file});
+    const payload = await response.json();
+    if (!response.ok) throw new Error(typeof payload.detail === "string" ? payload.detail : "Image import failed.");
+    if (!payload.asset?.asset_id) throw new Error("Import succeeded but returned no usable image identity.");
+    if (token !== epoch || !page.classList.contains("active")) return;
+    await setSource({asset_id:payload.asset.asset_id, label:payload.asset.label || label});
+    sourceImportStatus.textContent = `${payload.message || "Image imported."} It is now the workspace source.`;
+    sourceImportInput.value = "";
+    sourceImportFile = null;
+    sourceImportButton.disabled = true;
+    sourceImportPreview.hidden = true;
+    if (sourceImportUrl) URL.revokeObjectURL(sourceImportUrl);
+    sourceImportUrl = null;
+  } catch (error) {
+    sourceImportStatus.textContent = error.message;
+    sourceImportButton.disabled = !sourceImportFile;
+    throw error;
+  } finally { sourceImportButton.disabled = !sourceImportFile; }
+}));
 function author(action, extra = {}) {
   return change(asset()+"/authoring/"+action,{model:selectedModel(),feedback:$("mc-feedback").value,candidate_id:$("mc-evidence").value,...extra});
 }
@@ -580,7 +645,7 @@ page.addEventListener("click", event => {
   if (data.mcDelete) return run(() => deleteCharacter(data.mcDelete, data.name));
   if ("applyProposals" in data) return run(()=>author("apply", {
     job_id: board().text_job.id,
-    choices: Object.fromEntries([...$("mc-proposals").querySelectorAll("select")].map(select => [select.dataset.proposal, select.value])),
+    choices: Object.fromEntries([...$("mc-proposals").querySelectorAll("[data-proposal]")].map(control => [control.dataset.proposal, control.checked ? "accept" : "reject"])),
   }));
   if ("dismissProposals" in data) return run(()=>author("dismiss", {job_id:board().text_job.id}));
 });

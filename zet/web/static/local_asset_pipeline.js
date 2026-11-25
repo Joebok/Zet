@@ -2337,6 +2337,19 @@
       if (radio) radio.checked = true;
     }
   }
+  function enableReviewImage(image) {
+    if (!image || image.dataset.fullscreenViewerBound) return;
+    image.dataset.fullscreenViewerBound = "true";
+    image.tabIndex = 0;
+    image.setAttribute("role", "button");
+    image.setAttribute("aria-label", `Open full screen: ${image.alt || "image"}`);
+    image.addEventListener("click", () => window.ZetOpenFullscreenImage?.(image.src, image.alt));
+    image.addEventListener("keydown", event => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault(); window.ZetOpenFullscreenImage?.(image.src, image.alt);
+    });
+  }
+
   function renderReview() {
     const candidate = state.reviewCandidates[state.reviewIndex];
     if (!candidate) return;
@@ -2396,6 +2409,8 @@
     }
     placeholder.hidden = Boolean(candidate.image_path);
     placeholder.textContent = "No image available yet.";
+    enableReviewImage(compareImage);
+    enableReviewImage(reviewImage);
     const panel = $("review-panel");
     if (state.reviewSelectedOnly) {
       compareImage.closest("figure").hidden = true;

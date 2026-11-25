@@ -1,4 +1,5 @@
 import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261122-aspect-ratio";
+import {mountProductionWorkspace} from "./production_workspace.js?v=20261124-workspace-shell";
 
 const api = "/api/image-generation";
 const assets = api + "/assets";
@@ -56,9 +57,15 @@ async function recoverReferences(universe, legacy) {
 export function setup({fetchJson, universe, style, confirmProtectedEffects, openGeneratedInventory, pickImage, fileUrl}) {
   const root = document.querySelector("#image-generation-page");
   const el = key => root.querySelector("[data-ig-" + key + "]");
-  let data, model, component, scope = 0, owner, timer, saveTimer, saving, dirty = false;
+  let data, model, component, workspace, scope = 0, owner, timer, saveTimer, saving, dirty = false;
   let reviewed, analysis, report, busy = false, options;
-  const status = message => { el("status").textContent = message; };
+  const status = message => {
+    el("status").textContent = message;
+    if (el("operation-status")) {
+      el("operation-status").textContent = message;
+      el("operation-status").hidden = !message;
+    }
+  };
   const endpoint = (operation = "") => assets + "/" + data.asset_id + (operation ? "/" + operation : "");
   const imageUrl = url => url + (url.includes("?") ? "&" : "?") + "universe_id=" + encodeURIComponent(owner);
   const live = token => token === scope && owner === universe();
@@ -73,6 +80,11 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
     return "/?" + params;
   }
   const view = () => new URLSearchParams(location.search).get("generation_view") === "reconstruction" ? "reconstruction" : "generate";
+  workspace = mountProductionWorkspace({root:el("asset"), title:el("asset-heading"),
+    context:[el("asset-actions"), el("back-to-generation"), el("view-label")],
+    preparation:[el("generation-preparation"), el("reconstruction-preparation")],
+    activity:[el("operation-status"), el("source"), el("analysis"), el("report")],
+    results:[el("generation-results"), el("reconstruction-results")]});
 
   function result(index) {
     const assignment = data?.slots[index];
@@ -86,11 +98,23 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
   function render() {
     if (!data) return;
     el("title").textContent = " - " + data.name;
+    el("asset-heading").textContent = data.name;
+    const reconstructing = view() === "reconstruction";
+    el("view-label").textContent = reconstructing ? "Reconstruction" : "Generation";
+    el("back-to-generation").hidden = !reconstructing;
+    el("source").hidden = !reconstructing || !author().source;
+    el("analysis").hidden = !reconstructing || !analysis;
+    el("report").hidden = !reconstructing || !report;
+    el("operation-status").hidden = !el("operation-status").textContent;
+    el("generation-preparation").hidden = reconstructing;
+    el("reconstruction-preparation").hidden = !reconstructing;
+    el("generation-results").hidden = reconstructing;
+    el("reconstruction-results").hidden = !reconstructing;
     el("references").hidden = data.inputs.mode !== "img2img";
-    el("generate-view").hidden = view() === "reconstruction";
-    el("reconstruction-view").hidden = view() !== "reconstruction";
-    el("mode").value = data.inputs.mode || "txt2img";
-    el("style-variant").value = data.inputs.universe_style_variant || "canonical";
+    el("generate-view").hidden = reconstructing;
+    el("reconstruction-view").hidden = !reconstructing;
+    for (const control of root.querySelectorAll("[data-ig-mode]")) control.checked = control.value === (data.inputs.mode || "txt2img");
+    for (const control of root.querySelectorAll("[data-ig-style-variant]")) control.checked = control.value === (data.inputs.universe_style_variant || "canonical");
     el("reference-list").hidden = data.inputs.mode !== "img2img";
     const input = data.inputs;
     const selected = result(data.selected_slot);
@@ -166,6 +190,8 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
     });
     const boardHost = el(view() === "reconstruction" ? "board-reconstruction" : "board");
     if (component.board.parentElement !== boardHost) boardHost.append(component.board);
+    workspace?.setScope(owner + ":" + data.asset_id + ":" + view(), reconstructing
+      ? true : !data.slots.some((item,index) => item && result(index)?.image));
     renderAuthoring();
     renderRefinement();
     schedulePoll();
@@ -175,6 +201,37 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
     const panel = el(key);
     panel.open = true;
     panel.scrollIntoView({block:"nearest"});
+  }
+
+  function showForm({title, description = "", field, options}) {
+    const dialog = el("form-dialog");
+    dialog.replaceChildren();
+    const heading = document.createElement("h2"); heading.textContent = title;
+    dialog.append(heading);
+    if (description) { const note = document.createElement("p"); note.textContent = description; dialog.append(note); }
+    const form = document.createElement("form");
+    let input;
+    if (field) {
+      const label = document.createElement("label"); label.textContent = field.label;
+      input = document.createElement("input"); input.value = field.value || ""; input.required = true; input.maxLength = 200;
+      label.append(input); form.append(label);
+    }
+    const actions = document.createElement("div"); actions.className = "button-row";
+    for (const option of options) {
+      const button = document.createElement("button"); button.type = "submit"; button.value = option.value;
+      button.textContent = option.label; if (option.primary) button.className = "primary"; actions.append(button);
+    }
+    const cancel = document.createElement("button"); cancel.type = "button"; cancel.textContent = "Cancel";
+    cancel.onclick = () => dialog.close(""); actions.append(cancel); form.append(actions); dialog.append(form);
+    return new Promise(resolve => {
+      form.addEventListener("submit", event => {
+        event.preventDefault();
+        if (field && !input.reportValidity()) return;
+        dialog.close(event.submitter.value);
+      });
+      dialog.addEventListener("close", () => resolve({choice:dialog.returnValue, value:input?.value?.trim() || ""}), {once:true});
+      dialog.showModal(); input?.focus();
+    });
   }
 
   function markDirty() {
@@ -248,13 +305,13 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
     else if (assetId || new URLSearchParams(location.search).has("generation_asset")) history.replaceState({}, "", url(assetId));
     el("gallery").hidden = Boolean(assetId);
     el("asset").hidden = !assetId;
+    el("status").hidden = Boolean(assetId);
     status("");
     try {
       if (assetId) {
         const next = await fetchJson(assets + "/" + encodeURIComponent(assetId));
         if (!live(token)) return;
         data = next;
-        el("authoring").open = false;
         el("true-up").open = false;
         el("references").open = false;
         renderReferences();
@@ -501,12 +558,11 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
       const ref = data.inputs.reference_images?.[index] || {};
       const card = document.createElement("article");
       card.className = "image-generation-reference-controls";
+      let preview;
       if (ref.image) {
-        const image = document.createElement("img");
-        image.src = ref.image;
-        image.alt = ref.label || "Reference " + (index + 1);
-        image.className = "image-generation-reference-thumb";
-        card.append(image);
+        preview = document.createElement("img");
+        preview.className = "image-generation-reference-thumb";
+        card.append(preview);
       }
       const label = document.createElement("input");
       const slot = index + 1;
@@ -518,7 +574,15 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
         while (refs.length <= index) refs.push({});
         refs[index] = {...refs[index], ...patch};
         markDirty();
-        render();
+        if (preview && "image" in patch) preview.hidden = !patch.image;
+        if (!preview && patch.image) {
+          preview = document.createElement("img"); preview.className = "image-generation-reference-thumb";
+          card.prepend(preview);
+        }
+        if (preview && "image" in patch) {
+          preview.src = patch.image || ""; preview.alt = refs[index].label || "Reference " + slot;
+        }
+        remove.hidden = !refs[index].image;
       };
       label.oninput = () => edit({label:label.value});
       const upload = document.createElement("input");
@@ -530,41 +594,27 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
         const image = await readImage(file);
         if (!live(token)) return;
         edit({image, label:label.value || "image " + (index + 1), metadata:{}});
-        renderReferences();
       };
       upload.onchange = () => { if (upload.files[0]) void run(() => load(upload.files[0])); };
-      const paste = document.createElement("button");
-      paste.type = "button";
-      window.ZetImageCardUI.decorate(paste, "paste", "Paste reference " + slot);
-      paste.onpaste = event => {
-        const file = [...event.clipboardData.files].find(file => file.type.startsWith("image/"));
-        if (file) { event.preventDefault(); void run(() => load(file)); }
-      };
       const remove = document.createElement("button");
       remove.type = "button";
       remove.textContent = "Remove reference " + slot;
       remove.hidden = !ref.image;
-      remove.onclick = () => { edit({image:"", metadata:{}}); renderReferences(); };
-      const pick = document.createElement("button");
-      pick.type = "button";
-      window.ZetImageCardUI.decorate(pick, "inventory", "Choose Inventory image for reference " + slot);
-      pick.onclick = () => {
-        const token = scope;
-        void run(() => pickImage(item => run(async () => {
+      remove.onclick = () => edit({image:"", metadata:{}});
+      const zone = document.createElement("div");
+      zone.className = "image-input-zone";
+      zone.setAttribute("aria-label", "Reference " + slot);
+      card.append(label, zone, upload, remove);
+      list.append(card);
+      const token = scope;
+      window.ZetImageInput?.attach(zone, upload, {onInventory:async item => {
           const {asset} = await fetchJson("/api/entity-library/assets/" + encodeURIComponent(item.asset_id));
           const response = await fetch(fileUrl(asset.image_path, asset.checksum));
           if (!response.ok) throw new Error("Unable to read the Inventory reference.");
           const image = await readImage(await response.blob());
           if (!live(token)) return;
           edit({image, label:label.value || asset.label || "image " + (index + 1), metadata:{}});
-          renderReferences();
-        })));
-      };
-      const actions = document.createElement("div");
-      actions.className = "button-row";
-      actions.append(pick, paste, remove);
-      card.append(label, upload, actions);
-      list.append(card);
+        }});
     }
   }
 
@@ -573,8 +623,9 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
   };
   const click = (key, work) => { el(key).onclick = () => void run(work); };
   click("new", async () => {
-    const name = prompt("Name the Image Generation asset");
-    if (name?.trim()) await enter((await createAsset(fetchJson, name)).asset_id, true);
+    const result = await showForm({title:"New Image Generation asset", field:{label:"Asset name"},
+      options:[{value:"create", label:"Create asset", primary:true}]});
+    if (result.choice === "create") await enter((await createAsset(fetchJson, result.value)).asset_id, true);
   });
   click("recover", async () => {
     const legacy = legacyInputs(owner);
@@ -595,11 +646,13 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
   });
   click("refresh", async () => {
     if (!dirty) return enter(data.asset_id);
-    const choice = prompt("Unsaved edits conflict with a saved version. Enter RELOAD to discard local edits, or OVERWRITE to save this editor's inputs over the latest version.");
-    if (choice === "RELOAD") {
+    const {choice} = await showForm({title:"Unsaved changes conflict", description:"Choose how to continue.", options:[
+      {value:"reload", label:"Reload saved version"}, {value:"overwrite", label:"Overwrite with my edits", primary:true},
+    ]});
+    if (choice === "reload") {
       dirty = false;
       await enter(data.asset_id);
-    } else if (choice === "OVERWRITE") {
+    } else if (choice === "overwrite") {
       const token = scope;
       const next = await fetchJson(endpoint());
       if (!live(token)) return;
@@ -608,18 +661,19 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
     }
   });
   click("rename", async () => {
-    const name = prompt("Rename asset", data.name);
-    if (name?.trim() && await flush()) await update("save", {name});
+    const result = await showForm({title:"Rename Image Generation asset", field:{label:"Asset name", value:data.name},
+      options:[{value:"rename", label:"Save name", primary:true}]});
+    if (result.choice === "rename" && result.value && await flush()) await update("save", {name:result.value});
   });
   click("delete", async () => { if (await flush()) await deleteItems("delete-asset"); });
-  click("pick", () => {
+  click("pick", async () => {
     const token = scope;
-    return pickImage(item => {
-      if (!live(token)) return;
+    await window.ZetImageInventoryPicker.open({onSelect:item => {
+      if (!live(token)) throw new Error("The workspace changed. Choose a source again.");
       author().source = {asset_id:item.asset_id, label:item.label || "Inventory image"};
       markDirty();
       render();
-    });
+    }});
   });
   async function setUploadedSource(file) {
     const token = scope;
@@ -681,8 +735,15 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
       renderAuthoring();
     });
   };
-  el("mode").onchange = () => { data.inputs.mode = el("mode").value; if (data.inputs.mode === "txt2img") el("references").open = false; markDirty(); render(); };
-  el("style-variant").onchange = () => { data.inputs.universe_style_variant = el("style-variant").value; delete data.inputs.universe_style; markDirty(); status("Saving universe style choice…"); };
+  root.querySelectorAll("[data-ig-mode]").forEach(control => control.onchange = () => {
+    data.inputs.mode = control.value;
+    if (data.inputs.mode === "txt2img") el("references").open = false;
+    markDirty(); render();
+  });
+  root.querySelectorAll("[data-ig-style-variant]").forEach(control => control.onchange = () => {
+    data.inputs.universe_style_variant = control.value; delete data.inputs.universe_style;
+    markDirty(); status("Saving universe style choice…");
+  });
   click("style", () => onAction({key:"style"}));
   click("back-to-generation", () => { const route = new URL(url(data.asset_id), location.href); route.searchParams.delete("generation_view"); history.pushState({}, "", route); render(); });
   window.addEventListener("popstate", () => { if (data && new URLSearchParams(location.search).get("generation_asset") === data.asset_id) render(); });

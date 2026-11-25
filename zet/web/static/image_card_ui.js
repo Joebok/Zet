@@ -26,6 +26,20 @@
     paste: '<path d="M9 4H6a1 1 0 0 0-1 1v15a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1h-3"/><rect x="9" y="2" width="6" height="5" rx="1"/><path d="M9 12h6m-6 4h6"/>',
     details: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v1"/>',
   };
+  const actions = Object.freeze({
+    review: { role: 'secondary', order: 10 }, select: { role: 'primary', order: 20 },
+    unselect: { role: 'secondary', order: 30 }, lock: { role: 'primary', order: 40 },
+    unlock: { role: 'secondary', order: 50 }, generate: { role: 'primary', order: 60 },
+    regenerate: { role: 'secondary', order: 70 }, upscale: { role: 'secondary', order: 80 },
+    retry: { role: 'secondary', order: 90 }, import: { role: 'secondary', order: 100 },
+    refine: { role: 'secondary', order: 110 }, save: { role: 'primary', order: 120 },
+    copy: { role: 'secondary', order: 130 }, download: { role: 'secondary', order: 140 },
+    task: { role: 'secondary', order: 150 }, inventory: { role: 'secondary', order: 160 },
+    details: { role: 'secondary', order: 170 }, clear: { role: 'destructive', order: 180 },
+    previous: { role: 'secondary', order: 190 }, next: { role: 'secondary', order: 200 },
+    up: { role: 'secondary', order: 210 }, down: { role: 'secondary', order: 220 },
+    close: { role: 'secondary', order: 230 }, paste: { role: 'secondary', order: 240 },
+  });
   const scopes = [
     '.local-pipeline-candidate', '.local-pipeline-selected-card',
     '.local-pipeline-review-dialog', '.image-generation-result', '.image-generation-review',
@@ -73,6 +87,7 @@
     if (!control) return control;
     label = label || control.getAttribute('aria-label') || control.textContent.trim();
     action = action || actionFor(label);
+    const definition = actions[action] || actions.details;
     const current = control.querySelector(':scope > svg[data-card-icon]');
     const reason = control.title !== control.dataset.imageTitle ? control.title : control.dataset.imageReason || '';
     const title = reason && reason !== label ? `${label} · ${reason}` : label;
@@ -82,6 +97,7 @@
     if (current && control.dataset.imageAction === action && control.dataset.imageLabel === label) return control;
     control.classList.add('image-icon-action');
     control.dataset.imageAction = action;
+    control.dataset.imageRole = definition.role;
     control.dataset.imageLabel = label;
     control.setAttribute('aria-label', label);
     control.innerHTML = iconMarkup(action);
@@ -102,7 +118,7 @@
       if (label) decorate(control, current ? control.dataset.imageAction : undefined, label);
     }
   }
-  window.ZetImageCardUI = { decorate, scan, iconMarkup };
+  window.ZetImageCardUI = { decorate, scan, iconMarkup, actions };
   let scheduled = false;
   const observer = new MutationObserver(records => {
     if (!records.some(record => record.type === 'childList' || ['title', 'aria-label'].includes(record.attributeName))) return;

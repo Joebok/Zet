@@ -1,7 +1,7 @@
 # Subscribe to the Candidate Board
 
-The dashboard shell loads the board stylesheet, shared image glyphs, and
-review zoom helper. Import `mountCandidateBoard` from
+The dashboard shell loads the board stylesheet, shared image glyphs, review
+zoom helper, and operation-status presenter. Import `mountCandidateBoard` from
 `/static/candidate_board.js`. Give it two empty hosts. Put the board host where
 Render Controls and the grid belong. Put the dialog host outside the board
 and any form. The five active Character Asset Container pipelines are the
@@ -19,6 +19,13 @@ interview workflow.
 Completed image durations use AI_Proxy's worker execution time, excluding queue
 and dashboard polling delays. Older or imported images without worker timing
 retain the local elapsed-time value.
+
+The review header keeps the scope, view, slot position, and quality visible.
+Candidate identity remains separately visible with a Copy candidate ID control.
+Review actions, zoom, and operation feedback stay fixed above the scrolling
+comparison, assessment, and provenance rail. Subscribers retain workflow
+authority and must pass locally scoped outcomes through the status presenter
+without dropping revision or attempt checks.
 
 ## Supply the model
 

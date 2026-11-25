@@ -1,4 +1,5 @@
 import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261115-candidate-identities";
+import {mountProductionWorkspace} from "./production_workspace.js?v=20261124-workspace-shell";
 
 (() => {
   const $ = (id) => document.getElementById(`character-container-${id}`);
@@ -13,8 +14,18 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
     templatePollInFlight: false, templatePollError: "",
     phaseChange: false, sourceScopeKey: "", aspectRatio: "2:3"};
   let sharedBoard = null;
+  let productionWorkspace = null;
   const sharedBoardHost = $("shared-board");
   const sharedDialogHost = $("dialog-host");
+  productionWorkspace = mountProductionWorkspace({
+    root: document.querySelector("#character-asset-container-page"),
+    title: document.querySelector("#character-asset-container-page > .page-title-row"),
+    context: [$("context"), $("view-wrap"), $("costume-wrap")],
+    preparation: [$("authoring"), $("template-improvement"), $("prompt-preview-button"), $("prompt-preview")],
+    activity: [$("source-status"), $("status"), $("refresh")],
+    results: [$("outputs"), $("workspace")],
+  });
+  document.querySelector("#character-asset-container-page").insertBefore(productionWorkspace.element, sharedDialogHost);
 
   const activeCandidateStates = new Set(["SUBMITTING", "QUEUED", "RUNNING", "DISPATCHING"]);
   const escape = (value) => String(value ?? "").replace(/[&<>"']/g,
@@ -189,6 +200,7 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
     $("prompt-preview-button").disabled = false;
     $("costume-wrap").hidden = state.pipeline !== "costume-dressing" || Boolean(state.view);
     $("outputs").hidden = Boolean(state.view);
+    productionWorkspace.setScope(`${state.pipeline}:${state.costume || "default"}`, !state.view);
     $("refresh").hidden = false;
     $("back").href = route("");
     renderAuthoring();
@@ -969,8 +981,20 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
     }
   });
   const phaseSourcePaste = $("phase-source-paste");
-  window.ZetImageInput.attach(phaseSourcePaste, $("phase-source-file"));
-  $("phase-source-file").addEventListener("change", () => {
+  const phaseSourceFile = $("phase-source-file");
+  window.ZetImageInput.attach(phaseSourcePaste, phaseSourceFile, {onInventory: async item => {
+    const imagePath = item.image_path || item.path;
+    if (!imagePath) throw new Error("This Inventory image has no available image file.");
+    const response = await fetch(`/api/file?${new URLSearchParams({path: imagePath})}`, {headers: {"X-Zet-Universe": state.universeId}});
+    if (!response.ok) throw new Error("The selected Inventory image could not be read.");
+    const blob = await response.blob();
+    if (!blob.type.startsWith("image/")) throw new Error("The selected Inventory file is not an image.");
+    const suffix = blob.type.split("/")[1]?.replace(/[^a-z0-9]/gi, "") || "png";
+    const file = new File([blob], `${item.label || item.tag || "inventory-image"}.${suffix}`, {type: blob.type});
+    const transfer = new DataTransfer(); transfer.items.add(file); phaseSourceFile.files = transfer.files;
+    phaseSourceFile.dispatchEvent(new Event("change", {bubbles: true}));
+  }});
+  phaseSourceFile.addEventListener("change", () => {
     state.phaseSourceFile = $("phase-source-file").files?.[0] || null;
     if (state.phaseSourceFile) $("phase-source-status").textContent = `Selected ${state.phaseSourceFile.name}. Upload to save it as the FRONT reference.`;
   });

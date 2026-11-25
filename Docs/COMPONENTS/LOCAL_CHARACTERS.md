@@ -1,6 +1,6 @@
 # Local character assets
 
-Head Image Edit is the only head workflow. Character Assembly uses matching published Body Reference and Edit views automatically. For a cross-phase FRONT reference, select a source phase or upload an image. The saved phase resolves its published Edit FRONT. See [ADR 0054](../DECISIONS/0054-edit-only-head-images.md).
+Head Image Edit is the only head workflow. Character Assembly uses matching published Body Reference and Edit views automatically. For a cross-phase FRONT reference, select a source phase or choose an image by upload, paste, or Image Inventory. The saved phase resolves its published Edit FRONT. See [ADR 0054](../DECISIONS/0054-edit-only-head-images.md).
 
 ## Character Asset Container current outputs (2026-11-06)
 
@@ -173,11 +173,14 @@ are advisory. Compact and full views use the same active revision identity.
 
 ## Costume Wizard test renders and batch creation (2026-11-03)
 
-New Costume Wizard drafts use four focused interviews. The intake accessory
-toggle determines whether the equipment interview runs. Zet assembles the
-reviewed bullets into the existing costume template and leaves view-specific
-prose for Post Render Adjustments. Earlier sessions keep their original draft
-editor. See the [Costume Wizard guide](../COSTUME_WIZARD_GUIDE.md).
+New Costume Wizard drafts use four focused interviews. Each reference slot
+supports Browse, Paste and Image Inventory. The intake accessory toggle
+determines whether the equipment interview runs. Zet assembles the reviewed
+bullets into the existing costume template and leaves view-specific prose for
+Post Render Adjustments. Suggested section text uses explicit acceptance
+checkboxes and Save Draft. Private test images use the shared zoom viewer and
+show current or earlier draft revision. Earlier sessions keep their original
+draft editor. See the [Costume Wizard guide](../COSTUME_WIZARD_GUIDE.md).
 
 `CostumeWizardService._render_job` stages a single FRONT Dressing candidate in a
 private per-session library beneath `PipelineCandidates/Character-Pipeline`. A
@@ -259,7 +262,7 @@ The durable behavior is recorded in [ADR 0042](../DECISIONS/0042-character-mode-
 
 Head Image and Head Image Edit use one FRONT reference source across Draft and Final. A phase/pipeline choice follows the current locked FRONT, without pinning a candidate or matching its quality; a managed upload is an alternative. Legacy mode-specific records prefer Final when present. See the [active phase-source plan](../../plans/active/phase-change-mode-sources.md) for source storage and migration status.
 
-In Container settings, FRONT can render in three modes: no reference, reference without Phase Change, or reference with Phase Change. The shared Phase Change checkbox controls prompt intent; the source phase selector is enabled while selected. Upload accepts file selection or clipboard paste. Phase Change without an available reference is rejected during prompt compilation and render preparation. The FRONT mode caption appears above render actions. Non-FRONT Head Image Edit views default to the selected FRONT candidate as their reference; each view can save another selected view as its guide. A missing selected reference blocks prompt compilation and rendering. These settings affect new requests; prepared requests retain frozen inputs.
+In Container settings, FRONT can render in three modes: no reference, reference without Phase Change, or reference with Phase Change. The shared Phase Change checkbox controls prompt intent; the source phase selector is enabled while selected. A cross-phase FRONT reference accepts file selection, clipboard paste, or an image copied from Image Inventory. Phase Change without an available reference is rejected during prompt compilation and render preparation. The FRONT mode caption appears above render actions. Non-FRONT Head Image Edit views default to the selected FRONT candidate as their reference; each view can save another selected view as its guide. A missing selected reference blocks prompt compilation and rendering. These settings affect new requests; prepared requests retain frozen inputs.
 
 Shared slot recovery reattaches current candidates affected by the historical render-wait timeout to their original queued requests, or restores successful harvested images to review eligibility. It checks slot membership, request identity and receipts before changing state.
 
@@ -894,6 +897,11 @@ unchanged provider status does not rewrite the complete private session record.
 View navigation reports its target while dirty edits save; failed saves remain
 in the draft and keep their local error feedback.
 
+The expandable production workspace mounts inside the `#mc-authoring` form
+boundary. Keep its intake and Style controls inside that form when moving shell
+sections; reparenting them outside breaks native form ownership and the Style
+workflow cannot read its fields.
+
 Minor Characters status polling retries failed reads with a capped delay while work remains active. Mutations invalidate older in-flight polls; rejected mutations refresh the workspace while retaining the original error and never automatically repeat the write. Restart and generation controls also wait for pending slot actions. These browser recovery behaviors do not bypass server revision or active-work checks.
 
 ## Unified AI jobs (2026-10-16)
@@ -1106,12 +1114,15 @@ name-and-source-only offline bootstrap.
 
 ## Character Wizard
 
-Create begins with one to three reference images. Edit starts from the current
-phase master and accepts optional references. The operator selects a single
+Create begins with one to three reference images. Each reference slot supports
+file browse, clipboard paste, or Image Inventory selection; an Inventory image
+is copied into the wizard's existing private intake path. Edit starts from the
+current phase master and accepts optional references. The operator selects a single
 vision model for Body and Head and hair, including retries and section refinement.
 Each AI_Proxy request returns plain-text observations. The wizard normalizes
-line formatting, preserves partial results, and shows section status. Apply
-refinement proposals individually or edit the facts directly before preview.
+line formatting, preserves partial results, and shows section status. Accept
+proposed replacements with their checkboxes and Save draft edits, or edit the
+facts directly before preview.
 
 Species and Gender Presentation are operator inputs. New drafts copy reviewed
 Head and hair facts into the separate Head-Image Edit description and preservation

@@ -8,6 +8,30 @@ The [Candidate Board specification](CANDIDATE_BOARD.md) defines the shared UI
 standard for Render Controls, candidate cards, and review. This page records
 implementation details.
 
+## Expandable production workspace shell (2026-11-24)
+
+`production_workspace.js` supplies a context row, per-scope Preparation
+disclosure, operation summary, and results area. The Character Asset Container
+is the first integration. A selected Candidate Board opens with preparation
+collapsed by default; the overview opens with preparation available. Explicit
+disclosure choices persist in session storage by pipeline and costume, and
+viewport changes do not rebuild the board. The operation summary remains
+outside the disclosure so messages stay visible when preparation is closed.
+
+The Character pilot passed the Character-to-costume and candidate-board safety
+scenarios. A disposable Playwright inspection passed at 1920x1080 and
+1133x610. Minor Character, Narrative target boards, and Image Generation now use the shell too.
+Narrative keeps shared scene direction, local target preparation, the operation
+message and the board in one route. Its disposable landscape-tablet inspection
+passed at 1133x610. These checks use CSS viewports, not physical tablet input or
+device-browser behavior. Image Generation keeps direct prompt rendering and its
+reconstruction flow in the same shell, with ordered Browse, Paste and Inventory
+reference inputs and named asset forms. Character Wizard reference slots now
+use the same Browse, Paste and Image Inventory controls. Costume Wizard private
+test renders also open through the shared full-size zoom viewer. The isolated
+input/viewer checks and approved Image Generation, Character Wizard, and Costume
+Wizard scenarios passed.
+
 ## Current Character image production workflow (2026-11-06)
 
 The Assets menu opens Body Reference, Head Image Construct, Head Image Edit,
@@ -26,6 +50,16 @@ refresh on entry, tab return, relevant actions or explicit refresh. Finished
 candidates can open the optional template-proposal action; accepting a reviewed
 proposal updates the governing Character.md for future requests. See the
 [completed migration plan](../../plans/completed/character-image-production-workflow.md).
+
+## Pipeline diagnostics and controls
+
+Pipeline Inspection is read-only. It lists current Character Asset Container
+records and Narrative story folders from the selected library, alongside any
+files found under the legacy pipeline root. Current workflow files are resolved
+only within their owning storage roots; file lists and previews load after a
+diagnostic is selected. Legacy pipeline configuration remains visible for
+reference, but the batch reset control is not offered for current container work.
+Use the owning workspace board to queue or manage current candidates.
 
 Character and Narrative use the same responsive Candidate Board grid, action
 glyphs, and desktop review layout with controls on the right. Character review
@@ -52,7 +86,9 @@ heading while context loads. A Final route applies the Final canvas color
 immediately. The retired legacy Assets section is never the initial page, and
 startup no longer reads legacy assets before activating the requested route.
 
-Identity Key source choices combine Draft and Final locks by pipeline, costume and view without mode labels. Saved rows use light green for Draft-derived crops and dark green for Final-derived crops, driven by `source_render_mode` on the record.
+Identity Key source choices identify Draft or Final source locks in the option text, alongside pipeline, view and costume, so the available mode is clear before previewing a crop. Saved rows continue to use `source_render_mode` for their mode color.
+
+Character Overview view titles link directly to the matching Asset Container workspace, while thumbnails open the shared full-screen viewer. Turnaround missing views link to the corresponding local source workspace for eligible Local rows. A full turnaround remains unavailable until all eight source views are locked; partial sheets remain available from a ready full row.
 
 Character Run available, slot generation/retry, view regeneration, Re-evaluate,
 batch Start/Resume and candidate-review retry show immediate submission feedback.
@@ -195,6 +231,13 @@ shows an Edit governing Costume template action beside Character.md.
 
 Character and costume template edit actions, including the pipelines' **Edit master template**, character setup's **Edit character template**, Costumes table's **Open**, and asset template buttons, open the current canonical master in the Template Editor. Pipeline edits do not open proposal popups; saved batch versions retain their frozen sources. Use **Restart from current masters** to review edited masters for a batch. [template_editor.js](../../zet/web/static/template_editor.js) keeps one native textarea draft with an inert, escaped decoration layer. **View: Off** shows raw text normally; the eight orientation choices dim inapplicable prose without disabling editing. One selector sets matching head/body orientations. Applicability follows compiler view rules, independently of pipeline section selection; costume mode annotations retain their union without another selector.
 
+The Template Editor also lists the current character's `Character.md` and
+costume templates in place, with an explicit empty/loading/error state. It uses
+the selected header character and phase. The editor remains disabled until a
+source is loaded; a failed switch keeps the previous draft visible. Template
+manual selection updates the local page status, and copy/download feedback stays
+beside the manual controls.
+
 Literal case-insensitive Search highlights all occurrences, including dimmed text. **Full file** is editable; **Diff** is a read-only contextual master-on-disk/current-edits comparison with line numbers. Its search count covers displayed diff rows. Switching controls preserves the draft, selection and undo history. Refresh diff checks the latest disk master; Reload master uses existing unsaved-change protection. Save rejects validation errors or changed masters, retaining edits. New typing while a save is pending remains dirty after the submitted version succeeds. Invalid syntax temporarily leaves affected sections neutral until analysis succeeds. Config's existing plain-source editor remains available without template-specific controls. See [prompt contracts](PROMPTS.md#character-and-costume-source-editing-2026-10-26) for backend validation and batch-overlay limits.
 
 ## Responsive shell and viewing
@@ -211,9 +254,10 @@ Character batch settings and Image Generation settings use disclosures. Existing
 batches collapse new-batch settings on compact screens; pages without a batch
 open those settings. Toggling disclosures preserves form controls and drafts.
 Overview exposes its existing image viewer on compact screens when a preview is
-available. Existing Narrative targets with images prioritize results and collapse
-direction/generation inputs on compact screens. Other targets keep authoring
-available. Desktop editing retains columns and expanded inputs.
+available. Narrative targets use the production shell at every viewport, with
+shared scene and target preparation in a per-target disclosure. The board takes
+priority when a target already has images; empty targets open preparation.
+Disclosure choices persist by target and the operation message stays visible.
 
 Review dialogs use fixed viewport positioning and dynamic height with a `vh`
 fallback. Local candidate review preserves originating gallery position/focus,
@@ -233,6 +277,16 @@ from fit to 4x. Zoom resets when the image changes or the viewer closes.
 Character Overview supplies the available locked images in each base-image or
 costume group, preserving view order. Left/right buttons and arrow keys move
 within that group and stop at the first and last available views.
+
+Task-capture evidence and Pipeline Inspection previews use the dashboard viewer.
+The Character refinement and post-render adjustment pages use the helper's
+standalone viewer with the same zoom, pan, reset, and close controls. Gallery and
+comparison images have keyboard-accessible full-screen actions. Cross-phase
+Character FRONT references use the shared Browse, Paste, and Image Inventory
+controls; task attachments remain evidence files rather than workflow inputs.
+The shared zoom/viewer and phase-source selection were checked in disposable
+browser fixtures; the Character-to-costume and candidate-board safety journeys
+passed. Physical tablet touch behavior remains unverified.
 
 Shared candidate review disables candidate/view navigation while saving a review
 decision and gives the pending action local status. Short-height, narrow review
@@ -358,25 +412,55 @@ The [capture script](../../Scripts/capture-dashboard-ui.mjs) is a UI inspection
 aid. It requires an explicit dashboard URL, visits active destinations, and writes
 screenshots/JSON without deleting older captures. Default output is timestamped
 under ignored `test-results/ui`. Metadata includes revision, route, dimensions,
-browser, activation errors, and horizontal overflow. Run automated checks against
-the isolated fixture:
+browser, activation errors, and horizontal overflow. Run the structural sweep
+against a selected dashboard; it does not submit workflow actions:
 
 ```powershell
-# Verify Python 3, then start tests/e2e/server.py --mode fast separately.
-$env:ZET_DASHBOARD_URL = "http://127.0.0.1:8765/"
-$env:ZET_UI_OUTPUT = "test-results/ui-inspection"
+# Set these from the verified Test active-release record and /api/health.
+$env:ZET_DASHBOARD_URL = "http://127.0.0.1:8082/"
+$env:ZET_EVIDENCE_COLLECTOR = "C:/Users/Joe/Projects/Zet_Tester/evidence.mjs"
+$env:ZET_TEST_RELEASE_REVISION = "<release revision>"
+$env:ZET_TEST_BOOT_ID = "<boot id>"
+$env:ZET_UI_OUTPUT = "C:/Users/Joe/Projects/Zet_Tester/runs/<campaign>/direct-page-sweep"
 npm.cmd run capture:ui
 ```
 
-`ZET_UI_PAGES` optionally selects comma-separated destinations. Default captures
-cover desktop, 1133 × 610 and 1133 × 560 iPad mini landscape, 1024 × 640, and phone
-sizes. Activation errors mean partial evidence, even without overflow. See
-[Testing](../Testing.md) for the four maintained fast scenarios, isolation, and
-approval requirements for new permanent tests.
+`ZET_UI_PAGES` optionally selects comma-separated destinations. Profiles are
+1920 × 911 desktop, 1133 × 610 tablet landscape, and 810 × 1080 tablet portrait.
+Each profile has a manifest; a run manifest and coverage ledger join them.
+Activation errors remain explicit coverage blockers.
+
+Cross-repository UI review evidence uses the opt-in Zet_Tester `--evidence` mode
+and its named `capture` browser command. It records a viewport PNG, compact
+accessibility snapshot, visible node geometry, selected styles, viewport details
+and bounded browser errors beneath the run's `evidence/` folder. Each manifest
+must identify the actual Test release revision and boot ID. Reuse the same fresh
+workflow's outputs across desktop and tablet captures; do not combine bundles
+from different release revisions. This does not replace the broader page sweep
+above or establish physical iPad behavior. See the
+[Zet_Tester instructions](../../../Zet_Tester/README.md).
+
+The release-pinned, visible-navigation journeys are defined in
+[Zet_Tester/ui-review/direct-journeys.json](../../../Zet_Tester/ui-review/direct-journeys.json)
+and implemented by its `direct-journeys.mjs`. They cover Character Overview,
+Minor Characters, Identity Keys, Turnarounds, Costumes, Compare, and Recent
+Renders. They record the current visible state and navigation action; their
+captures do not certify that displayed library outputs were generated in that
+campaign. Tablet captures resize the already open page after desktop navigation,
+because the narrow layout presents navigation in a select control.
 
 ## Managed LLM Roles (2026-10-22)
 
 Config now renders the shared role registry, with active and compatibility/retired groups, separate model defaults, per-role inherited/overridden model choices, provider/capability requirements, Qwen applicability indicators and collapsible Template Editor links. [LLM roles](LLM_ROLES.md) owns the inventory and semantics. Disposable fixture checks cover actual override/save/reload/clear and source opening at 1280px/390px; physical-device and live-model behavior remain unverified.
+
+Config groups related settings by image sizing, background work, scene
+automation, render service, model purpose and output dimensions. Section status
+shows which groups differ from the last loaded/saved values; the page-level Save
+Project Settings action saves the single supported settings form. Process rows
+show Running/Stopped, additional process count and collapsed process details.
+Start/stop/restart follow the reported capability and current state, with
+pending/error feedback on the affected row. Process actions were checked only
+with mocked requests; physical production process behavior was not exercised.
 
 ## Costume-Dressing controls (2026-10-26)
 
@@ -387,10 +471,20 @@ Config now renders the shared role registry, with active and compatibility/retir
 Open Universe Settings and use Species to add or edit a definition. Species IDs
 are set when entries are added. For a save conflict, Reload Species refreshes
 the catalog and keeps the form's unsaved text for review. The Character Wizard
-and Manual Setup use the universe's saved choices.
+and Manual Setup use the universe's saved choices. Loading and saving report
+their current state in the page status area. A failed save highlights the
+affected field while preserving the draft; a failed catalog reload keeps the
+existing choices and leaves available actions usable. Universe changes fence
+older settings responses from updating the current form.
 
 ## Universe creative settings
-The header Universe Settings action is available in both workspaces. One form saves canonical art style and all lettering defaults, with a preview, unsaved-navigation protection and read-only identity/storage/layout details. Story lettering overrides take precedence; changes do not rewrite previously finished images.
+The header Universe Settings action is available in both workspaces. Creation
+and settings use matching art-style headings and action rows. Settings save
+canonical art style and all lettering defaults, with a preview,
+unsaved-navigation protection, loading/saving feedback and read-only
+identity/storage/layout details. Story lettering overrides take precedence;
+changes do not rewrite previously finished images. Settings requests are
+fenced by universe so an older response cannot replace a newer selection.
 
 ## Backdrop source controls (2026-10-29)
 
@@ -410,9 +504,11 @@ displays the selected image beside a different candidate when available.
 ## Recent Renders
 
 Recent Renders appears between Story Telling and Universe when the selected
-universe has recorded harvests. Each row links to a Candidate Board and shows
-how many qualifying images were harvested there. The latest image on a board
-sets its position. The saved snapshot keeps the newest eight images plus any
+universe has recorded harvests. Each activity row shows the latest harvested
+image when its file was captured, a full-screen Review latest action, an Open
+board link, and the number of qualifying images harvested there. Older saved
+rows without an image path still link to their board and mark the preview
+unavailable. The latest image on a board sets its position. The saved snapshot keeps the newest eight images plus any
 others under 24 hours old when the latest harvest was recorded. The server
 sends the saved snapshot on connection and pushes updates after successful
 harvests, including those collected while the dashboard is on another page.

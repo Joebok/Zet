@@ -1,7 +1,7 @@
 /** Touch clipboard access feeds the same file-input path as choosing a file. */
 (() => {
   const attached = new WeakMap();
-  function attach(zone, input) {
+  function attach(zone, input, {onInventory} = {}) {
     if (!zone || !input || attached.has(zone)) return;
     const controls = document.createElement("div");
     controls.className = "image-input-actions";
@@ -11,10 +11,14 @@
     const choose = document.createElement("button");
     choose.type = "button";
     choose.textContent = "Choose image";
+    const inventory = document.createElement("button");
+    inventory.type = "button";
+    inventory.textContent = "Image Inventory";
+    inventory.hidden = typeof onInventory !== "function";
     const status = document.createElement("span");
     status.className = "image-input-status";
     status.setAttribute("role", "status");
-    controls.append(paste, choose, status);
+    controls.append(paste, choose, inventory, status);
     zone.after(controls);
     zone.removeAttribute("contenteditable");
     zone.setAttribute("role", "group");
@@ -31,10 +35,27 @@
     let reading = false;
     const locked = () => input.disabled || zone.getAttribute("aria-disabled") === "true";
     const sync = () => {
-      paste.disabled = choose.disabled = locked() || reading;
+      paste.disabled = choose.disabled = inventory.disabled = locked() || reading;
       controls.hidden = zone.hidden;
     };
     choose.addEventListener("click", () => { if (!locked()) { status.textContent = ""; input.click(); } });
+    inventory.addEventListener("click", async () => {
+      if (locked() || reading || typeof onInventory !== "function") return;
+      status.textContent = "";
+      inventory.disabled = true;
+      const context = contextKey();
+      try {
+        const item = await window.ZetImageInventoryPicker.open({onSelect: async selected => {
+          if (!zone.isConnected || locked() || context !== contextKey()) throw new Error("The workspace changed. Choose an image again in the current input.");
+          await onInventory(selected);
+        }});
+        if (item) status.textContent = `${item.label || item.tag || "Image"} selected from Image Inventory.`;
+      } catch (error) {
+        status.textContent = `Unable to select from Image Inventory: ${error.message}`;
+      } finally {
+        inventory.disabled = locked();
+      }
+    });
     const contextKey = () => [location.href, ...["universe-select", "character-select", "phase-select"].map(id => document.getElementById(id)?.value || "")].join("\u0000");
     paste.addEventListener("click", async () => {
       if (locked() || reading) return;

@@ -72,7 +72,11 @@ window.mountSpeciesSettings = function () {
     } catch (error) {
       if (token === generation) status.textContent = error.message;
     } finally {
-      if (token === generation) reload.disabled = false;
+      if (token === generation) {
+        edit.disabled = !list.value;
+        add.disabled = !catalog;
+        reload.disabled = false;
+      }
     }
   }
 
@@ -95,6 +99,7 @@ window.mountSpeciesSettings = function () {
     }
     submit.disabled = true;
     edit.disabled = add.disabled = reload.disabled = true;
+    status.textContent = "Saving species…";
     try {
       const result = await request("PUT", {revision: catalog.revision, id, create, entry: {
         label: fields.label.value.trim(), aliases: lines(fields.aliases), body_reference: {
@@ -114,7 +119,11 @@ window.mountSpeciesSettings = function () {
       status.textContent = field ? "Check the highlighted field." : error.message;
     } finally {
       submit.disabled = false;
-      if (token === generation) edit.disabled = add.disabled = reload.disabled = false;
+      if (token === generation) {
+        edit.disabled = !list.value;
+        add.disabled = !catalog;
+        reload.disabled = false;
+      }
     }
   };
 

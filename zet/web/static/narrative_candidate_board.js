@@ -16,6 +16,8 @@ export function narrativeBoardModel({detail, scopeKey, revision, drafts, busy, l
   const unmodified = pinned && detail.backdrop_link_mode === 'unmodified';
   const reference = pinned && detail.backdrop_link_mode === 'reference';
   const settings = detail.backdrop_adaptation || {};
+  const hasSavedPrompt = Boolean(value('prompt').trim());
+  const promptState = detail.prompt_state || (hasSavedPrompt ? 'unknown' : 'missing');
   const localOnly = unmodified || (reference && ['crop', 'unchanged'].includes(settings.operation));
   const jobs = Object.values(detail.jobs);
   const writing = jobs.filter(job => ['generate', 'synthesize'].includes(job.kind)).at(-1);
@@ -25,9 +27,11 @@ export function narrativeBoardModel({detail, scopeKey, revision, drafts, busy, l
   const authorReason = busyReason || (unmodified ? 'Use the local reuse action for this backdrop.'
     : llmBusy ? 'Wait for the illustrator to finish.' : '');
   const renderReason = authorReason || (localOnly ? 'Use the local backdrop action.'
-    : sizingError || (!value('prompt').trim() ? 'Enter or write a prompt first.'
+    : sizingError || (promptState !== 'ready' ? ({stale:'Preparation changed. Update the prompt, then render.',
+      unknown:'Prompt readiness is unknown. Update or save the prompt before rendering.'}[promptState]
+      || 'Write or save a prompt before rendering.')
     : assembly && !drafts.has('prompt') && (detail.prompt_provenance?.assembly_mode || 'finish_composite') !== value('assembly_mode')
-      ? 'Write or edit the prompt for this assembly mode.' : ''));
+      ? 'Update or save the prompt for this assembly mode.' : ''));
   const empty = detail.slots.includes(null) || detail.slots.some(id => !id);
   const lockedId = detail.slots.find(id => detail.candidates[id]?.locked);
   const luna = detail.luna_review || {};
@@ -98,7 +102,7 @@ export function narrativeBoardModel({detail, scopeKey, revision, drafts, busy, l
     if (input?.url) extra.push({key: 'backdrop:' + reviewedId, label: 'Captured backdrop', image: {url: input.url, label: input.label}});
   }
   const actions = [
-    action('synthesize', 'Write Prompt', {group: 'prompt', role: 'primary', disabledReason: authorReason}),
+    action('synthesize', hasSavedPrompt ? 'Update Prompt' : 'Write Prompt', {group: 'prompt', role: 'primary', disabledReason: authorReason}),
     action('luna-review', 'Luna Review', {group: 'luna', disabledReason: busyReason || (luna.status === 'RUNNING' ? 'Review is running.' :
       slots.some(slot => slot.candidate?.status === 'COMPLETE' && slot.candidate.image) ? '' : 'Generate an image first.')}),
   ];
@@ -115,6 +119,9 @@ export function narrativeBoardModel({detail, scopeKey, revision, drafts, busy, l
     working.includes(writing) && 'Writing prompt…',
     writing?.status === 'FAILED' && writing.error,
     pendingInterviews && 'Write Prompt uses saved, applied interview inputs.',
+    promptState === 'stale' && 'Preparation changed. Update Prompt, then render.',
+    promptState === 'unknown' && hasSavedPrompt && 'Prompt readiness is unknown. Save or update it before rendering.',
+    promptState === 'ready' && 'Prompt ready for current preparation.',
     detail.prompt_provenance?.model && 'Saved prompt: ' + detail.prompt_provenance.model,
     (detail.prompt_provenance?.edited || drafts.has('prompt')) && 'Manually edited',
   ].filter(Boolean).join(' · ');
@@ -133,7 +140,7 @@ export function narrativeBoardModel({detail, scopeKey, revision, drafts, busy, l
       placeholder: 'Default: ' + defaultModel, value: value('prompt_model'), suggestions: models}],
     aspectRatio:{value:detail.kind === 'subscene' ? value('aspect_ratio') : detail.scene_canvas,readOnly:detail.kind !== 'subscene',description:detail.kind !== 'subscene' ? 'Inherited from the scene canvas. Change it in Scene settings.' : ''}, fields: [
       ...(!unmodified ? [{key: 'prompt', label: 'Final Qwen prompt', type: 'textarea', value: value('prompt'), disabled: llmBusy}] : []),
-      ...(assembly ? [{key: 'assembly_mode', label: 'Assembly mode', type: 'select', value: value('assembly_mode'),
+      ...(assembly ? [{key: 'assembly_mode', label: 'Assembly mode', type: 'radio', value: value('assembly_mode'),
         options: assemblyModes.map(([value, label]) => ({value, label}))}] : []),
     ], readiness: {draft: renderReason, final: renderReason}, promptStatus, renderStatus}};
 }

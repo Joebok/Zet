@@ -152,13 +152,25 @@ The legacy queue/history fetch and renderers are removed from this page; process
 controls remain on their existing endpoint. During startup the UI distinguishes a
 refresh in progress from storage being unavailable.
 The activity table displays Universe, Status, Workflow / target, Mode, Model,
-Created, Details and ID, in that order. Character rows use saved character,
+Created, Details and ID, in that order. Status labels distinguish current
+activity, completed history and retained failures. The workflow/target cell
+opens the recorded owning workflow when a safe route is available. Created shows
+relative age with the precise local timestamp on focus/hover. Details expands
+the saved failure stage, exception type, affected path, recovery identifiers,
+message and guidance without exposing full request prompts in the table.
+Character rows use saved character,
 phase, costume and view metadata. Narrative rows use the title snapshot captured
 when the job was submitted, with a status-link fallback for older rows. Mode is
-projected from saved render sizing. Created uses the browser's local date and
-time to the minute. ID copies the queue identifier to the clipboard. These are
+projected from saved render sizing. The precise Created timestamp uses the
+browser's local date and time. ID copies the queue identifier to the clipboard. These are
 compact projections of metadata already read by queue discovery. The former
 Body-Reference-only Codex panel is removed.
+
+Visible polling retains the current row DOM while keyboard focus is within the
+table, then applies the refreshed rows after focus leaves. Facet options are
+replaced only when the available values change. Retained-failure deletion shows
+pending and failed states in the affected row and preserves the recovery item
+after a rejected delete.
 
 ### Deleting retained failures
 

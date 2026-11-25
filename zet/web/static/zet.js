@@ -108,6 +108,7 @@ const state = {
   zineDocument: null,
   zineStorySlug: null,
   zineStorySources: [],
+  zineValidationVisible: false,
   sceneImageReferences: [],
   scenePickerCharacter: "",
   scenePickerSearch: "",
@@ -398,10 +399,6 @@ const settingFinalTargetPixels = document.querySelector("#setting-final-target-p
 const pipelineConfigPaths = document.querySelector("#pipeline-config-paths");
 const projectConfigTableBody = document.querySelector("#project-config-table tbody");
 const pipelineStageTableBody = document.querySelector("#pipeline-stage-table tbody");
-const batchRenderPipeline = document.querySelector("#batch-render-pipeline");
-const batchIncludeLocked = document.querySelector("#batch-include-locked");
-const batchRenderResetButton = document.querySelector("#batch-render-reset");
-const batchRenderResultTableBody = document.querySelector("#batch-render-result-table tbody");
 const sourceEditorStatus = document.querySelector("#source-editor-status");
 const sourceEditorMessage = document.querySelector("#source-editor-message");
 const sourceEditorWarning = document.querySelector("#source-editor-warning");
@@ -410,6 +407,12 @@ const sourceEditorSave = document.querySelector("#source-editor-save");
 const sourceEditorSaveState = document.querySelector("#source-editor-save-state");
 const sourceEditorMeta = document.querySelector("#source-editor-meta");
 const sourceEditorText = document.querySelector("#source-editor-text");
+const sourceEditorTemplateSelect = document.querySelector("#source-editor-template-select");
+const sourceEditorTemplateScope = document.querySelector("#source-editor-template-scope");
+const sourceEditorOpenTemplate = document.querySelector("#source-editor-open-template");
+const sourceEditorRefreshTemplates = document.querySelector("#source-editor-refresh-templates");
+let sourceEditorTemplates = [];
+let sourceEditorTemplatesGeneration = 0;
 
 
 const settingsSaveState = document.querySelector("#settings-save-state");
@@ -667,6 +670,13 @@ const zineSpread3 = document.querySelector("#zine-spread-3");
 const zineSpread5 = document.querySelector("#zine-spread-5");
 const zinePreviewSection = document.querySelector("#zine-preview-section");
 const zinePreview = document.querySelector("#zine-preview");
+const zineSlotGroups = document.querySelector(".zine-slot-groups");
+const zineCompletionStatus = document.querySelector("#zine-completion-status");
+const zineSourcePicker = document.querySelector("#zine-source-picker");
+const zineSourceOptions = document.querySelector("#zine-source-options");
+const zineSourceEmpty = document.querySelector("#zine-source-empty");
+const zinePickerSlot = zineSourcePicker.querySelector("[data-zine-picker-slot]");
+let activeZineSlot = null;
 
 
 
@@ -805,6 +815,23 @@ fullscreenImageNext.hidden = true;
 const fullscreenImageEmpty = document.createElement("p");
 fullscreenImageEmpty.className = "fullscreen-image-empty";
 fullscreenImageEmpty.hidden = true;
+const fullscreenImageTools = document.createElement("div");
+fullscreenImageTools.className = "fullscreen-image-tools";
+fullscreenImageTools.setAttribute("role", "toolbar");
+fullscreenImageTools.setAttribute("aria-label", "Image zoom controls");
+const fullscreenZoomOut = document.createElement("button");
+fullscreenZoomOut.type = "button";
+fullscreenZoomOut.textContent = "Zoom out";
+fullscreenZoomOut.setAttribute("aria-label", "Zoom out");
+const fullscreenZoomReset = document.createElement("button");
+fullscreenZoomReset.type = "button";
+fullscreenZoomReset.textContent = "Reset zoom";
+fullscreenZoomReset.setAttribute("aria-label", "Reset zoom");
+const fullscreenZoomIn = document.createElement("button");
+fullscreenZoomIn.type = "button";
+fullscreenZoomIn.textContent = "Zoom in";
+fullscreenZoomIn.setAttribute("aria-label", "Zoom in");
+fullscreenImageTools.append(fullscreenZoomOut, fullscreenZoomReset, fullscreenZoomIn);
 const fullscreenCandidateLink = document.createElement("a");
 fullscreenCandidateLink.className = "candidate-pending-overlay fullscreen-candidate-pending";
 fullscreenCandidateLink.textContent = "Candidate Image Pending";
@@ -813,6 +840,7 @@ const fullscreenCropBox = document.createElement("div");
 fullscreenCropBox.className = "fullscreen-crop-box";
 fullscreenCropBox.hidden = true;
 fullscreenImageOverlay.append(
+  fullscreenImageTools,
   fullscreenImageClose,
   fullscreenImagePrevious,
   fullscreenImage,
@@ -824,12 +852,20 @@ fullscreenImageOverlay.append(
 document.body.append(fullscreenImageOverlay);
 const fullscreenImageZoom = window.ZetReviewImageZoom.attach(fullscreenImageOverlay, () => [fullscreenImage]);
 fullscreenImageZoom.sync("");
+fullscreenZoomOut.addEventListener("click", () => fullscreenImageZoom.step(-1));
+fullscreenZoomReset.addEventListener("click", () => fullscreenImageZoom.reset());
+fullscreenZoomIn.addEventListener("click", () => fullscreenImageZoom.step(1));
 fullscreenImage.addEventListener("load", () => {
   const viewport = fullscreenImage.closest(".review-zoom-viewport");
   const ratio = fullscreenImage.naturalWidth / fullscreenImage.naturalHeight;
   viewport.style.width = `min(100vw, ${fullscreenImage.naturalWidth}px, calc(100vh * ${ratio}))`;
   viewport.style.height = `min(100vh, ${fullscreenImage.naturalHeight}px, calc(100vw / ${ratio}))`;
   fullscreenImageZoom.sync(fullscreenImage.src);
+});
+fullscreenImage.addEventListener("error", () => {
+  fullscreenImage.hidden = true;
+  fullscreenImageEmpty.textContent = "Image unavailable. Close the viewer and try again.";
+  fullscreenImageEmpty.hidden = false;
 });
 const auxResourceMessage = document.querySelector("#aux-resource-message");
 const entityLibrarySearch = document.querySelector("#entity-library-search");
@@ -1016,28 +1052,14 @@ const imageCatalogReplaceStatus = document.querySelector("#image-catalog-replace
 const imageCatalogReplaceSubmit = document.querySelector("#image-catalog-replace-submit");
 const imageCatalogReplace = document.querySelector("#image-catalog-replace");
 const imageCatalogDelete = document.querySelector("#image-catalog-delete");
-const phaseComparisonStatus = document.querySelector("#phase-comparison-status");
-const phaseComparisonMessage = document.querySelector("#phase-comparison-message");
-const phaseComparisonCharacter = document.querySelector("#phase-comparison-character");
-const phaseComparisonLeftPhase = document.querySelector("#phase-comparison-left-phase");
-const phaseComparisonRightPhase = document.querySelector("#phase-comparison-right-phase");
-const phaseComparisonPipeline = document.querySelector("#phase-comparison-pipeline");
-const phaseComparisonLeftCostumeWrap = document.querySelector("#phase-comparison-left-costume-wrap");
-const phaseComparisonRightCostumeWrap = document.querySelector("#phase-comparison-right-costume-wrap");
-const phaseComparisonLeftCostume = document.querySelector("#phase-comparison-left-costume");
-const phaseComparisonRightCostume = document.querySelector("#phase-comparison-right-costume");
 const phaseComparisonPrev = document.querySelector("#phase-comparison-prev");
 const phaseComparisonNext = document.querySelector("#phase-comparison-next");
-const phaseComparisonMeta = document.querySelector("#phase-comparison-meta");
-const phaseComparisonLeftTitle = document.querySelector("#phase-comparison-left-title");
-const phaseComparisonRightTitle = document.querySelector("#phase-comparison-right-title");
 const phaseComparisonLeftImage = document.querySelector("#phase-comparison-left-image");
 const phaseComparisonRightImage = document.querySelector("#phase-comparison-right-image");
-const phaseComparisonLeftMeta = document.querySelector("#phase-comparison-left-meta");
-const phaseComparisonRightMeta = document.querySelector("#phase-comparison-right-meta");
 const compareSides = ["left", "right"].map(side => ({
   side, universe: document.querySelector(`#compare-${side}-universe`), character: document.querySelector(`#compare-${side}-character`),
   phase: document.querySelector(`#compare-${side}-phase`), target: document.querySelector(`#compare-${side}-target`),
+  image: document.querySelector(`#phase-comparison-${side}-image`),
 }));
 const comparePosition = document.querySelector("#compare-view-position");
 const busyCounts = new WeakMap();
@@ -1449,10 +1471,6 @@ function showAuxResourceMessage(message, kind = "info") {
   showMessageElement(auxResourceMessage, message, kind);
 }
 
-function showPhaseComparisonMessage(message, kind = "info") {
-  showMessageElement(phaseComparisonMessage, message, kind);
-}
-
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -1567,6 +1585,7 @@ function renderAssetTaskTable(tbody, tasks, selectedAskId, selectTask, emptyMess
   }
   for (const task of tasks) {
     const row = document.createElement("tr");
+    row.dataset.processManageable = item.manageable || "no";
     row.dataset.askId = task.ask_id;
     appendAssetSelectionCell(row, task);
     makeSelectableRow(row, task.display_label || task.ask_id, task.ask_id === selectedAskId, () => selectTask(task.ask_id));
@@ -3308,6 +3327,29 @@ function settingsSnapshot() {
   return JSON.stringify(automationPayloadFromForm());
 }
 
+function settingsSectionSnapshot(section) {
+  const values = [...section.querySelectorAll("input, select, textarea")]
+    .filter(control => control.form === automationForm)
+    .map(control => [control.dataset.llmRoleModel || control.id, control.type === "checkbox" ? control.checked : control.value]);
+  return JSON.stringify(values);
+}
+
+function updateSettingsSectionIndicators(reset = false) {
+  for (const section of document.querySelectorAll("#local-image-config-page [data-settings-section]")) {
+    const status = section.querySelector("[data-settings-save-state]");
+    if (!status) continue;
+    const snapshot = settingsSectionSnapshot(section);
+    if (reset) section.dataset.savedSettingsSnapshot = snapshot;
+    const baseline = section.dataset.savedSettingsSnapshot;
+    if (!baseline) {
+      setSaveState(status, "", "");
+      continue;
+    }
+    const dirty = snapshot !== baseline;
+    setSaveState(status, dirty ? "Unsaved" : "Saved", dirty ? "dirty" : "saved");
+  }
+}
+
 function setSaveState(container, text, kind = "") {
   if (!container) return;
   container.textContent = text;
@@ -3327,6 +3369,7 @@ function updateDirtyIndicators() {
   if (!(settingsDirty && settingsSaveState.classList.contains("error"))) {
     setSaveState(settingsSaveState, state.savedBaselines.settings ? (settingsDirty ? "Dirty" : "Saved") : "", settingsDirty ? "dirty" : "saved");
   }
+  updateSettingsSectionIndicators();
 }
 
 function editorGuardForPage(page = activePageName()) {
@@ -3518,6 +3561,8 @@ function renderTemplateManual() {
   if (!manual) {
     helpStatus.textContent = "No manuals available.";
     templateManualContent.replaceChildren();
+    templateManualCopy.disabled = true;
+    templateManualDownload.setAttribute("aria-disabled", "true");
     return;
   }
   state.selectedTemplateManual = manual.id;
@@ -3525,16 +3570,81 @@ function renderTemplateManual() {
   templateManualContent.innerHTML = manual.html;
   templateManualDownload.href = manual.download_url;
   templateManualDownload.download = manual.filename;
+  templateManualDownload.removeAttribute("aria-disabled");
+  templateManualCopy.disabled = false;
   helpStatus.textContent = manual.title;
 }
 
 async function loadTemplateManuals() {
   if (!state.templateManuals.length) {
-    const payload = await fetchJson("/api/help/template-manuals");
-    state.templateManuals = payload.manuals || [];
-    templateManualSelect.replaceChildren(...state.templateManuals.map((item) => option(item.id, item.title)));
+    helpStatus.textContent = "Loading manuals…";
+    templateManualSelect.disabled = templateManualCopy.disabled = true;
+    try {
+      const payload = await fetchJson("/api/help/template-manuals");
+      state.templateManuals = payload.manuals || [];
+      templateManualSelect.replaceChildren(...state.templateManuals.map((item) => option(item.id, item.title)));
+    } catch (error) {
+      templateManualSelect.replaceChildren();
+      templateManualContent.replaceChildren();
+      helpStatus.textContent = `Unable to load manuals: ${error.message}`;
+      return;
+    } finally {
+      const available = state.templateManuals.length > 0;
+      templateManualSelect.disabled = templateManualCopy.disabled = !available;
+    }
   }
   renderTemplateManual();
+}
+
+async function loadSourceEditorTemplateChoices() {
+  const token = ++sourceEditorTemplatesGeneration;
+  const scope = currentQuery();
+  sourceEditorTemplates = [];
+  sourceEditorTemplateSelect.replaceChildren(new Option("Choose a template", ""));
+  sourceEditorTemplateSelect.disabled = sourceEditorOpenTemplate.disabled = true;
+  sourceEditorTemplateScope.textContent = "";
+  if (!state.character || !state.phase) {
+    sourceEditorTemplateScope.textContent = "Choose a character and phase in the header first.";
+    return;
+  }
+  sourceEditorTemplateRefreshState(true);
+  sourceEditorTemplateScope.textContent = `Loading templates for ${state.character} · ${state.phase}…`;
+  try {
+    const [characterTemplate, costumes] = await Promise.all([
+      fetchJson(`/api/character-containers/character-assembly/template?${scope.toString()}`),
+      fetchJson(`/api/costumes?${scope.toString()}`),
+    ]);
+    if (token !== sourceEditorTemplatesGeneration || scope.toString() !== currentQuery().toString()) return;
+    sourceEditorTemplates = [{
+      source_path: characterTemplate.source_path,
+      source_label: `${state.character} · ${state.phase} · Character.md`,
+      editable: true,
+    }, ...(costumes.costumes || []).filter(item => item.path).map(item => ({
+      source_path: item.path,
+      source_label: `${state.character} · ${state.phase} · ${item.name || item.slug}`,
+      editable: true,
+    }))];
+    sourceEditorTemplateSelect.replaceChildren(
+      new Option("Choose a template", ""),
+      ...sourceEditorTemplates.map((item, index) => new Option(item.source_label, String(index))),
+    );
+    const current = sourceEditorTemplates.findIndex(item => item.source_path === state.sourceEditor?.path);
+    sourceEditorTemplateSelect.value = current >= 0 ? String(current) : "";
+    sourceEditorTemplateSelect.disabled = !sourceEditorTemplates.length;
+    sourceEditorOpenTemplate.disabled = current < 0;
+    sourceEditorTemplateScope.textContent = sourceEditorTemplates.length
+      ? `Available in ${state.character} · ${state.phase}.`
+      : `No templates are available in ${state.character} · ${state.phase}.`;
+  } catch (error) {
+    if (token !== sourceEditorTemplatesGeneration) return;
+    sourceEditorTemplateScope.textContent = `Templates unavailable: ${error.message}`;
+  } finally {
+    if (token === sourceEditorTemplatesGeneration) sourceEditorTemplateRefreshState(false);
+  }
+}
+
+function sourceEditorTemplateRefreshState(busy) {
+  sourceEditorRefreshTemplates.disabled = busy;
 }
 
 async function openTemplateManual(manualId) {
@@ -3723,8 +3833,7 @@ if (page === "onboarding") void window.ZetCharacterHub?.activate({fetchJson, cha
   }
   if (page === "minor-characters") await window.zetMinorCharacters?.load();
   if (page === "phase-comparison") {
-    initializePhaseComparisonControls();
-    await loadPhaseComparison();
+    initializeComparePage();
   }
   if (page === "costumes") {
     await loadCostumes();
@@ -3754,7 +3863,7 @@ if (page === "onboarding") void window.ZetCharacterHub?.activate({fetchJson, cha
         history.replaceState({}, '', '/?'+params);
       } catch (error) { window.ZetTaskCapture.notice(error.message); }
     }
-    const {mountNarrative} = await import('/static/narrative.js?v=20261115-unique-review-controls');
+    const {mountNarrative} = await import('/static/narrative.js?v=20261124-landscape-controls');
     if (!pageLoadIsCurrent(pageLoad)) return false;
     const pending = mountNarrative(document.querySelector('#narrative-page'), state.universeId, async next=>{
       const requested = location.search;
@@ -3812,6 +3921,7 @@ if (page === "onboarding") void window.ZetCharacterHub?.activate({fetchJson, cha
     universeCreateForm.reset();
     setUniverseMessage("universe-create-message", "", "");
   }
+  if (page === "template-editor") await loadSourceEditorTemplateChoices();
   if (page === "help") {
     await loadTemplateManuals();
   }
@@ -3932,7 +4042,8 @@ async function loadIdentityKeys() {
 function renderIdentityKeySources(selected = identityKeySource.value) {
   const options = [option("", "Select a locked local image")];
   for (const item of state.localAssetSources) {
-    const label = [window.ZetPipelineLabel(item.pipeline), item.view, item.costume].filter(Boolean).join(" · ");
+    const mode = item.render_mode === "final" ? "Final" : "Draft";
+    const label = [window.ZetPipelineLabel(item.pipeline), mode, item.view, item.costume].filter(Boolean).join(" · ");
     options.push(option(item.category_key, label));
   }
   identityKeySource.replaceChildren(...options);
@@ -4360,11 +4471,17 @@ function showCostumeWizardMessage(message, kind = "info") {
 
 const costumeSectionPanel = document.querySelector("#costume-wizard-sections");
 const costumeEquipmentToggle = document.querySelector("#costume-wizard-include-equipment");
+const costumeProposalAcceptance = new Set();
 
 function costumeSectionEdits(session) {
-  return Object.fromEntries(Array.from(costumeSectionPanel.querySelectorAll("[data-section]"))
+  const edits = Object.fromEntries(Array.from(costumeSectionPanel.querySelectorAll("[data-section]"))
     .filter((input) => input.value !== session.sections[input.dataset.section].text)
     .map((input) => [input.dataset.section, input.value]));
+  for (const key of costumeProposalAcceptance) {
+    const proposal = session.sections[key]?.proposal;
+    if (proposal !== null && proposal !== undefined) edits[key] = proposal;
+  }
+  return edits;
 }
 
 function syncCostumeSectionActions(session) {
@@ -4438,7 +4555,18 @@ function renderCostumeSections(session, running) {
       proposal.className = "costume-wizard-review";
       proposal.textContent = entry.proposal || "Replacement leaves this section empty.";
       card.append(proposal);
-      addAction(`Apply replacement: ${entry.label}`, "apply");
+      const accept = document.createElement("input");
+      accept.type = "checkbox";
+      accept.dataset.proposalAccept = key;
+      accept.checked = costumeProposalAcceptance.has(key);
+      accept.addEventListener("change", () => {
+        if (accept.checked) costumeProposalAcceptance.add(key);
+        else costumeProposalAcceptance.delete(key);
+        syncCostumeSectionActions(session);
+      });
+      const acceptLabel = document.createElement("label");
+      acceptLabel.append(accept, document.createTextNode(" Accept suggested replacement"));
+      card.append(acceptLabel);
     }
     card.append(actions);
   }
@@ -4489,10 +4617,17 @@ function setCostumeWizardSession(session) {
   renders.forEach((render, index) => {
     const card = document.createElement("article");
     const heading = document.createElement("strong");
-    heading.textContent = `Front test ${index + 1}${render.revision_id === session.revision_id ? " · current draft" : " · earlier draft"}`;
+    heading.textContent = `Front test ${index + 1} · ${render.revision_id === session.revision_id ? "current draft" : "earlier draft"} · revision ${render.revision_id}`;
     const image = document.createElement("img");
     image.src = `${render.image_url}?v=${encodeURIComponent(render.render_id)}`;
     image.alt = `Costume Wizard front test render ${index + 1}`;
+    image.tabIndex = 0;
+    image.setAttribute("role", "button");
+    image.setAttribute("aria-label", `Open full-size Costume Wizard test render ${index + 1}`);
+    image.addEventListener("click", () => window.ZetOpenFullscreenImage(image.src, image.alt));
+    image.addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); window.ZetOpenFullscreenImage(image.src, image.alt); }
+    });
     const review = document.createElement("p");
     review.textContent = render.review || "The test render is ready for review.";
     card.append(heading, image, review);
@@ -4544,6 +4679,7 @@ function scheduleCostumeWizardPoll(sessionId) {
       setCostumeWizardSession(payload.session);
     } catch (error) {
       showCostumeWizardMessage(error.message, "error");
+      if (costumeWizardDialog.open && state.costumeWizard?.session_id === sessionId) scheduleCostumeWizardPoll(sessionId);
     }
   }, 1800);
 }
@@ -4561,11 +4697,15 @@ function clearCostumeWizardIntake() {
   costumeWizardName.value = "";
   costumeWizardExtra.value = "";
   costumeEquipmentToggle.checked = true;
+  costumeProposalAcceptance.clear();
   for (const slot of document.querySelectorAll(".costume-wizard-image-slot")) {
     slot.querySelector(".costume-wizard-file").value = "";
     slot.querySelector(".costume-wizard-caption").value = "";
-    slot.querySelector(".costume-wizard-preview").removeAttribute("src");
-    slot.querySelector(".costume-wizard-preview").hidden = true;
+    const preview = slot.querySelector(".costume-wizard-preview");
+    if (preview.dataset.objectUrl) URL.revokeObjectURL(preview.dataset.objectUrl);
+    delete preview.dataset.objectUrl;
+    preview.removeAttribute("src");
+    preview.hidden = true;
   }
   state.costumeWizard = null;
   costumeWizardWorkspace.hidden = true;
@@ -4663,6 +4803,7 @@ async function saveCostumeWizardDraft() {
       method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ revision_id: session.revision_id, ...edits }),
     });
+    costumeProposalAcceptance.clear();
     setCostumeWizardSession(payload.session);
     showCostumeWizardMessage("Draft saved.");
   } catch (error) { showCostumeWizardMessage(error.message, "error"); }
@@ -4710,7 +4851,7 @@ async function acceptCostumeWizardDraft() {
     renderCostumeTable();
     renderCostumeEditor();
     costumeWizardDialog.close();
-    showCostumeMessage(payload.message || "Costume accepted.");
+    showCostumeMessage(`${payload.message || "Costume accepted."} Open Assets > Costume-Dressing to create production candidates.`);
   } catch (error) { showCostumeWizardMessage(error.message, "error"); }
 }
 
@@ -4729,24 +4870,28 @@ for (const slot of document.querySelectorAll(".costume-wizard-image-slot")) {
   const fileInput = slot.querySelector(".costume-wizard-file");
   const pasteZone = slot.querySelector(".costume-wizard-paste");
   const preview = slot.querySelector(".costume-wizard-preview");
-  window.ZetImageInput.attach(pasteZone, fileInput);
   const showPreview = (file) => {
     if (!file) return;
-    preview.src = URL.createObjectURL(file);
+    if (preview.dataset.objectUrl) URL.revokeObjectURL(preview.dataset.objectUrl);
+    preview.dataset.objectUrl = URL.createObjectURL(file);
+    preview.src = preview.dataset.objectUrl;
     preview.hidden = false;
   };
-  fileInput.addEventListener("change", () => showPreview(fileInput.files?.[0]));
-  pasteZone.addEventListener("click", () => pasteZone.focus());
-  pasteZone.addEventListener("paste", (event) => {
-    const item = Array.from(event.clipboardData?.items || []).find((entry) => entry.type.startsWith("image/"));
-    const file = item?.getAsFile();
-    if (!file) return;
-    event.preventDefault();
+  window.ZetImageInput.attach(pasteZone, fileInput, {onInventory:async item => {
+    const imagePath = item.image_path || item.path;
+    if (!imagePath) throw new Error("This inventory entry has no available image file.");
+    const response = await fetch(`/api/file?${new URLSearchParams({path:imagePath})}`);
+    if (!response.ok) throw new Error("The inventory image could not be read.");
+    const blob = await response.blob();
+    if (!blob.type.startsWith("image/")) throw new Error("The selected inventory file is not an image.");
     const transfer = new DataTransfer();
-    transfer.items.add(new File([file], `pasted-costume-${slot.dataset.slot}.png`, { type: file.type || "image/png" }));
+    transfer.items.add(new File([blob], `${item.label || item.tag || "inventory-image"}.${blob.type.split("/")[1] || "png"}`, {type:blob.type}));
     fileInput.files = transfer.files;
-    showPreview(fileInput.files[0]);
-  });
+    fileInput.dispatchEvent(new Event("change", {bubbles:true}));
+    const caption = slot.querySelector(".costume-wizard-caption");
+    if (!caption.value) caption.value = item.label || item.tag || "";
+  }});
+  fileInput.addEventListener("change", () => showPreview(fileInput.files?.[0]));
 }
 
 costumeWizardOpen.addEventListener("click", openCostumeWizard);
@@ -5489,6 +5634,97 @@ function renderZineStoryOptions() {
   zineFillStory.disabled = !state.zineStorySlug;
 }
 
+const zineRequiredSlots = ["front", "page_1", "page_3", "page_5", "back"];
+const zineSlotLabels = {front:"Front cover", page_1:"Page 1", page_2:"Page 2", page_3:"Page 3", page_4:"Page 4", page_5:"Page 5", page_6:"Page 6", back:"Back cover"};
+
+function updateZineSlotPresentation() {
+  const assigned = Object.entries(zineSlotInputs).filter(([, input]) => input.value.trim()).length;
+  const requiredAssigned = zineRequiredSlots.filter(key => zineSlotInputs[key].value.trim()).length;
+  zineCompletionStatus.textContent = `Assigned scenes: ${assigned} of 8 slots · ${requiredAssigned} of ${zineRequiredSlots.length} required for a complete print layout.`;
+  for (const oddPage of [1, 3, 5]) {
+    const odd = zineSlotInputs[`page_${oddPage}`].value.trim();
+    const even = zineSlotInputs[`page_${oddPage + 1}`].value.trim();
+    const groupStatus = zineSlotGroups.querySelector(`[data-zine-group-status="page_${oddPage}"]`);
+    groupStatus.textContent = `Pages ${oddPage}–${oddPage + 1}: ${Number(Boolean(odd)) + Number(Boolean(even))} of 2 assigned · ${odd ? "required scene assigned" : "required scene missing"}${!even ? " · spread" : ""}`;
+  }
+  for (const [key, input] of Object.entries(zineSlotInputs)) {
+    const source = state.zineStorySources.find(scene => scene.tag === input.value.trim());
+    const preview = zineSlotGroups.querySelector(`[data-zine-preview="${key}"]`);
+    const button = zineSlotGroups.querySelector(`[data-zine-choose="${key}"]`);
+    if (source) {
+      const image = preview.querySelector("img");
+      image.src = fileUrl(source.image_path, source.tag);
+      image.alt = `${source.title || source.scene_slug} assigned to ${zineSlotLabels[key]}`;
+      preview.querySelector("figcaption").textContent = `${source.title || source.scene_slug} · ${source.width} × ${source.height}`;
+      preview.hidden = false;
+      button.textContent = `Change ${zineSlotLabels[key].toLowerCase()}`;
+    } else {
+      preview.hidden = true;
+      preview.querySelector("img").removeAttribute("src");
+      preview.querySelector("figcaption").textContent = "";
+      button.textContent = `Choose ${zineSlotLabels[key].toLowerCase()}`;
+    }
+    const error = zineSlotGroups.querySelector(`[data-zine-error="${key}"]`);
+    if (input.value.trim()) {
+      input.removeAttribute("aria-invalid");
+      error.hidden = true;
+      error.textContent = "";
+    }
+  }
+  if (state.zineValidationVisible) validateZine(false);
+}
+
+function renderZineSourceOptions() {
+  zineSourceOptions.replaceChildren(...state.zineStorySources.map(source => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "zine-source-option";
+    const image = document.createElement("img");
+    image.src = fileUrl(source.image_path, source.tag);
+    image.alt = "";
+    image.loading = "lazy";
+    const title = document.createElement("strong");
+    title.textContent = source.title || source.scene_slug;
+    const details = document.createElement("small");
+    details.textContent = `${source.width} × ${source.height} · ${source.scene_slug}`;
+    button.append(image, title, details);
+    button.addEventListener("click", () => {
+      if (!activeZineSlot) return;
+      const slot = activeZineSlot;
+      zineSlotInputs[slot].value = source.tag;
+      zineSourcePicker.close();
+      updateZineSlotPresentation();
+      updateDirtyIndicators();
+      zineSlotGroups.querySelector(`[data-zine-choose="${slot}"]`)?.focus();
+    });
+    return button;
+  }));
+  zineSourceEmpty.hidden = Boolean(state.zineStorySources.length);
+}
+
+function openZineSourcePicker(slot) {
+  activeZineSlot = slot;
+  zinePickerSlot.textContent = zineSlotLabels[slot];
+  renderZineSourceOptions();
+  zineSourcePicker.showModal();
+}
+
+function validateZine(showErrors = true) {
+  if (showErrors) state.zineValidationVisible = true;
+  let valid = true;
+  for (const key of zineRequiredSlots) {
+    const input = zineSlotInputs[key];
+    const error = zineSlotGroups.querySelector(`[data-zine-error="${key}"]`);
+    const missing = !input.value.trim();
+    input.toggleAttribute("aria-invalid", missing);
+    error.textContent = missing ? `Choose a finished scene for ${zineSlotLabels[key]}.` : "";
+    error.hidden = !missing;
+    valid &&= !missing;
+  }
+  if (!valid) showZineMessage("Complete the required cover and odd-page scenes before creating the print layout.", "error");
+  return valid;
+}
+
 function setZineSpread(oddPage, enabled) {
   const evenPage = oddPage + 1;
   const oddInput = zineSlotInputs[`page_${oddPage}`];
@@ -5501,6 +5737,7 @@ function setZineSpread(oddPage, enabled) {
   } else if (!evenInput.value.trim() && oddInput.value.trim()) {
     evenInput.value = oddInput.value.trim();
   }
+  updateZineSlotPresentation();
 }
 
 function syncZineSpreadControls() {
@@ -5511,6 +5748,7 @@ function syncZineSpreadControls() {
     checkbox.checked = enabled;
     evenInput.disabled = enabled;
   }
+  updateZineSlotPresentation();
 }
 
 function clearZineEditor() {
@@ -5531,6 +5769,8 @@ function clearZineEditor() {
   zineSave.textContent = "Create Zine";
   zinePreviewSection.hidden = true;
   zinePreview.removeAttribute("src");
+  state.zineValidationVisible = false;
+  updateZineSlotPresentation();
   renderZineTable();
   showZineMessage("");
   state.savedBaselines.zine = zineSnapshot();
@@ -5564,7 +5804,9 @@ function renderZineDocument(document) {
   for (const [key, input] of Object.entries(zineSlotInputs)) {
     input.value = metadata.slots?.[key] || "";
   }
+  state.zineValidationVisible = false;
   syncZineSpreadControls();
+  updateZineSlotPresentation();
   zineEdit.disabled = false;
   zineRegenerate.disabled = false;
   zineDelete.disabled = false;
@@ -5584,8 +5826,12 @@ async function loadZineStorySources() {
   state.zineStorySlug = zineStorySelect.value || state.zineStorySlug;
   state.zineStorySources = [];
   zineSceneOptions.replaceChildren();
+  renderZineSourceOptions();
+  updateZineSlotPresentation();
   if (!state.zineStorySlug) {
     zineFillStory.disabled = true;
+    updateZineSlotPresentation();
+    renderZineSourceOptions();
     return;
   }
   try {
@@ -5598,10 +5844,14 @@ async function loadZineStorySources() {
       return item;
     }));
     zineFillStory.disabled = !state.zineStorySources.length;
+    renderZineSourceOptions();
+    updateZineSlotPresentation();
   } catch (error) {
     if (isRequestCancellation(error)) return;
     zineFillStory.disabled = true;
     showZineMessage(error.message, "error");
+    renderZineSourceOptions();
+    updateZineSlotPresentation();
   }
 }
 
@@ -5709,6 +5959,7 @@ function fillZineFromStory() {
     }
   }
   syncZineSpreadControls();
+  updateZineSlotPresentation();
   const remaining = state.zineStorySources.length - assigned;
   showZineMessage(remaining > 0 ? `Filled from story. ${remaining} scene image(s) were left unassigned.` : "Filled from story.");
 }
@@ -5721,6 +5972,7 @@ function zinePayload() {
 }
 
 async function saveZine() {
+  if (!validateZine()) return false;
   const currentSlug = state.selectedZineSlug;
   const isEdit = Boolean(currentSlug);
   zineSave.disabled = true;
@@ -5739,6 +5991,17 @@ async function saveZine() {
     return true;
   } catch (error) {
     showZineMessage(error.message, "error");
+    const invalidPage = error.message.match(/Unreadable image for (front|back|page\s+\d+):/i);
+    if (invalidPage) {
+      const key = invalidPage[1].toLowerCase().replace(/\s+/, "_");
+      const input = zineSlotInputs[key];
+      const fieldError = zineSlotGroups.querySelector(`[data-zine-error="${key}"]`);
+      if (input && fieldError) {
+        input.setAttribute("aria-invalid", "true");
+        fieldError.textContent = error.message;
+        fieldError.hidden = false;
+      }
+    }
     return false;
   } finally {
     zineSave.disabled = false;
@@ -6259,7 +6522,9 @@ async function setSelectedSceneCandidatePassed(passed) {
 }
 
 async function loadSceneCandidates() {
-  sceneCandidateStatus.textContent='Loading candidates…';
+  sceneCandidateStatus.textContent = "Loading import sources…";
+  sceneCandidateMessage.hidden = true;
+  sceneCandidateSourceMeta.textContent = "";
   try {
     await loadStories();
     state.sceneCandidateSources=await fetchJson('/api/narrative/candidate-sources');
@@ -6267,14 +6532,29 @@ async function loadSceneCandidates() {
     sceneCandidateSource.replaceChildren(...state.sceneCandidateSources.map(source=>option(source.key,source.label)));
     sceneCandidateSource.value=state.selectedSceneCandidateSource || '';
     const source=state.sceneCandidateSources.find(source=>source.key===state.selectedSceneCandidateSource);
-    if(!source){state.sceneCandidates=[];renderSceneCandidates();return;}
+    if(!source){
+      state.sceneCandidates=[];
+      state.sceneCandidatesLoadState = "unavailable";
+      sceneCandidateStatus.textContent = state.sceneCandidateSources.length ? "Choose an import source." : "No import sources configured.";
+      showSceneCandidateMessage(state.sceneCandidateSources.length
+        ? "Select a source to review its candidates."
+        : "Configure a Narrative candidate source before importing candidates.", state.sceneCandidateSources.length ? "info" : "error");
+      renderSceneCandidates();
+      return;
+    }
     sceneCandidateSourceMeta.textContent=`${source.path} · read-only`;
     state.selectedSceneCandidateStorySlug ||= source.default_story_id || state.stories[0]?.id;
     state.sceneCandidates=await fetchJson(`/api/narrative/candidates?source_key=${encodeURIComponent(source.key)}`);
     state.sceneCandidatesLoadState='selected';
     sceneCandidateStatus.textContent=`${state.sceneCandidates.length} candidates`;
     renderSceneCandidates();
-  }catch(error){showSceneCandidateMessage(error.message,'error');}
+  }catch(error){
+    state.sceneCandidates = [];
+    state.sceneCandidatesLoadState = "failed";
+    sceneCandidateStatus.textContent = "Unable to load import candidates.";
+    renderSceneCandidates();
+    showSceneCandidateMessage(error.message,'error');
+  }
 }
 async function importSelectedSceneCandidate() {
   const candidate=selectedSceneCandidate();if(!candidate)return;
@@ -7250,12 +7530,13 @@ async function searchEntityLibrary(preserveOffset = false) {
     values.facet_value = facet_value;
   }
   for (const [key, value] of Object.entries(values)) if (value) params.set(key, value);
-  const activeFilters = Object.entries(values).filter(([key, value]) => key !== "q" && key !== "facet_value" && value);
+  const activeFilters = Object.entries(values).filter(([key, value]) => key !== "facet_value" && value);
   entityLibraryActiveFilterCount.textContent = activeFilters.length ? ` · ${activeFilters.length} active` : "";
   const chipContainer = document.querySelector("#entity-library-filter-chips");
   chipContainer.replaceChildren();
-  const filterControls = { entity_id: entityLibraryFilterEntity, entity_type: entityLibraryFilterType, variant_id: entityLibraryFilterVariant, set_id: entityLibraryFilterSet, facet_namespace: entityLibraryFilterFacet, facet_value: entityLibraryFilterFacet, status: entityLibraryFilterStatus, origin: entityLibraryFilterOrigin, include_obsolete: entityLibraryIncludeObsolete };
+  const filterControls = { q: entityLibrarySearch, entity_id: entityLibraryFilterEntity, entity_type: entityLibraryFilterType, variant_id: entityLibraryFilterVariant, set_id: entityLibraryFilterSet, facet_namespace: entityLibraryFilterFacet, facet_value: entityLibraryFilterFacet, status: entityLibraryFilterStatus, origin: entityLibraryFilterOrigin, include_obsolete: entityLibraryIncludeObsolete };
   const chipLabels = new Map();
+  if (values.q) chipLabels.set("q", `Search: ${values.q}`);
   if (entityLibraryFilterFacet.value) chipLabels.set("facet_namespace", entityLibraryFilterFacet.selectedOptions[0]?.textContent || entityLibraryFilterFacet.value.replace("\u0000", ":"));
   for (const [key, value] of activeFilters) {
     const chip = document.createElement("button");
@@ -7263,6 +7544,7 @@ async function searchEntityLibrary(preserveOffset = false) {
     chip.className = "inventory-filter-chip";
     const control = filterControls[key];
     chip.textContent = `${chipLabels.get(key) || control?.selectedOptions?.[0]?.textContent || (key === "include_obsolete" ? "Include obsolete images" : value)} ×`;
+    chip.setAttribute("aria-label", `Remove ${chipLabels.get(key) || control?.selectedOptions?.[0]?.textContent || value} filter`);
     chip.addEventListener("click", () => {
       if (key === "include_obsolete") control.checked = false;
       else if (control) control.value = "";
@@ -8288,10 +8570,6 @@ async function deleteImageCatalogReferenceSet() {
   }
 }
 
-function initializePhaseComparisonControls() {
-  initializeComparePage();
-}
-
 const compareState = { sides: [], views: [], index: 0, cache: new Map(), generation: [0, 0], imageGeneration: [0, 0] };
 function initializeComparePage() {
   const saved = JSON.parse(sessionStorage.getItem("zet.compare.sides") || "null");
@@ -8307,19 +8585,29 @@ function initializeComparePage() {
 
 async function loadCompareSide(index) {
   const controls = compareSides[index], selected = compareState.sides[index], generation = ++compareState.generation[index];
-  const params = new URLSearchParams({ character: selected.character || "", phase: selected.phase || "", target: selected.target || "" });
-  const response = await fetch(`/api/compare/side?${params}`, { headers: { "X-Zet-Universe": selected.universe } });
-  if (!response.ok) throw new Error("Unable to load comparison side.");
-  const payload = await response.json();
-  if (generation !== compareState.generation[index]) return;
-  selected.character = payload.character; selected.phase = payload.phase; selected.target = payload.target;
-  setSelectOptions(controls.character, payload.characters || []); controls.character.value = selected.character;
-  setSelectOptions(controls.phase, payload.phases || []); controls.phase.value = selected.phase;
-  setSelectOptionsWithLabels(controls.target, payload.targets || []); controls.target.value = selected.target;
-  selected.views = payload.views || {};
-  compareState.sides[index] = selected;
-  sessionStorage.setItem("zet.compare.sides", JSON.stringify(compareState.sides));
+  selected.views = {};
+  selected.error = "";
   updateCompareViews();
+  const params = new URLSearchParams({ character: selected.character || "", phase: selected.phase || "", target: selected.target || "" });
+  try {
+    const response = await fetch(`/api/compare/side?${params}`, { headers: { "X-Zet-Universe": selected.universe } });
+    if (!response.ok) throw new Error("Unable to load comparison side.");
+    const payload = await response.json();
+    if (generation !== compareState.generation[index]) return;
+    selected.character = payload.character; selected.phase = payload.phase; selected.target = payload.target;
+    setSelectOptions(controls.character, payload.characters || []); controls.character.value = selected.character;
+    setSelectOptions(controls.phase, payload.phases || []); controls.phase.value = selected.phase;
+    setSelectOptionsWithLabels(controls.target, payload.targets || []); controls.target.value = selected.target;
+    selected.views = payload.views || {};
+    compareState.sides[index] = selected;
+    sessionStorage.setItem("zet.compare.sides", JSON.stringify(compareState.sides));
+    updateCompareViews();
+  } catch (error) {
+    if (generation !== compareState.generation[index]) return;
+    selected.views = {};
+    selected.error = error.message || "Unable to load comparison side.";
+    updateCompareViews();
+  }
 }
 
 function updateCompareViews() {
@@ -8338,14 +8626,19 @@ async function renderCompareImage(index) {
   const box = index ? phaseComparisonRightImage : phaseComparisonLeftImage;
   const asset = side?.views?.[view];
   box.replaceChildren();
-  if (!asset) { box.textContent = view ? "No locked image" : "No comparison images"; return; }
+  if (!asset) { box.textContent = side?.error ? `Unable to load this side: ${side.error}` : view ? "No locked image" : "No comparison images"; return; }
   const params = new URLSearchParams({ path: asset.path, universe_id: side.universe, v: asset.revision });
   const url = `/api/file?${params}`;
   let objectUrl = compareState.cache.get(url);
-  if (!objectUrl) {
-    const response = await fetch(url);
-    if (!response.ok) { box.textContent = "Image unavailable"; return; }
-    objectUrl = URL.createObjectURL(await response.blob()); compareState.cache.set(url, objectUrl);
+  try {
+    if (!objectUrl) {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Image unavailable.");
+      objectUrl = URL.createObjectURL(await response.blob()); compareState.cache.set(url, objectUrl);
+    }
+  } catch (error) {
+    if (imageGeneration === compareState.imageGeneration[index]) box.textContent = `${error.message} Other side remains available.`;
+    return;
   }
   if (imageGeneration !== compareState.imageGeneration[index] || view !== compareState.views[compareState.index]) return;
   const image = document.createElement("img"); image.src = objectUrl; image.alt = `${side.character} ${side.phase} ${view}`; enableFullscreenImage(image); box.append(image);
@@ -8356,183 +8649,6 @@ function changeCompareSelection(index, key, value) {
   if (key === "character") side.phase = "";
   if (key === "universe" || key === "character" || key === "phase") side.target = "";
   void loadCompareSide(index);
-}
-
-function initializePhaseComparisonControlsLegacy() {
-  // Seed comparison controls from the current dashboard context when needed.
-  if (!state.phaseComparison.character) {
-    state.phaseComparison.character = state.character || state.characters[0] || "";
-  }
-  if (!state.phaseComparison.pipeline) {
-    state.phaseComparison.pipeline = "Character-Assembly";
-  }
-  setSelectOptions(phaseComparisonCharacter, state.characters || []);
-  phaseComparisonCharacter.value = state.phaseComparison.character || "";
-  syncPhaseComparisonPhaseOptions();
-}
-
-function syncPhaseComparisonPhaseOptions() {
-  // Keep left and right phase dropdowns valid for the selected comparison character.
-  const character = phaseComparisonCharacter.value || state.phaseComparison.character || "";
-  const phases = state.phasesByCharacter[character] || [];
-  const fallbackLeft = state.phase && phases.includes(state.phase) ? state.phase : phases[0] || "";
-  const fallbackRight = phases.find((phase) => phase !== fallbackLeft) || fallbackLeft;
-  state.phaseComparison.character = character;
-  state.phaseComparison.leftPhase = phases.includes(state.phaseComparison.leftPhase)
-    ? state.phaseComparison.leftPhase
-    : fallbackLeft;
-  state.phaseComparison.rightPhase = phases.includes(state.phaseComparison.rightPhase)
-    ? state.phaseComparison.rightPhase
-    : fallbackRight;
-  setSelectOptions(phaseComparisonLeftPhase, phases);
-  setSelectOptions(phaseComparisonRightPhase, phases);
-  phaseComparisonLeftPhase.value = state.phaseComparison.leftPhase || "";
-  phaseComparisonRightPhase.value = state.phaseComparison.rightPhase || "";
-}
-
-async function loadPhaseComparison({ preserveSlot = true, resetIndex = false } = {}) {
-  const character = phaseComparisonCharacter.value || state.phaseComparison.character;
-  const leftPhase = phaseComparisonLeftPhase.value || state.phaseComparison.leftPhase;
-  const rightPhase = phaseComparisonRightPhase.value || state.phaseComparison.rightPhase;
-  if (!character || !leftPhase || !rightPhase) {
-    clearPhaseComparison("Choose a character and two phases.");
-    return;
-  }
-  phaseComparisonStatus.textContent = "Loading phase comparison...";
-  const params = new URLSearchParams({
-    character,
-    left_phase: leftPhase,
-    right_phase: rightPhase,
-    pipeline: phaseComparisonPipeline.value || state.phaseComparison.pipeline || "Character-Assembly",
-    selected_index: String(resetIndex ? 0 : state.phaseComparison.selectedIndex || 0),
-    selected_slot_key: preserveSlot ? (state.phaseComparison.selectedSlotKey || "") : "",
-    left_costume: phaseComparisonLeftCostume.value || state.phaseComparison.leftCostume || "",
-    right_costume: phaseComparisonRightCostume.value || state.phaseComparison.rightCostume || "",
-  });
-  try {
-    const payload = await fetchJson(`/api/phase-comparison?${params.toString()}`);
-    renderPhaseComparison(payload);
-  } catch (error) {
-    if (isRequestCancellation(error)) return;
-    clearPhaseComparison("Phase comparison failed.");
-    showPhaseComparisonMessage(error.message, "error");
-  }
-}
-
-function renderPhaseComparison(payload) {
-  state.phaseComparison.character = payload.character || "";
-  state.phaseComparison.leftPhase = payload.left_phase || "";
-  state.phaseComparison.rightPhase = payload.right_phase || "";
-  state.phaseComparison.pipeline = payload.pipeline || "";
-  state.phaseComparison.leftCostume = payload.selected_left_costume || "";
-  state.phaseComparison.rightCostume = payload.selected_right_costume || "";
-  state.phaseComparison.selectedIndex = payload.selected_index || 0;
-  state.phaseComparison.selectedSlotKey = payload.selected_row?.slot_key || "";
-  state.phaseComparison.rows = payload.rows || [];
-  phaseComparisonCharacter.value = state.phaseComparison.character;
-  syncPhaseComparisonPhaseOptions();
-  const currentPipeline = phaseComparisonPipeline.value;
-  setSelectOptionsWithLabels(phaseComparisonPipeline, (payload.available_pipelines || []).map(value => ({value, label: window.ZetPipelineLabel(value)})));
-  phaseComparisonPipeline.value = (payload.available_pipelines || []).includes(payload.pipeline)
-    ? payload.pipeline
-    : ((payload.available_pipelines || []).includes(currentPipeline) ? currentPipeline : (((payload.available_pipelines || []).includes("Character-Assembly") ? "Character-Assembly" : "")));
-  renderPhaseComparisonCostumeControls(payload);
-  phaseComparisonStatus.textContent = `${state.phaseComparison.rows.length} comparison slot(s)`;
-  phaseComparisonPrev.disabled = state.phaseComparison.rows.length <= 1;
-  phaseComparisonNext.disabled = state.phaseComparison.rows.length <= 1;
-  renderPhaseComparisonRow(payload.selected_row || null);
-  showPhaseComparisonMessage("");
-}
-
-function renderPhaseComparisonCostumeControls(payload) {
-  // Costume-Dressing compares independently selected costumes by shared view slots.
-  const showCostumes = payload.pipeline === "Costume-Dressing";
-  phaseComparisonLeftCostumeWrap.hidden = !showCostumes;
-  phaseComparisonRightCostumeWrap.hidden = !showCostumes;
-  if (!showCostumes) {
-    phaseComparisonLeftCostume.replaceChildren();
-    phaseComparisonRightCostume.replaceChildren();
-    return;
-  }
-  setSelectOptions(phaseComparisonLeftCostume, payload.left_costumes || []);
-  setSelectOptions(phaseComparisonRightCostume, payload.right_costumes || []);
-  phaseComparisonLeftCostume.value = payload.selected_left_costume || "";
-  phaseComparisonRightCostume.value = payload.selected_right_costume || "";
-}
-
-function clearPhaseComparison(message = "No comparison rows.") {
-  state.phaseComparison.rows = [];
-  state.phaseComparison.selectedIndex = 0;
-  state.phaseComparison.selectedSlotKey = "";
-  state.phaseComparison.leftCostume = "";
-  state.phaseComparison.rightCostume = "";
-  phaseComparisonStatus.textContent = message;
-  phaseComparisonMeta.textContent = "";
-  phaseComparisonPrev.disabled = true;
-  phaseComparisonNext.disabled = true;
-  phaseComparisonLeftCostumeWrap.hidden = true;
-  phaseComparisonRightCostumeWrap.hidden = true;
-  phaseComparisonLeftTitle.textContent = "Left Phase";
-  phaseComparisonRightTitle.textContent = "Right Phase";
-  renderPhaseComparisonSide(phaseComparisonLeftImage, phaseComparisonLeftMeta, null);
-  renderPhaseComparisonSide(phaseComparisonRightImage, phaseComparisonRightMeta, null);
-}
-
-function renderPhaseComparisonRow(row) {
-  if (!row) {
-    clearPhaseComparison();
-    return;
-  }
-  phaseComparisonMeta.textContent =
-    `${window.ZetPipelineLabel(row.pipeline)} | ${row.slot_label} | ${state.phaseComparison.selectedIndex + 1} of ${state.phaseComparison.rows.length}`;
-  phaseComparisonLeftTitle.textContent = row.left?.phase || "Left Phase";
-  phaseComparisonRightTitle.textContent = row.right?.phase || "Right Phase";
-  renderPhaseComparisonSide(phaseComparisonLeftImage, phaseComparisonLeftMeta, row.left);
-  renderPhaseComparisonSide(phaseComparisonRightImage, phaseComparisonRightMeta, row.right);
-}
-
-function renderPhaseComparisonSide(imageContainer, metaContainer, side) {
-  imageContainer.replaceChildren();
-  imageContainer.classList.toggle("missing-slot", !side?.image_exists);
-  if (side?.image_exists && side.image_path) {
-    const image = document.createElement("img");
-    image.alt = side.label || "Locked asset";
-    image.src = fileUrl(side.image_path, side.updated_at || Date.now().toString());
-    imageContainer.append(image);
-  } else {
-    imageContainer.textContent = side?.label || "No locked asset for this slot.";
-  }
-  renderPhaseComparisonMeta(metaContainer, side);
-}
-
-function renderPhaseComparisonMeta(container, side) {
-  container.replaceChildren();
-  const rows = [
-    ["Asset", side?.asset_id ? `Asset ${side.asset_id}` : "Missing"],
-    ["Body", side?.body_view || ""],
-    ["Head", side?.head_view || ""],
-    ["Costume", side?.costume || ""],
-    ["Expression", side?.expression || ""],
-  ];
-  for (const [label, value] of rows) {
-    const term = document.createElement("dt");
-    term.textContent = label;
-    const description = document.createElement("dd");
-    description.textContent = value || "-";
-    container.append(term, description);
-  }
-}
-
-function movePhaseComparison(delta) {
-  // Move to the next or previous comparison slot, wrapping at both ends.
-  if (!state.phaseComparison.rows.length) {
-    return;
-  }
-  const length = state.phaseComparison.rows.length;
-  const nextIndex = (state.phaseComparison.selectedIndex + delta + length) % length;
-  state.phaseComparison.selectedIndex = nextIndex;
-  state.phaseComparison.selectedSlotKey = "";
-  loadPhaseComparison({ preserveSlot: false });
 }
 
 async function loadPromptReviewTasks(preferredAskId = null) {
@@ -8949,6 +9065,8 @@ function addEditorMeta(label, value) {
 
 function renderSourceEditor(detail) {
   state.sourceEditor = detail;
+  sourceEditorText.disabled = false;
+  document.querySelector("#source-editor-empty").hidden = true;
   sourceEditorTitle.textContent = detail.source?.source_label || detail.path || "Source";
   const templateLabel = detail.template_kind ? `${detail.template_kind === "character" ? "Character" : "Costume"} template` : "";
   sourceEditorStatus.textContent = templateLabel || detail.editor_type || "";
@@ -8959,6 +9077,11 @@ function renderSourceEditor(detail) {
   addEditorMeta("JSON", detail.json_pointer);
   addEditorMeta("Source lines", detail.start_line ? `${detail.start_line}-${detail.end_line || detail.start_line}` : "");
   sourceEditorText.value = detail.text || "";
+  const templateIndex = sourceEditorTemplates.findIndex(item => item.source_path === detail.path);
+  if (templateIndex >= 0) {
+    sourceEditorTemplateSelect.value = String(templateIndex);
+    sourceEditorOpenTemplate.disabled = false;
+  }
   window.ZetTemplateEditor.load(detail, (url, payload) => fetchJson(url, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
   }));
@@ -9503,7 +9626,25 @@ function renderTurnaroundTable() {
     }
     row.append(actionCell);
     const missingCell = document.createElement("td");
-    missingCell.textContent = (rowData.missing_views || []).join(", ");
+    const missingViews = rowData.missing_views || [];
+    if (String(rowData.turnaround_id || "").startsWith("Local-") && missingViews.length) {
+      const pipeline = String(rowData.source_pipeline || "").toLowerCase().replaceAll("_", "-");
+      const pipelineByName = {"body-reference":"body-reference", "head-image-edit":"head-image-edit", "character-assembly":"character-assembly", "costume-dressing":"costume-dressing"};
+      const viewByLabel = {"Front":"FRONT", "Front-Left-3-4":"FRONT_LEFT_3_4", "Front-Right-3-4":"FRONT_RIGHT_3_4", "Left-Profile":"LEFT_PROFILE", "Right-Profile":"RIGHT_PROFILE", "Back-Left-3-4":"BACK_LEFT_3_4", "Back-Right-3-4":"BACK_RIGHT_3_4", "Back":"BACK"};
+      const pipelineId = pipelineByName[pipeline];
+      if (pipelineId) {
+        missingViews.forEach((view) => {
+          const link = document.createElement("a");
+          const params = new URLSearchParams({page:"character-asset-container", character:state.character, phase:state.phase, universe_id:state.universeId, pipeline:pipelineId, view:viewByLabel[view] || view});
+          if (rowData.costume) params.set("costume", rowData.costume);
+          link.href = `/?${params}`;
+          link.textContent = view;
+          link.setAttribute("aria-label", `Open missing ${view} source workspace`);
+          missingCell.append(link);
+        });
+        missingCell.classList.add("turnaround-missing-links");
+      } else missingCell.textContent = missingViews.join(", ");
+    } else missingCell.textContent = missingViews.join(", ");
     row.append(missingCell);
     makeSelectableRow(row, rowData.label || rowData.turnaround_id, rowData.turnaround_id === state.selectedTurnaroundId, () => selectTurnaround(rowData.turnaround_id));
     turnaroundTableBody.append(row);
@@ -9885,11 +10026,36 @@ function renderProcessRows(processes, configPage = false) {
   processTableBody.replaceChildren();
   for (const item of processes) {
     const row = document.createElement("tr");
-    for (const value of [item.label || item.process_id, item.running, item.duplicates, item.pids]) {
-      const cell = document.createElement("td");
-      cell.textContent = value ?? "";
-      row.append(cell);
-    }
+    const labelCell = document.createElement("td");
+    labelCell.textContent = item.label || item.process_id;
+    const running = item.running === "yes";
+    const statusCell = document.createElement("td");
+    statusCell.textContent = running ? "Running" : "Stopped";
+    statusCell.className = running ? "process-status-running" : "process-status-stopped";
+    const duplicatesCell = document.createElement("td");
+    const duplicates = Number(item.duplicates || 0);
+    duplicatesCell.textContent = duplicates ? `${duplicates} additional process${duplicates === 1 ? "" : "es"}` : "None";
+    if (duplicates) duplicatesCell.classList.add("process-status-warning");
+    const detailsCell = document.createElement("td");
+    if (item.pids || item.command) {
+      const details = document.createElement("details");
+      const summary = document.createElement("summary");
+      summary.textContent = "Show process details";
+      const content = document.createElement("div");
+      if (item.pids) {
+        const pids = document.createElement("p");
+        pids.textContent = `Process IDs: ${item.pids}`;
+        content.append(pids);
+      }
+      if (item.command) {
+        const command = document.createElement("pre");
+        command.textContent = item.command;
+        content.append(command);
+      }
+      details.append(summary, content);
+      detailsCell.append(details);
+    } else detailsCell.textContent = "No process details available.";
+    row.append(labelCell, statusCell, duplicatesCell, detailsCell);
     const actionCell = document.createElement("td");
     const actions = document.createElement("div");
     actions.className = "mini-actions";
@@ -9898,37 +10064,70 @@ function renderProcessRows(processes, configPage = false) {
       button.type = "button";
       button.className = action === "stop" ? "danger-action" : "update-action";
       button.textContent = action;
-      button.disabled = item.manageable !== "yes";
+      button.setAttribute("aria-label", `${action} ${item.label || item.process_id}`);
+      button.disabled = item.manageable !== "yes" || (action === "start" ? running : !running);
       button.addEventListener("click", () => configPage
-        ? runConfigProcessAction(`/api/config/processes/${item.process_id}/${action}`)
-        : runAiControlsAction(`/api/ai-controls/processes/${item.process_id}/${action}`));
+        ? runConfigProcessAction(`/api/config/processes/${item.process_id}/${action}`, row, action)
+        : runAiControlsAction(`/api/ai-controls/processes/${item.process_id}/${action}`, row, action));
       actions.append(button);
     }
-    actionCell.append(actions);
+    const actionStatus = document.createElement("span");
+    actionStatus.className = "process-row-status";
+    actionStatus.setAttribute("role", "status");
+    actionStatus.setAttribute("aria-live", "polite");
+    actionCell.append(actions, actionStatus);
     row.append(actionCell);
     processTableBody.append(row);
   }
 }
 
-async function runConfigProcessAction(url) {
-  showLocalImageConfigMessage("Working...");
+function setProcessRowActionState(row, action, message, kind = "") {
+  if (!row?.isConnected) return;
+  const status = row.querySelector(".process-row-status");
+  status.textContent = message;
+  status.className = `process-row-status ${kind}`.trim();
+  if (kind === "error") status.setAttribute("role", "alert");
+  else status.setAttribute("role", "status");
+  for (const button of row.querySelectorAll(".mini-actions button")) button.disabled = true;
+}
+
+function restoreProcessRowActions(row, action) {
+  if (!row?.isConnected) return;
+  const running = row.querySelector(".process-status-running") !== null;
+  for (const button of row.querySelectorAll(".mini-actions button")) {
+    const name = button.textContent;
+    button.disabled = row.dataset.processManageable !== "yes"
+      || (name === "start" ? running : !running);
+  }
+}
+
+async function runConfigProcessAction(url, row, action) {
+  const processName = row?.cells[0]?.textContent || "process";
+  setProcessRowActionState(row, action, `${action === "start" ? "Starting" : action === "stop" ? "Stopping" : "Restarting"} ${processName}…`);
+  showLocalImageConfigMessage(`${action} ${processName}…`);
   try {
     const payload = await fetchJson(url, { method: "POST" });
     renderProcessRows(payload.processes || [], true);
     showLocalImageConfigMessage(payload.message || "Action complete.");
   } catch (error) {
+    setProcessRowActionState(row, action, error.message, "error");
+    restoreProcessRowActions(row, action);
     showLocalImageConfigMessage(error.message, "error");
   }
 }
 
-async function runAiControlsAction(url) {
+async function runAiControlsAction(url, row, action) {
   const showMessage = activePageName() === "local-image-config" ? showLocalImageConfigMessage : showAiControlsMessage;
-  showMessage("Working...");
+  const processName = row?.cells[0]?.textContent || "process";
+  setProcessRowActionState(row, action, `${action === "start" ? "Starting" : action === "stop" ? "Stopping" : "Restarting"} ${processName}…`);
+  showMessage(`${action} ${processName}…`);
   try {
     const payload = await fetchJson(url, { method: "POST" });
     renderAiControls(payload);
     showMessage(payload.message || "Action complete.");
   } catch (error) {
+    setProcessRowActionState(row, action, error.message, "error");
+    restoreProcessRowActions(row, action);
     showMessage(error.message, "error");
   }
 }
@@ -9977,7 +10176,11 @@ function appendPipelineInspectionNodes(nodes, container, search, ancestorMatches
     }
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = window.ZetPipelineLabel(item.label);
+    const sourceLabel = item.kind === "current-character" ? "Character container"
+      : item.kind === "narrative" ? "Narrative"
+        : item.kind === "scene" ? "Legacy scene"
+          : "Legacy character";
+    button.textContent = `${sourceLabel} · ${window.ZetPipelineLabel(item.label)}`;
     button.title = item.path || "";
     if (item.pipeline_id === state.selectedPipelineInspectionId) button.setAttribute("aria-current", "true");
     button.addEventListener("click", () => selectPipelineInspection(item.pipeline_id));
@@ -10000,6 +10203,7 @@ function clearPipelineInspectionPreview(message = "Select a file to preview its 
   pipelineInspectionText.textContent = "";
   pipelineInspectionImage.hidden = true;
   pipelineInspectionImage.removeAttribute("src");
+  pipelineInspectionImage.closest(".fullscreen-image-button")?.setAttribute("hidden", "");
   pipelineInspectionEmpty.hidden = false;
   pipelineInspectionEmpty.textContent = message;
   pipelineInspectionCopy.disabled = true;
@@ -10079,6 +10283,8 @@ async function selectPipelineInspectionFile(fileId) {
     } else if (file.kind === "image") {
       pipelineInspectionImage.src = `/api/pipeline-inspection/file?${params.toString()}`;
       pipelineInspectionImage.hidden = false;
+      enableFullscreenImage(pipelineInspectionImage);
+      pipelineInspectionImage.closest(".fullscreen-image-button")?.removeAttribute("hidden");
     } else {
       pipelineInspectionEmpty.textContent = "Preview is available for Markdown, JSON, TXT, LOG, and image files.";
       pipelineInspectionEmpty.hidden = false;
@@ -10168,16 +10374,12 @@ function renderPipelineControls(payload) {
   settingRenderBackend.value = automation.render_backend || "manual_chatgpt";
   settingDraftTargetPixels.value = automation.draft_target_pixels ?? 1048576;
   settingFinalTargetPixels.value = automation.final_target_pixels ?? 4194304;
-  pipelineConfigPaths.textContent = `Config: ${payload.config_path || ""} | Pipelines: ${payload.pipelines_path || ""}`;
+  pipelineConfigPaths.textContent = `Config: ${payload.config_path || ""} | Legacy pipeline config: ${payload.pipelines_path || ""}`;
   renderRows(projectConfigTableBody, payload.project_config_rows || [], ["Scope", "Setting", "Value"]);
   renderRows(pipelineStageTableBody, payload.pipeline_rows || [], ["pipeline", "step", "stage", "actor", "worker", "asset_count"]);
-  const currentPipeline = batchRenderPipeline.value;
-  setSelectOptionsWithLabels(batchRenderPipeline, (payload.pipeline_names || []).map(value => ({value, label: window.ZetPipelineLabel(value)})));
-  if ((payload.pipeline_names || []).includes(currentPipeline)) {
-    batchRenderPipeline.value = currentPipeline;
-  }
   state.savedBaselines.settings = settingsSnapshot();
   setSaveState(settingsSaveState, "Saved", "saved");
+  updateSettingsSectionIndicators(true);
   pipelineControlsStatus.textContent = payload.pipelines_message || "Ready";
 }
 
@@ -10428,57 +10630,6 @@ async function saveAutomationSettings(event) {
     showMessage(error.message, "error");
     setSaveState(settingsSaveState, "Error", "error");
     return false;
-  }
-}
-
-async function runBatchRenderReset() {
-  const pipeline = batchRenderPipeline.value;
-  if (!pipeline) {
-    return;
-  }
-  showPipelineControlsMessage("Previewing affected assets...");
-  const params = currentQuery();
-  params.set("pipeline_name", pipeline);
-  params.set("include_locked", batchIncludeLocked.checked ? "true" : "false");
-  try {
-    const preview = await fetchJson(`/api/pipeline-controls/batch-render-reset/preview?${params.toString()}`);
-    const counts = preview.counts || {};
-    renderRows(batchRenderResultTableBody, preview.items || [], [
-      "asset_id",
-      "before_stage",
-      "before_actor",
-      "before_state",
-      "status",
-      "message",
-    ]);
-    if (!counts.affected) {
-      showPipelineControlsMessage(`Nothing to reset: ${counts.skipped || 0} skipped, ${counts.locked || 0} locked.`, "warning");
-      return;
-    }
-    const confirmed = await confirmAction(
-      "Reset pipeline assets",
-      `Reset ${window.ZetPipelineLabel(pipeline)} assets for ${state.character} / ${state.phase} to RENDER? Affected: ${counts.affected}; skipped: ${counts.skipped || 0}; locked: ${counts.locked || 0}. This clears queued render items and existing render outputs.`,
-      "Reset Assets",
-    );
-    if (!confirmed) {
-      showPipelineControlsMessage("Batch reset cancelled.");
-      return;
-    }
-    showPipelineControlsMessage("Resetting assets...");
-    const payload = await fetchJson(`/api/pipeline-controls/batch-render-reset?${params.toString()}`, { method: "POST" });
-    renderPipelineControls(payload);
-    renderRows(batchRenderResultTableBody, payload.batch_results || [], [
-      "asset_id",
-      "before_stage",
-      "before_actor",
-      "before_state",
-      "status",
-      "message",
-    ]);
-    showPipelineControlsMessage(payload.message || "Batch reset complete.");
-    await loadAssets(state.selectedAssetId);
-  } catch (error) {
-    showPipelineControlsMessage(error.message, "error");
   }
 }
 
@@ -11475,12 +11626,48 @@ function subscribeRecentRenders() {
   stream.onmessage = event => {
     if (stream !== recentRendersStream || universeId !== state.universeId) return;
     const {boards} = JSON.parse(event.data);
+    const reviewImages = boards.filter(board => board.thumbnail_path).map(board => ({
+      src: fileUrl(board.thumbnail_path, board.latest_rendered_at || ""),
+      alt: `${board.label} latest harvested image`,
+    }));
     recentRendersList.replaceChildren(...boards.map(board => {
       const row = document.createElement("li");
-      const link = document.createElement("a");
-      link.href = `/?${new URLSearchParams({...board.route, universe_id: universeId})}`;
-      link.textContent = board.label;
-      row.append(link, ` · ${board.count} ${board.count === 1 ? "image" : "images"}`);
+      row.className = "activity-thumbnail-row";
+      const imageHost = document.createElement("div");
+      imageHost.className = "activity-thumbnail-preview";
+      if (board.thumbnail_path) {
+        const image = document.createElement("img");
+        image.src = fileUrl(board.thumbnail_path, board.latest_rendered_at || "");
+        image.alt = `${board.label} latest harvested image`;
+        image.loading = "lazy";
+        imageHost.append(image);
+      } else {
+        imageHost.textContent = "Preview unavailable";
+      }
+      const details = document.createElement("div");
+      details.className = "activity-thumbnail-details";
+      const title = document.createElement("strong");
+      title.textContent = board.label;
+      const count = document.createElement("span");
+      count.textContent = `${board.count} ${board.count === 1 ? "image" : "images"}`;
+      const actions = document.createElement("div");
+      actions.className = "activity-thumbnail-actions";
+      const review = document.createElement("button");
+      review.type = "button";
+      review.textContent = "Review latest";
+      review.disabled = !board.thumbnail_path;
+      review.title = board.thumbnail_path ? "Inspect the latest harvested image full screen." : "No saved thumbnail is available for this board.";
+      if (board.thumbnail_path) {
+        const src = fileUrl(board.thumbnail_path, board.latest_rendered_at || "");
+        review.addEventListener("click", () => openFullscreenImage(src, `${board.label} latest harvested image`, {images:reviewImages}));
+      }
+      const open = document.createElement("a");
+      open.className = "button-link primary-action";
+      open.href = `/?${new URLSearchParams({...board.route, universe_id: universeId})}`;
+      open.textContent = "Open board";
+      actions.append(review, open);
+      details.append(title, count, actions);
+      row.append(imageHost, details);
       return row;
     }));
     recentRendersButton.hidden = boards.length === 0;
@@ -11687,6 +11874,13 @@ zineFillStory.addEventListener("click", fillZineFromStory);
 zineSpread1.addEventListener("change", () => setZineSpread(1, zineSpread1.checked));
 zineSpread3.addEventListener("change", () => setZineSpread(3, zineSpread3.checked));
 zineSpread5.addEventListener("change", () => setZineSpread(5, zineSpread5.checked));
+zineSlotGroups.querySelectorAll("[data-zine-choose]").forEach(button => button.addEventListener("click", () => openZineSourcePicker(button.dataset.zineChoose)));
+zineSourcePicker.querySelector("[data-zine-picker-close]").addEventListener("click", () => zineSourcePicker.close());
+zineSourcePicker.addEventListener("close", () => { activeZineSlot = null; });
+for (const input of Object.values(zineSlotInputs)) {
+  input.addEventListener("input", updateZineSlotPresentation);
+  input.addEventListener("change", updateZineSlotPresentation);
+}
 enableFullscreenImage(zinePreview);
 enableFullscreenImage(imageCatalogPreview);
 fullscreenImageClose.addEventListener("click", closeFullscreenImage);
@@ -11956,8 +12150,6 @@ imageCatalogDelete.addEventListener("click", () => deleteImageCatalogImage(false
 
 
 
-phaseComparisonPrev.addEventListener("click", () => movePhaseComparison(-1));
-phaseComparisonNext.addEventListener("click", () => movePhaseComparison(1));
 for (const imageBox of [phaseComparisonLeftImage, phaseComparisonRightImage]) {
   imageBox.addEventListener("keydown", (event) => {
     if (event.key === "ArrowLeft") {
@@ -12015,7 +12207,6 @@ settingComfyuiProfile.addEventListener("change", refreshComfyuiCheckpointOptions
 settingLocalRenderBackend.addEventListener("change", syncLocalRenderBackendPanels);
 
 
-batchRenderResetButton.addEventListener("click", runBatchRenderReset);
 renderConsoleRefresh.addEventListener("click", () => loadRenderConsoleTasks());
 renderConsolePublicationsRefresh.addEventListener("click", loadRenderConsolePublications);
 
@@ -12315,44 +12506,69 @@ async function loadUniverseList() {
 }
 
 const loadSpeciesSettings = window.mountSpeciesSettings();
+let universeSettingsGeneration = 0;
+
+function setUniverseSettingsBusy(busy) {
+  for (const control of universeSettingsForm.elements) control.disabled = busy;
+}
 
 async function loadUniverseSettings(universeId) {
-  const response = await fetch(`/api/universes/${encodeURIComponent(universeId)}`);
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload.detail || "Unable to load universe settings.");
-  const universe = payload.universe;
-  state.universeSettingsId = universe.universe_id;
-  state.savedUniverseArtStyle = universe.canonical_art_style || "";
-  state.savedUniverseEnvironmentStyle = universe.environmental_art_style || "";
-  document.querySelector('#open-universe-scene-text-style').onclick = () => window.ZetSceneText.style({universe:universe.universe_id}).catch(error => setUniverseMessage('universe-settings-message', error.message, 'error'));
-  document.querySelector('#universe-settings-identity').textContent = `Universe: ${universe.universe_id} · Storage: ${universe.storage_path || 'Unavailable'} · Layout: ${universe.layout_version}`;
+  const token = ++universeSettingsGeneration;
+  setUniverseSettingsBusy(true);
+  setUniverseMessage("universe-settings-message", "Loading universe settings…", "info");
+  try {
+    const response = await fetch(`/api/universes/${encodeURIComponent(universeId)}`);
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail?.message || payload.detail || "Unable to load universe settings.");
+    if (token !== universeSettingsGeneration) return;
+    const universe = payload.universe;
+    state.universeSettingsId = universe.universe_id;
+    state.savedUniverseArtStyle = universe.canonical_art_style || "";
+    state.savedUniverseEnvironmentStyle = universe.environmental_art_style || "";
+    document.querySelector('#open-universe-scene-text-style').onclick = () => window.ZetSceneText.style({universe:universe.universe_id}).catch(error => setUniverseMessage('universe-settings-message', error.message, 'error'));
+    document.querySelector('#universe-settings-identity').textContent = `Universe: ${universe.universe_id} · Storage: ${universe.storage_path || 'Unavailable'} · Layout: ${universe.layout_version}`;
 
-  universeSettingsArtStyle.value = state.savedUniverseArtStyle;
-  universeSettingsEnvironmentStyle.value = state.savedUniverseEnvironmentStyle;
-  document.querySelector("#universe-settings-title").textContent = `${universe.name} Settings`;
-  document.querySelector("#universe-settings-select").hidden = universe.universe_id === state.universeId;
-  setUniverseMessage("universe-settings-message", "", "");
-  await loadSpeciesSettings(universe.universe_id);
+    universeSettingsArtStyle.value = state.savedUniverseArtStyle;
+    universeSettingsEnvironmentStyle.value = state.savedUniverseEnvironmentStyle;
+    document.querySelector("#universe-settings-title").textContent = `${universe.name} Settings`;
+    document.querySelector("#universe-settings-select").hidden = universe.universe_id === state.universeId;
+    setUniverseMessage("universe-settings-message", "", "");
+    await loadSpeciesSettings(universe.universe_id);
+  } catch (error) {
+    if (token === universeSettingsGeneration) setUniverseMessage("universe-settings-message", error.message, "error");
+  } finally {
+    if (token === universeSettingsGeneration) setUniverseSettingsBusy(false);
+  }
 }
 
 async function saveUniverseSettings() {
-  const response = await fetch(`/api/universes/${encodeURIComponent(state.universeSettingsId)}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ canonical_art_style: universeSettingsArtStyle.value, environmental_art_style: universeSettingsEnvironmentStyle.value }),
-  });
-  const payload = await response.json();
-  if (!response.ok) {
-    setUniverseMessage("universe-settings-message", payload.detail || "Unable to save universe settings.", "error");
+  const universeId = state.universeSettingsId;
+  if (!universeId) return false;
+  const token = ++universeSettingsGeneration;
+  setUniverseSettingsBusy(true);
+  setUniverseMessage("universe-settings-message", "Saving settings…", "info");
+  try {
+    const response = await fetch(`/api/universes/${encodeURIComponent(universeId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ canonical_art_style: universeSettingsArtStyle.value, environmental_art_style: universeSettingsEnvironmentStyle.value }),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail?.message || payload.detail || "Unable to save universe settings.");
+    if (token !== universeSettingsGeneration || universeId !== state.universeSettingsId) return false;
+    state.savedUniverseArtStyle = payload.universe.canonical_art_style || "";
+    state.savedUniverseEnvironmentStyle = payload.universe.environmental_art_style || "";
+    const universe = state.universes.find((item) => item.universe_id === payload.universe.universe_id);
+    if (universe) universe.canonical_art_style = state.savedUniverseArtStyle;
+    if (universe) universe.environmental_art_style = state.savedUniverseEnvironmentStyle;
+    setUniverseMessage("universe-settings-message", "Settings saved.", "success");
+    return true;
+  } catch (error) {
+    if (token === universeSettingsGeneration) setUniverseMessage("universe-settings-message", error.message, "error");
     return false;
+  } finally {
+    if (token === universeSettingsGeneration) setUniverseSettingsBusy(false);
   }
-  state.savedUniverseArtStyle = payload.universe.canonical_art_style || "";
-  state.savedUniverseEnvironmentStyle = payload.universe.environmental_art_style || "";
-  const universe = state.universes.find((item) => item.universe_id === payload.universe.universe_id);
-  if (universe) universe.canonical_art_style = state.savedUniverseArtStyle;
-  if (universe) universe.environmental_art_style = state.savedUniverseEnvironmentStyle;
-  setUniverseMessage("universe-settings-message", "Settings saved.", "success");
-  return true;
 }
 
 async function selectUniverse(universeId) {
@@ -12455,8 +12671,7 @@ characterSelect.addEventListener("change", async () => {
     await loadIdentityKeys();
   }
   if (document.querySelector("#phase-comparison-page").classList.contains("active")) {
-    initializePhaseComparisonControls();
-    await loadPhaseComparison();
+    initializeComparePage();
   }
   if (document.querySelector("#costumes-page").classList.contains("active")) {
     await loadCostumes();
@@ -12528,8 +12743,7 @@ phaseSelect.addEventListener("change", async () => {
     await loadIdentityKeys();
   }
   if (document.querySelector("#phase-comparison-page").classList.contains("active")) {
-    initializePhaseComparisonControls();
-    await loadPhaseComparison();
+    initializeComparePage();
   }
   if (document.querySelector("#costumes-page").classList.contains("active")) {
     await loadCostumes();
@@ -12579,10 +12793,34 @@ templateManualSelect.addEventListener("change", () => {
   state.selectedTemplateManual = templateManualSelect.value;
   renderTemplateManual();
 });
-templateManualCopy.addEventListener("click", () => {
+templateManualCopy.addEventListener("click", async () => {
   const manual = state.templateManuals.find((item) => item.id === state.selectedTemplateManual);
-  if (manual) copyText(manual.markdown, "Template manual copied.");
+  if (!manual) return;
+  helpStatus.textContent = `Copying ${manual.title}…`;
+  try {
+    await writeClipboardText(manual.markdown);
+    helpStatus.textContent = `${manual.title} copied.`;
+  } catch (error) {
+    helpStatus.textContent = `Unable to copy ${manual.title}: ${error.message}`;
+  }
 });
+templateManualDownload.addEventListener("click", (event) => {
+  const manual = state.templateManuals.find((item) => item.id === state.selectedTemplateManual);
+  if (!manual) {
+    event.preventDefault();
+    return;
+  }
+  helpStatus.textContent = `Download requested: ${manual.filename}.`;
+});
+sourceEditorTemplateSelect.addEventListener("change", () => {
+  sourceEditorOpenTemplate.disabled = sourceEditorTemplateSelect.value === ""
+    || !sourceEditorTemplates[Number(sourceEditorTemplateSelect.value)];
+});
+sourceEditorOpenTemplate.addEventListener("click", () => {
+  const source = sourceEditorTemplateSelect.value === "" ? null : sourceEditorTemplates[Number(sourceEditorTemplateSelect.value)];
+  if (source) void openSourceEditorForSource(source);
+});
+sourceEditorRefreshTemplates.addEventListener("click", () => void loadSourceEditorTemplateChoices());
 openCharacterTemplateButton.addEventListener("click", () => {
   openSourceEditorForSource(state.assetDetail?.asset?.character_template_source, showActionMessage);
 });
@@ -12836,6 +13074,7 @@ universeCreateForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const submit = universeCreateForm.querySelector('[type="submit"]');
   submit.disabled = true;
+  setUniverseMessage("universe-create-message", "Creating universe…", "info");
   try {
     const response = await fetch("/api/universes", {
       method: "POST",
@@ -12847,7 +13086,7 @@ universeCreateForm.addEventListener("submit", async (event) => {
       }),
     });
     const payload = await response.json();
-    if (!response.ok) throw new Error(payload.detail || "Unable to create universe.");
+    if (!response.ok) throw new Error(payload.detail?.message || payload.detail || "Unable to create universe.");
     await loadUniverses();
     state.universeSettingsId = payload.universe.universe_id;
     await activatePage("universe-settings", { skipAutosave: true, universeId: state.universeSettingsId });

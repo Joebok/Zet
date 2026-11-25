@@ -1,4 +1,5 @@
-import {renderProposalComparison} from './interview_proposals.js';
+import {renderProposalComparison, renderProposalDecisions} from './interview_proposals.js';
+import {mountProductionWorkspace} from './production_workspace.js?v=20261124-workspace-shell';
 /** Mounted Narrative editor; all listeners and polling belong to this mount. */
 import {mountCandidateBoard, confirmCandidateDeletion} from './candidate_board.js?v=20261115-candidate-identities';
 import {isNarrativeActive, narrativeBoardModel} from './narrative_candidate_board.js?v=20261115-candidate-identities';
@@ -17,6 +18,8 @@ const params = new URLSearchParams(location.search);
 let universe = requestedUniverse || params.get('universe_id') || '';
 let route = {story:params.get('story'),scene:params.get('scene'),target:params.get('target')};
 let detail = null;
+let sceneDetail = null;
+let sceneDirty = new Set();
 let dirty = new Set();
 let saveTimer = null;
 let saveChain = Promise.resolve();
@@ -49,7 +52,8 @@ let candidateRestorePending = params.get('task_context') === '1';
 const visualFields = ['setting', 'camera', 'perspective', 'lighting', 'style'];
 const targetFields = ['universe_style_variant', 'title', 'narrative', 'staging', 'physical_context', 'use_transparent_background', 'framing', 'aspect_ratio', 'prompt', 'interview_model', 'prompt_model', 'assembly_mode'];
 const assemblyModeName = mode => ({assemble_references:'Assemble from references', harmonize_composite:'Harmonize placed composite'}[mode] || 'Finish placed composite');
-const fieldValue = field => field.type === 'checkbox' ? field.checked : field.value;
+const fieldValue = field => field.type === 'checkbox' ? field.checked
+  : field.type === 'radio' ? root.querySelector(`input[name="${CSS.escape(field.name)}"]:checked`)?.value || '' : field.value;
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
 const title = key => key.replaceAll('_', ' ').replace(/^./, c => c.toUpperCase());
 const targetsWithAssemblyLast = targets => [...targets.filter(target => target.kind !== 'assembly'), ...targets.filter(target => target.kind === 'assembly')];
@@ -396,7 +400,10 @@ async function loadPage() {
   contextState = 'loading';
   document.body.dataset.narrativeReady = 'false';
   disposeBoard();
+  if (root.contains(message)) host.insertBefore(message, root);
   root.replaceChildren();
+  sceneDetail = null;
+  sceneDirty = new Set();
   contextLabels = {};
   detail = null;
   try {
@@ -504,7 +511,7 @@ async function loadPageContent() {
             if(row.dataset.dirty==='true' || !shot.text[textId]?.length || (oldDuration!==shot.duration_ms && simpleText.has(textId))) shot.text[textId]=textKeys(Number(a.value),Number(b.value),shot.duration_ms);
           });
         });
-        transitions.forEach((tr,i)=>{tr.type=panel.querySelector(`[data-transition="${i}"]`).value;const value=panel.querySelector(`[data-transition-duration="${i}"]`).value;if(value==='' || !Number.isInteger(Number(value)) || Number(value)<0) throw Error('Transition time must be a nonnegative whole number.');tr.duration_ms=Number(value);});
+        transitions.forEach((tr,i)=>{tr.type=panel.querySelector(`[data-transition="${i}"]:checked`).value;const value=panel.querySelector(`[data-transition-duration="${i}"]`).value;if(value==='' || !Number.isInteger(Number(value)) || Number(value)<0) throw Error('Transition time must be a nonnegative whole number.');tr.duration_ms=Number(value);});
       };
       const save=async()=>{
         collect();
@@ -530,9 +537,9 @@ async function loadPageContent() {
         return `<li class="animation-shot"><div><div class="animation-thumb"><img src="${esc(asset.artwork_data_url||'')}" alt="Locked image for ${esc(asset.title||'scene')}">${layers}</div><button type="button" data-refresh-shot="${i}">Refresh scene</button><button type="button" data-remove-shot="${i}">Remove scene</button><button type="button" data-move-shot="${i}" data-direction="-1" ${i===0?'disabled':''}>Move up</button><button type="button" data-move-shot="${i}" data-direction="1" ${i===shots.length-1?'disabled':''}>Move down</button></div><div class="animation-shot-body"><h4>${esc(asset.title||s.source_id)}</h4><div class="animation-controls"><label>Scene duration (ms)<input data-shot-duration="${i}" type="number" min="1" step="500" value="${s.duration_ms}"></label><label>Start zoom (×)<input data-zoom-start="${i}" type="number" min="1" step=".1" value="${first.zoom}"></label><label>End zoom (×)<input data-zoom-end="${i}" type="number" min="1" step=".1" value="${last.zoom}"></label><button type="button" data-pick-target="${i}">Choose zoom target</button></div>${customCamera?'<p>Custom camera motion is preserved until zoom or target is changed.</p>':''}${rows}</div></li>`;
       };
       window.addEventListener('message',event=>{const frame=panel.querySelector('iframe');if(frame && event.source===frame.contentWindow && event.data?.type==='zet-animation-preview-height' && Number.isFinite(event.data.height)) frame.style.height=Math.max(1,event.data.height)+'px';},{signal:events.signal});
-      const transitionRow=(tr,i)=>`<li class="animation-transition"><strong>${i===0?'Opening':i===shots.length?'Closing':'Between scenes'}</strong><label>Transition<select data-transition="${i}">${[['cut','Cut'],...(i>0&&i<shots.length?[['dissolve','Dissolve']]:[]),['fade-through-black','Fade through black'],['fade-through-white','Fade through white']].map(([v,label])=>`<option value="${v}" ${tr.type===v?'selected':''}>${label}</option>`).join('')}</select></label><label>Time (ms)<input type="number" min="0" step="50" data-transition-duration="${i}" value="${tr.duration_ms}"></label></li>`;
+      const transitionRow=(tr,i)=>`<li class="animation-transition"><strong>${i===0?'Opening':i===shots.length?'Closing':'Between scenes'}</strong><fieldset class="animation-transition-options"><legend>Transition</legend>${[['cut','Cut'],...(i>0&&i<shots.length?[['dissolve','Dissolve']]:[]),['fade-through-black','Fade through black'],['fade-through-white','Fade through white']].map(([v,label])=>`<label><input type="radio" name="animation-transition-${i}" data-transition="${i}" value="${v}" ${tr.type===v?'checked':''}>${label}</label>`).join('')}</fieldset><label>Time (ms)<input type="number" min="0" step="50" data-transition-duration="${i}" value="${tr.duration_ms}"></label></li>`;
       const render=()=>{panel.innerHTML=`<h3>${esc(doc.spec.name)}</h3><p>Locked sources only. Scene text moves and scales with the artwork.</p><div>${sources.map(s=>`<button type="button" data-bind-source="${esc(s.id)}">Add ${esc(s.title)} · ${s.render_mode === 'final' ? 'Final' : 'Draft'}${s.lettered?" (lettered)":""}</button>`).join(" ")}</div><ol class="animation-shots">${shots.length?transitionRow(transitions[0],0)+shots.map((s,i)=>card(s,i)+transitionRow(transitions[i+1],i+1)).join(''):''}</ol><div class="narrative-actions"><button id="save-animation">Save</button><button id="preview-animation">Preview</button><a id="export-animation" href="${exportUrl}">Download HTML</a></div><iframe title="Animation preview" sandbox="allow-scripts" style="width:100%;height:600px;border:0" scrolling="no"></iframe>`;
-        panel.querySelectorAll('[data-transition]').forEach(select=>select.addEventListener('change',()=>{const input=panel.querySelector(`[data-transition-duration="${select.dataset.transition}"]`);if(select.value!=='cut' && Number(input.value)===0) input.value=1000;}));
+        panel.querySelectorAll('[data-transition]').forEach(input=>input.addEventListener('change',()=>{const duration=panel.querySelector(`[data-transition-duration="${input.dataset.transition}"]`);if(input.value!=='cut' && Number(duration.value)===0) duration.value=1000;}));
         panel.querySelectorAll('[data-zoom-start],[data-zoom-end]').forEach(input=>input.addEventListener('input',()=>{input.dataset.dirty='true';}));
         panel.querySelectorAll('[data-text-row] input[type=range]').forEach(input=>input.addEventListener('input',()=>{const row=input.closest('[data-text-row]'),a=row.querySelector('[data-text-start]'),b=row.querySelector('[data-text-end]');if(Number(a.value)>Number(b.value)){if(input===a)b.value=a.value;else a.value=b.value;}row.dataset.dirty='true';row.querySelector('[data-in-value]').textContent=Math.round(Number(a.value))+'%';row.querySelector('[data-out-value]').textContent=Math.round(Number(b.value))+'%';const duration=Math.max(1,Number(panel.querySelector(`[data-shot-duration="${row.dataset.textRow}"]`).value)||1),start=Number(a.value),end=Number(b.value),fade=30000/duration;row.querySelector('[data-envelope]').setAttribute('points',`0,28 ${start},28 ${Math.min(end,start+fade)},2 ${end},2 ${end < 100 ? `${Math.min(100,end+fade)},28 100,28` : '100,2'}`);}));
         panel.querySelectorAll('[data-pick-target]').forEach(button=>button.onclick=()=>action(async()=>{
@@ -540,10 +547,11 @@ async function loadPageContent() {
           const index=Number(button.dataset.pickTarget), shot=shots[index], asset=doc.assets[shot.source_id];
           let point={x:shot.camera?.[0]?.x??.5,y:shot.camera?.[0]?.y??.5};
           const dialog=document.createElement('dialog'); dialog.className='animation-target-dialog';
-          dialog.innerHTML=`<h3>Choose zoom target</h3><p>Click the image to place the target. Use arrow keys to adjust it.</p><div class="animation-target-image" tabindex="0" role="application" aria-label="Zoom target; use arrow keys to move the marker"><img src="${esc(asset.artwork_data_url)}" alt="Scene artwork"><span class="animation-target-marker" aria-hidden="true"></span></div><div class="narrative-actions"><button type="button" class="primary" data-target-save>Save target</button><button type="button" data-target-cancel>Cancel</button></div><p role="status" class="error"></p>`;
+          dialog.innerHTML=`<h3>Choose zoom target</h3><p>Click or use arrow keys on the image, or enter its position.</p><div class="animation-target-image" tabindex="0" role="application" aria-label="Zoom target; use arrow keys to move the marker"><img src="${esc(asset.artwork_data_url)}" alt="Scene artwork"><span class="animation-target-marker" aria-hidden="true"></span></div><fieldset class="animation-target-coordinates"><legend>Target position (%)</legend><label>Across <input data-target-x type="number" min="0" max="100" step="0.5" value="${Math.round(point.x*1000)/10}"></label><label>Down <input data-target-y type="number" min="0" max="100" step="0.5" value="${Math.round(point.y*1000)/10}"></label></fieldset><div class="narrative-actions"><button type="button" class="primary" data-target-save>Save target</button><button type="button" data-target-cancel>Cancel</button></div><p role="status" class="error"></p>`;
           panel.append(dialog);
           const image=dialog.querySelector('.animation-target-image'), marker=dialog.querySelector('.animation-target-marker');
-          const update=()=>{marker.style.left=`${point.x*100}%`;marker.style.top=`${point.y*100}%`;image.setAttribute('aria-label',`Zoom target at ${Math.round(point.x*100)}% across and ${Math.round(point.y*100)}% down; use arrow keys to move`);};
+          const update=()=>{marker.style.left=`${point.x*100}%`;marker.style.top=`${point.y*100}%`;dialog.querySelector('[data-target-x]').value=String(Math.round(point.x*1000)/10);dialog.querySelector('[data-target-y]').value=String(Math.round(point.y*1000)/10);image.setAttribute('aria-label',`Zoom target at ${Math.round(point.x*100)}% across and ${Math.round(point.y*100)}% down; use arrow keys to move`);};
+          dialog.querySelectorAll('[data-target-x],[data-target-y]').forEach(input=>input.addEventListener('change',()=>{const x=Number(dialog.querySelector('[data-target-x]').value),y=Number(dialog.querySelector('[data-target-y]').value);if(Number.isFinite(x)&&Number.isFinite(y)&&x>=0&&x<=100&&y>=0&&y<=100){point={x:x/100,y:y/100};update();}}));
           image.addEventListener('pointerdown',event=>{const rect=image.getBoundingClientRect();point={x:Math.max(0,Math.min(1,(event.clientX-rect.left)/rect.width)),y:Math.max(0,Math.min(1,(event.clientY-rect.top)/rect.height))};update();});
           image.addEventListener('keydown',event=>{const step=event.shiftKey?.1:.01; if(event.key==='ArrowLeft')point.x=Math.max(0,point.x-step);else if(event.key==='ArrowRight')point.x=Math.min(1,point.x+step);else if(event.key==='ArrowUp')point.y=Math.max(0,point.y-step);else if(event.key==='ArrowDown')point.y=Math.min(1,point.y+step);else return;event.preventDefault();update();});
           dialog.addEventListener('close',()=>{dialog.remove();if(button.isConnected)button.focus();});
@@ -601,7 +609,7 @@ async function loadPageContent() {
       ${label('title',detail.title,false)}${label('intent',detail.intent)}${visualFields.map(key=>label(key,detail[key])).join('')}${label('canvas',detail.canvas,false)}
       <label><input type="checkbox" data-field="use_universe_style" ${detail.use_universe_style ? 'checked' : ''}> Use universe style</label>
       <label>Universe style<select data-field="universe_style_variant"><option value="canonical" ${detail.universe_style_variant==='canonical'?'selected':''}>Canonical</option><option value="environmental" ${detail.universe_style_variant==='environmental'?'selected':''}>Environmental</option></select></label>
-      <p class="narrative-muted">When checked, the universe style replaces the saved scene style above. Local target style overrides still apply. Write Prompt adopts changes.</p>
+      <p class="narrative-muted">When checked, the universe style replaces the saved scene style above. Local target style overrides still apply. Update each affected target prompt before rendering.</p>
       <p class="narrative-muted">Universe style: ${esc(detail.universe_style?.text || 'No universe style set.')}</p>
       <div class="narrative-actions"><button data-action="save">Save scene</button><button class="danger" data-action="delete">Delete scene</button></div>
       ${detail.migration?.kind ? `<div class="narrative-migration-note"><p>Migrated starting point — review inputs before generating.</p>${(detail.migration.review_issues || []).map(issue=>`<p>${esc(issue)}</p>`).join('')}</div>` : ''}
@@ -616,10 +624,11 @@ async function loadPageContent() {
     root.querySelectorAll('[data-ai-model-picker]').forEach(control => window.ZetModelPicker?.attach(control, {allowDefault:false}));
     host.querySelector('#narrative-breadcrumb').innerHTML = link('Stories',{})+' / '+link(story.title,{story:route.story});
   } else {
-    const [loaded, targets, story] = await Promise.all([api(base()), api(`/api/narrative/stories/${route.story}/scenes/${route.scene}/targets`), api(`/api/narrative/stories/${route.story}`)]);
+    const [loaded, targets, story, scene] = await Promise.all([api(base()), api(`/api/narrative/stories/${route.story}/scenes/${route.scene}/targets`), api(`/api/narrative/stories/${route.story}`), api(`/api/narrative/stories/${route.story}/scenes/${route.scene}`)]);
     detail = loaded;
+    sceneDetail = scene;
     contextLabels = {story:story.title, scene:detail.scene_title, render_target:detail.title};
-    renderTarget(targets);
+    renderTarget(targets, scene);
     host.querySelector('#narrative-breadcrumb').innerHTML = link('Stories',{})+' / '+link(story.title,{story:route.story})+' / '+link(detail.scene_title,{story:route.story,scene:route.scene})+' / '+esc(detail.title);
   }
   document.body.dataset.narrativeReady = 'true';
@@ -788,7 +797,7 @@ function sourcePanelHtml() {
     <label class="narrative-field">Adaptation direction<textarea id="backdrop-direction" data-adaptation="direction">${esc(settings.direction||'')}</textarea></label>
     <label class="narrative-field" id="backdrop-expand-control">Expand toward<select data-adaptation="expand_side" id="backdrop-expand-side">${['left','right','top','bottom','all'].map(side=>`<option ${(settings.expand_side||'right')===side?'selected':''}>${side}</option>`).join('')}</select></label>
     </div>
-    <p>After changing the mode, crop or operation, use Write Prompt to update existing prompt text. Render sends the entered prompt.</p>` : '<p>No source attached.</p>'}</section>`;
+    <p>After changing the mode, crop or operation, use Update Prompt to refresh existing prompt text. Render sends the entered prompt.</p>` : '<p>No source attached.</p>'}</section>`;
 }
 
 function sourceVisibility() {
@@ -894,16 +903,30 @@ function adaptationChanged() {
   sourceVisibility();drawCropBox();publishBoard();
 }
 
-function renderTarget(targets) {
+function scenePreparationHtml(scene) {
+  const input = (key, name, value, multiline = true) => `<label class="narrative-field" for="narrative-scene-${key}">${esc(name)}</label>${multiline
+    ? `<textarea id="narrative-scene-${key}" data-scene-field="${key}">${esc(value)}</textarea>`
+    : `<input id="narrative-scene-${key}" data-scene-field="${key}" value="${esc(value)}">`}`;
+  return `<details class="narrative-card narrative-scene-preparation"><summary>Shared scene direction</summary><p class="narrative-muted">These inputs are shared by the scene's targets. Save them here without leaving the candidate board. Scene intent is planning context; target prompt writing uses the target's moment and effective shared visual settings.</p>
+    ${input('title','Scene title',scene.title,false)}${input('intent','Scene intent',scene.intent)}
+    ${visualFields.map(key=>input(key,title(key),scene[key])).join('')}
+    ${input('canvas','Scene canvas',scene.canvas,false)}
+    <label><input type="checkbox" data-scene-field="use_universe_style" ${scene.use_universe_style ? 'checked' : ''}> Use universe style</label>
+    <fieldset class="narrative-radio-group"><legend>Universe style</legend><label><input type="radio" name="scene-universe-style" data-scene-field="universe_style_variant" value="canonical" ${scene.universe_style_variant==='canonical'?'checked':''}> Canonical</label><label><input type="radio" name="scene-universe-style" data-scene-field="universe_style_variant" value="environmental" ${scene.universe_style_variant==='environmental'?'checked':''}> Environmental</label></fieldset>
+    <p class="narrative-muted">${esc(scene.universe_style?.text || 'No universe style set.')}</p>
+    <button type="button" data-action="save">Save shared scene direction</button></details>`;
+}
+
+function renderTarget(targets, scene) {
   const backdrop = detail.kind === 'backdrop';
   const assembly = detail.kind === 'assembly';
-  const viewingImages = window.matchMedia("(max-width: 1360px)").matches && modeSlots().some(id => id && detail.candidates[id]?.image);
+  const hasImages = modeSlots().some(id => id && detail.candidates[id]?.image);
   root.innerHTML = `<h1 class="narrative-target-heading"><select id="narrative-target-select" aria-label="Scene page">${targetsWithAssemblyLast(targets).map(target=>`<option value="${target.id}" ${target.id === route.target ? 'selected' : ''}>${esc(target.title)} · ${title(target.kind)}</option>`).join('')}</select></h1>
-    <div class="narrative-editor narrative-target-editor ${viewingImages ? 'has-images' : ''}"><details class="narrative-card narrative-direction-settings" ${viewingImages ? '' : 'open'}><summary>Scene direction and references</summary><div>${sourcePanelHtml()}<section class="narrative-card"><h2>${backdrop ? 'Environment direction' : 'The moment'}</h2>
+    ${scenePreparationHtml(scene)}<details id="narrative-target-preparation" class="narrative-card narrative-direction-settings" ${hasImages ? '' : 'open'}><summary>Target preparation</summary><div>${sourcePanelHtml()}<section class="narrative-card"><h2>${backdrop ? 'Environment direction' : 'The moment'}</h2>
       <label>Universe style<select data-field="universe_style_variant"><option value="inherit" ${detail.universe_style_variant==='inherit'?'selected':''}>Inherit scene</option><option value="canonical" ${detail.universe_style_variant==='canonical'?'selected':''}>Canonical</option><option value="environmental" ${detail.universe_style_variant==='environmental'?'selected':''}>Environmental</option></select></label>
       ${label('title',detail.title,false)}${label('narrative',detail.narrative,true,backdrop ? 'Describe the environment' : 'Describe what is happening')}
       ${label('staging',detail.staging,true,backdrop ? 'Environment composition' : 'Interaction and staging')}${label('physical_context',detail.physical_context)}
-      ${detail.kind === 'subscene' ? `<label><input type="checkbox" id="narrative-use_transparent_background" data-field="use_transparent_background" ${detail.use_transparent_background ? 'checked' : ''}> Use transparent background</label><p class="narrative-muted">Interview and Write Prompt use transparency instead of visible scenery, including Setting. Camera, subject lighting and required supports still apply. Use Write Prompt to update existing prompt text; Render sends your edited prompt exactly as entered.</p>` : ''}
+      ${detail.kind === 'subscene' ? `<label><input type="checkbox" id="narrative-use_transparent_background" data-field="use_transparent_background" ${detail.use_transparent_background ? 'checked' : ''}> Use transparent background</label><p class="narrative-muted">Interview and prompt writing use transparency instead of visible scenery, including Setting. Camera, subject lighting and required supports still apply. Use Write Prompt or Update Prompt to refresh existing prompt text; Render sends your edited prompt exactly as entered.</p>` : ''}
       ${label('framing',detail.framing,false)}
       <div class="narrative-actions"><button aria-label="Save direction inputs" data-action="save">Save inputs</button><button class="danger" data-action="delete">Delete ${assembly ? 'assembly' : backdrop ? 'backdrop' : 'subscene'}</button></div></section>
     ${assembly ? `<section class="narrative-card"><h2>Scene text</h2><button data-action="scene-text-raw">Edit raw composite text draft</button></section>`+assemblyHtml() : `<section class="narrative-card"><h2>Participants and references</h2><div id="narrative-elements">${elementsHtml(detail.elements,true)}</div>
@@ -916,8 +939,17 @@ function renderTarget(targets) {
     <label class="narrative-field" for="narrative-direction">Answer or direct a revision</label><textarea id="narrative-direction" placeholder="Describe what is happening, answer a question, or ask for a change."></textarea>
       ${detail.kind === 'subscene' ? `<label class="narrative-field" for="narrative-interview-image">Image for this interview</label><select id="narrative-interview-image" aria-describedby="narrative-interview-image-help"><option value="">None</option></select><small id="narrative-interview-image-help">Used for this turn only. Requires a vision-capable interview model.</small><div id="narrative-interview-image-preview"></div><p class="narrative-muted" id="narrative-interview-replay-image"></p>` : ''}
       <div class="narrative-actions"><button class="primary" data-action="interview">Continue interview</button><button data-action="rerun_interview">Re-run last interview</button><button data-action="restart_interview" title="Clear interview history and start again from current inputs">Restart interview</button></div><div id="narrative-interview-failure"></div><div id="narrative-pending-reviews"></div><p class="narrative-muted">Interview revisions are proposals until you Apply them. Answers are optional; edit directly or generate whenever you are ready. Restart interview clears the conversation and pending proposals, keeping your current inputs and images.</p></section></div>
-    </details><div id="narrative-board-host"></div></div>
+    </details><div id="narrative-board-host"></div>
     <datalist id="narrative-model-options"></datalist><p id="narrative-model-error" class="error"></p>`;
+  const targetTitle = root.querySelector('.narrative-target-heading');
+  const preparation = root.querySelector('#narrative-target-preparation');
+  const boardHost = root.querySelector('#narrative-board-host');
+  const modelList = root.querySelector('#narrative-model-options');
+  const modelError = root.querySelector('#narrative-model-error');
+  const workspace = mountProductionWorkspace({root, title:targetTitle,
+    preparation:[root.querySelector('.narrative-scene-preparation'), preparation, modelList, modelError],
+    activity:[message], results:[boardHost]});
+  workspace.setScope(JSON.stringify([universe,route.story,route.scene,route.target]), !hasImages);
   sourceVisibility();
   mountBoard();
   updateLive();
@@ -961,7 +993,7 @@ function renderInterviewReview() {
       <p>${esc(row.reason)}</p>${row.scope === 'appearance' ? '<p class="narrative-muted">Shared appearance: affects every subscene using this element.</p>' : ''}
       ${row.scope === 'visual' ? `<p class="narrative-muted">Shared: ${esc(job.detail.inherited_context?.[row.field] || 'Not specified')}<br>Local override: ${esc(job.detail.visual_overrides?.[row.field] || 'None — inherits shared')}</p>` : ''}
       ${renderProposalComparison(row, esc, row.scope === 'visual' ? 'Old · Effective' : 'Old')}
-      <div class="narrative-actions" role="group" aria-label="${esc(row.element_name || title(row.field))} action ${index+1}">${(row.scope === 'visual' ? ['override','shared','reject'] : ['accept','reject']).map(choice=>`<button aria-label="${title(choice)} ${esc(row.element_name || title(row.field))} proposal ${index+1}" data-proposal="${row.id}" data-proposal-choice="${choice}" aria-pressed="${choices[row.id].action === choice}">${title(choice)}</button>`).join('')}</div></article>`).join('') || '<p>No field changes proposed.</p>'}
+      ${renderProposalDecisions(row.id, `${row.element_name || title(row.field)} proposal ${index+1}`, row.scope === 'visual' ? ['override','shared','reject'] : ['accept','reject'], choices[row.id].action, esc)}</article>`).join('') || '<p>No field changes proposed.</p>'}
     <div class="narrative-actions narrative-review-footer"><button class="primary" data-apply-interview="${job.id}">Apply</button><button data-close="narrative-interview-review">Close</button></div>
     <p id="narrative-interview-review-error" class="error" role="status"></p>`;
 }
@@ -1066,11 +1098,17 @@ function mergeTarget(updated) {
 
 async function save() {
   clearTimeout(saveTimer);
-  if (!detail || !dirty.size) { await saveChain; return; }
+  if (!detail || (!dirty.size && !sceneDirty.size)) { await saveChain; return; }
   const url = base();
   const epoch = boardEpoch;
   const payload = {};
   const changed = [...dirty];
+  const scenePayload = {};
+  const changedScene = [...sceneDirty];
+  for (const key of changedScene) {
+    const field = root.querySelector(`[data-scene-field="${key}"]`);
+    if (field) scenePayload[key] = fieldValue(field);
+  }
   for (const key of changed) {
     if (key === 'layers') { payload.layers = structuredClone(detail.layers); continue; }
     if (key === 'backdrop_adaptation') { payload.backdrop_adaptation = structuredClone(detail.backdrop_adaptation); continue; }
@@ -1083,8 +1121,26 @@ async function save() {
     payload.visual_overrides = Object.fromEntries(visualFields.map(key=>[key,root.querySelector(`[data-field="override_${key}"]`).value]));
   }
   const operation = saveChain.catch(()=>{}).then(async()=>{
-    const updated = await api(url,'PATCH',payload);
+    let savedScene = null;
+    if (Object.keys(scenePayload).length) savedScene = await api(`/api/narrative/stories/${route.story}/scenes/${route.scene}`,'PATCH',scenePayload);
+    const updated = Object.keys(payload).length ? await api(url,'PATCH',payload)
+      : savedScene && route.target ? await api(url) : detail;
     if (boardEpoch !== epoch || disposed) return;
+    if (savedScene) {
+      sceneDetail = savedScene;
+      for (const key of changedScene) {
+        const field = root.querySelector(`[data-scene-field="${key}"]`), value = scenePayload[key];
+        if (field && String(fieldValue(field)) === String(value)) sceneDirty.delete(key);
+      }
+      for (const [key,value] of Object.entries(scenePayload)) {
+        const field = root.querySelector(`[data-scene-field="${key}"]`);
+        if (field && !sceneDirty.has(key) && document.activeElement !== field) {
+          if (field.type === 'checkbox') field.checked = value;
+          else if (field.type === 'radio') root.querySelectorAll(`input[name="${CSS.escape(field.name)}"]`).forEach(option => { option.checked = option.value === value; });
+          else field.value = value;
+        }
+      }
+    }
     const pendingLayers = dirty.has('layers') && JSON.stringify(detail.layers) !== JSON.stringify(payload.layers) ? detail.layers : null;
     const pendingAdaptation = dirty.has('backdrop_adaptation') && JSON.stringify(detail.backdrop_adaptation) !== JSON.stringify(payload.backdrop_adaptation) ? detail.backdrop_adaptation : null;
     for (const key of changed) {
@@ -1096,13 +1152,13 @@ async function save() {
       else if (field && String(fieldValue(field)) === String(value)) dirty.delete(key);
     }
     revision++;
-    Object.assign(detail,updated);
+    if (updated !== detail) Object.assign(detail,updated);
     if (!route.target && detail.effective_models) refreshSceneModelControls();
     if (pendingLayers) detail.layers = pendingLayers;
     if (pendingAdaptation) detail.backdrop_adaptation = pendingAdaptation;
     const option = root.querySelector(`#narrative-target-select option[value="${updated.id}"]`);
     if (option) option.textContent = `${updated.title} · ${title(updated.kind)}`;
-    status(dirty.size ? 'Saving changes…' : 'Saved');
+    status(dirty.size || sceneDirty.size ? 'Saving changes…' : 'Saved');
     if (route.target) { renderPlacement(); updateLive(); }
   });
   saveChain = operation;
@@ -1174,9 +1230,58 @@ async function editElement(id) {
     <label class="narrative-field" for="element-appearance">Appearance notes</label><small id="element-appearance-role" class="narrative-field-role">Interview input · Interview may propose changes · Shared across subscenes</small><textarea id="element-appearance" name="appearance" aria-describedby="element-appearance-role element-appearance-help">${esc(elementDraft.appearance)}</textarea><small id="element-appearance-help" class="narrative-field-help">${esc(scene.field_purposes.appearance)}</small>
     <label class="narrative-field">Reference role<select name="reference_role">${['appearance','costume','object shape','environment','style'].map(role=>`<option ${role===elementDraft.reference_role ? 'selected' : ''}>${role}</option>`).join('')}</select></label>
     <p id="element-reference-label">${elementDraft.reference_key ? 'Current reference: '+esc(elementDraft.reference_key) : elementDraft.asset_id ? 'Reference image attached' : 'Text only — no reference image'}</p>
-    <div class="narrative-actions"><button type="button" id="choose-reference">Choose library image</button><button type="button" id="remove-reference">Remove reference</button></div>
+    <div class="narrative-actions"><button type="button" id="choose-reference">Choose from Image Inventory</button><button type="button" id="remove-reference">Remove reference</button></div>
+    <div class="narrative-reference-import"><div id="element-reference-input-zone" aria-label="Import a scene element reference"></div>
+      <label>Inventory label<input id="element-reference-import-label" maxlength="200" value="${esc(elementDraft.name)}"></label>
+      <img id="element-reference-preview" alt="New reference image preview" hidden>
+      <button type="button" id="element-reference-import" disabled>Import to Image Inventory</button>
+      <p id="element-reference-import-status" role="status"></p>
+      <label hidden>Reference image file<input id="element-reference-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif"></label></div>
     <div class="narrative-actions"><button class="primary">Save element</button><button type="button" data-close="element-dialog">Cancel</button></div></form>`;
   dialog.showModal();
+  const referenceFile = dialog.querySelector('#element-reference-file');
+  const referenceZone = dialog.querySelector('#element-reference-input-zone');
+  const referenceImport = dialog.querySelector('#element-reference-import');
+  const referenceLabel = dialog.querySelector('#element-reference-import-label');
+  const referencePreview = dialog.querySelector('#element-reference-preview');
+  const referenceStatus = dialog.querySelector('#element-reference-import-status');
+  let previewUrl = '';
+  window.ZetImageInput?.attach(referenceZone, referenceFile);
+  referenceFile.addEventListener('change', () => {
+    const file = referenceFile.files?.[0];
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = file ? URL.createObjectURL(file) : '';
+    referencePreview.hidden = !file;
+    if (file) {
+      referencePreview.src = previewUrl;
+      if (!referenceLabel.value.trim()) referenceLabel.value = file.name.replace(/\.[^.]+$/, '');
+    }
+    referenceImport.disabled = !file;
+    referenceStatus.textContent = file ? 'Ready to import. The element keeps its current reference until saved.' : '';
+  });
+  referenceImport.addEventListener('click', async () => {
+    const targetDraft = elementDraft;
+    const file = referenceFile.files?.[0], label = referenceLabel.value.trim();
+    if (!file || !label) { referenceStatus.textContent = 'Choose an image and enter its Inventory label.'; return; }
+    referenceImport.disabled = true;
+    referenceStatus.textContent = 'Importing image to Image Inventory…';
+    try {
+      const params = new URLSearchParams({label});
+      const response = await fetch(`/api/entity-library/assets?${params}`, {method:'POST', headers:{'Content-Type':file.type}, body:file});
+      const payload = await response.json();
+      if (!response.ok) throw Error(typeof payload.detail === 'string' ? payload.detail : 'Image import failed.');
+      if (!payload.asset?.asset_id) throw Error('Import succeeded but returned no image identity.');
+      if (!dialog.open || elementDraft !== targetDraft) return;
+      elementDraft.asset_id = payload.asset.asset_id;
+      elementDraft.reference_key = '';
+      dialog.querySelector('#element-reference-label').textContent = `${label} · Imported and selected. Save the element to commit this reference.`;
+      referenceStatus.textContent = payload.message || 'Imported image selected. Save the element to use it.';
+    } catch (error) {
+      referenceStatus.textContent = error.message;
+      referenceImport.disabled = !referenceFile.files?.[0];
+    }
+  });
+  dialog.addEventListener('close', () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, {once:true});
 }
 
 async function librarySearch() {
@@ -1195,6 +1300,10 @@ async function assignElements() {
 
 listen(host,'input',event=>{
   if (event.target.id==='backdrop-link-mode') return;
+  if (event.target.dataset.sceneField) {
+    sceneDirty.add(event.target.dataset.sceneField);
+    status('Saving shared scene direction…'); scheduleSave(); return;
+  }
   if (event.target.dataset.adaptation || event.target.dataset.crop) { adaptationChanged();updateLive();return; }
   if (event.target.dataset.layerField) {
     const key=event.target.dataset.layerField;
@@ -1209,6 +1318,15 @@ listen(host,'input',event=>{
 });
 
 listen(host,'change',event=>{
+  if (event.target.dataset.sceneField) {
+    sceneDirty.add(event.target.dataset.sceneField);
+    status('Saving shared scene direction…'); scheduleSave(); return;
+  }
+  if (event.target.matches('[data-proposal-choice]')) {
+    const choices = reviewChoices(detail.jobs[interviewReviewId]);
+    choices[event.target.dataset.proposal] = {action:event.target.value, explicit:true};
+    return;
+  }
   if (event.target.id==='assembly-active-layer') { activeLayer=event.target.value; renderPlacement(); return; }
   if (event.target.id==='narrative-interview-image') {interviewImage=event.target.value;updateLive();return;}
   if (event.target.id==='backdrop-link-mode') {const mode=event.target.value;action(async()=>{await save();await api(base(),'PATCH',{backdrop_link_mode:mode});await loadPage();});return;}
@@ -1258,12 +1376,6 @@ listen(host,'click',event=>{
     return;
   }
   if (button.dataset.interviewReview) { openInterviewReview(button.dataset.interviewReview); return; }
-  if (button.dataset.proposalChoice) {
-    const choices = reviewChoices(detail.jobs[interviewReviewId]);
-    choices[button.dataset.proposal] = {action:button.dataset.proposalChoice, explicit:true};
-    for (const control of button.parentElement.querySelectorAll('button')) control.setAttribute('aria-pressed',String(control === button));
-    return;
-  }
   if (button.dataset.reviewBulk) {
     const job = detail.jobs[interviewReviewId], choices = reviewChoices(job);
     for (const row of job.review.proposals) if (!choices[row.id].explicit) choices[row.id].action = button.dataset.reviewBulk === 'reject' ? 'reject' : row.scope === 'visual' ? button.dataset.reviewBulk : 'accept';

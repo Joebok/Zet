@@ -1,5 +1,7 @@
 # Architectural decision records
 
+[0054 - Narrative prompt freshness](0054-narrative-prompt-freshness.md) records the current-input digest, explicit prompt adoption, and render readiness rule.
+
 [0053 - Universe Species catalog](0053-universe-species-catalog.md) records shared species resolution and universe-owned edits.
 
 [0052 - Image Generation assets and candidate boards](0052-image-generation-assets.md) records library ownership, migration, Inventory publication, and reconstruction prompt review.

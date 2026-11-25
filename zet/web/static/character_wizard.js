@@ -13,6 +13,7 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted, tem
   let generation = 0;
   let context, mode, session, model, timer;
   let pending = false;
+  const proposalAcceptance = new Set();
   const sectionReview = find("[data-section-review]");
 
   function sectionEdits() {
@@ -81,8 +82,17 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted, tem
           proposal.readOnly = true;
           proposal.rows = 4;
           proposal.value = entry.proposal;
+          const acceptProposal = document.createElement("input");
+          acceptProposal.type = "checkbox";
+          acceptProposal.dataset.proposalAccept = name;
+          acceptProposal.checked = proposalAcceptance.has(name);
+          acceptProposal.addEventListener("change", () => {
+            if (acceptProposal.checked) proposalAcceptance.add(name);
+            else proposalAcceptance.delete(name);
+            showDraftActions();
+          });
           panel.append(labeledInput("Proposed replacement", proposal),
-            sectionButton(`Apply replacement: ${entry.label}`, "apply-proposal", name),
+            labeledInput("Accept suggested replacement", acceptProposal),
             sectionButton(`Dismiss replacement: ${entry.label}`, "dismiss-proposal", name));
         }
         const direction = document.createElement("input");
@@ -157,11 +167,29 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted, tem
     image.src = url;
   }
 
+  async function imageFromInventory(item) {
+    const imagePath = item.image_path || item.path;
+    if (!imagePath) throw new Error("This inventory entry has no available image file.");
+    const query = new URLSearchParams({path:imagePath});
+    const response = await fetch(`/api/file?${query}`);
+    if (!response.ok) throw new Error("The inventory image could not be read.");
+    const blob = await response.blob();
+    if (!blob.type.startsWith("image/")) throw new Error("The selected inventory file is not an image.");
+    const slot = Number(item.__wizardSlot);
+    const input = intake.elements[`image${slot}`];
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([blob], `${item.label || item.tag || "inventory-image"}.${blob.type.split("/")[1] || "png"}`, {type:blob.type}));
+    input.files = transfer.files;
+    input.dispatchEvent(new Event("change", {bubbles:true}));
+    const caption = intake.elements[`caption${slot}`];
+    if (!caption.value) caption.value = item.label || item.tag || "";
+  }
+
   function showDraftActions() {
     if (session?.version === 2) {
       const edits = sectionEdits();
       const dirty = Object.entries(edits).some(([key, value]) =>
-        ["sections", "head_sections"].includes(key) ? Object.keys(value).length : true);
+        ["sections", "head_sections"].includes(key) ? Object.keys(value).length : true) || proposalAcceptance.size > 0;
       command("accept").disabled = pending || dirty || Boolean(session.errors.length);
       return;
     }
@@ -354,17 +382,12 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted, tem
       input.value = "";
       preview(slot, null);
     });
-    const paste = find(`[data-paste="${slot}"]`);
-    paste.addEventListener("click", () => notice("Press Ctrl+V to paste an image into this slot."));
-    paste.addEventListener("paste", (event) => {
-      const image = [...event.clipboardData.files].find((file) => file.type.startsWith("image/"));
-      if (image) {
-        event.preventDefault();
-        input.value = "";
-        preview(slot, image);
-        notice(`Image pasted into reference ${slot}.`);
-      }
-    });
+    const zone = find(`[data-image-input="${slot}"]`);
+    window.ZetImageInput?.attach(zone, input, {onInventory:async item => {
+      const selected = {...item, __wizardSlot:slot};
+      await imageFromInventory(selected);
+      notice(`${item.label || item.tag || "Image"} selected for reference ${slot}.`);
+    }});
   }
 
   intake.addEventListener("submit", async (event) => {
@@ -404,12 +427,17 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted, tem
       data.section = section;
       data.text = edits.sections[section] ?? session.sections[section].text;
       data.direction = find(`[data-section-direction="${section}"]`).value;
-    } else if (name === "apply-proposal" || name === "dismiss-proposal") {
+    } else if (name === "dismiss-proposal") {
       action = "save-sections";
       data.dismiss = [section];
-      if (name === "apply-proposal") data.sections = {[section]: session.sections[section].proposal};
     } else if (name === "save-sections" || name === "preview") {
       Object.assign(data, edits);
+      if (name === "save-sections") {
+        for (const proposalName of proposalAcceptance) {
+          const proposal = session.sections[proposalName]?.proposal;
+          if (proposal !== null && proposal !== undefined) data.sections[proposalName] = proposal;
+        }
+      }
     }
     pending = true;
     button.disabled = true;
@@ -424,6 +452,9 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted, tem
       } else if (value.status === "ABANDONED") await open(mode);
       else {
         const remaining = sectionEdits();
+        for (const proposalName of proposalAcceptance) {
+          if (data.sections?.[proposalName] === value.sections?.[proposalName]?.text) proposalAcceptance.delete(proposalName);
+        }
         for (const group of ["sections", "head_sections"]) {
           for (const [key, saved] of Object.entries(data[group] || {})) {
             if (edits[group][key] === remaining[group][key] || remaining[group][key] === saved) delete remaining[group][key];
@@ -443,10 +474,50 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted, tem
     }
   }
 
+  async function closeSafely() {
+    if (!session) {
+      const hasIntake = files.size || [...intake.querySelectorAll("input:not([type=file]), textarea")]
+        .some(input => input.value.trim());
+      if (hasIntake && !window.confirm("Close Character Wizard and discard these unsubmitted intake edits?")) return;
+      dialog.close();
+      return;
+    }
+    if (session.status === "DRAFT") {
+      const token = generation;
+      try {
+        if (session.version === 2) {
+          const edits = sectionEdits();
+          const dirty = Object.entries(edits).some(([key, value]) =>
+            ["sections", "head_sections"].includes(key) ? Object.keys(value).length : true) || proposalAcceptance.size > 0;
+          if (dirty) {
+            const sections = {...edits.sections};
+            for (const proposalName of proposalAcceptance) {
+              const proposal = session.sections[proposalName]?.proposal;
+              if (proposal !== null && proposal !== undefined) sections[proposalName] = proposal;
+            }
+            const value = await fetchJson(`${endpoint}/${session.id}/save-sections`, {
+              method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({...edits, sections, revision:session.revision}),
+            });
+            if (current(token)) render(value);
+          }
+        } else if (markdown.value !== session.markdown) {
+          const value = await fetchJson(`${endpoint}/${session.id}/save`, {
+            method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({revision:session.revision, markdown:markdown.value}),
+          });
+          if (current(token)) render(value);
+        }
+      } catch (error) {
+        if (current(token)) notice(`Draft was not saved. Keep editing or try Close again. ${error.message}`, true);
+        return;
+      }
+    }
+    dialog.close();
+  }
+
   dialog.addEventListener("click", async (event) => {
     const name = event.target.closest("[data-command]")?.dataset.command;
     if (!name) return;
-    if (name === "close") return dialog.close();
+    if (name === "close") return closeSafely();
     if (name === "manual") {
       dialog.close();
       return manual();
@@ -487,6 +558,11 @@ window.mountCharacterWizard = function ({fetchJson, scope, manual, accepted, tem
       button.disabled = false;
       if (current(token) && session) showDraftActions();
     }
+  });
+
+  dialog.addEventListener("cancel", event => {
+    event.preventDefault();
+    void closeSafely();
   });
 
   document.addEventListener("visibilitychange", () => {

@@ -1,7 +1,3 @@
-:root {
-  --render-final: #62409a;
-}
-
 .zet-candidate-board .zcb-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
@@ -16,6 +12,10 @@
   min-width: 0;
 }
 .zet-candidate-board .zcb-controls { margin-bottom: .75rem; }
+.zet-candidate-board [data-part="board-status"] [role="status"][data-status="error"],
+.zet-candidate-review [data-part="review-status"][data-status="error"] { color: var(--danger); }
+.zet-candidate-board [data-part="board-status"] [role="status"][data-status="submitting"],
+.zet-candidate-review [data-part="review-status"][data-status="submitting"] { color: var(--info); }
 .zet-candidate-board .zcb-fields-inline { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); align-items: end; gap: .5rem; }
 .zet-candidate-board .zcb-fields-inline label { min-width: 0; }
 .zet-candidate-board .zcb-fields-inline input,
@@ -69,12 +69,12 @@
 .zet-candidate-review .zcb-action { display: grid; gap: .25rem; }
 .zcb-action[title] > button:disabled { pointer-events: none; }
 :is(.zet-candidate-board, .zet-candidate-review) button:not(:disabled)[data-quality="draft"] {
-  background: var(--primary-soft);
-  border-color: var(--primary);
-  color: var(--primary);
+  background: var(--render-draft-soft);
+  border-color: var(--render-draft);
+  color: var(--render-draft);
 }
 :is(.zet-candidate-board, .zet-candidate-review) button:not(:disabled)[data-quality="draft"]:hover {
-  background: #c9e1e6;
+  background: var(--render-draft-soft);
 }
 :is(.zet-candidate-board, .zet-candidate-review) button:not(:disabled)[data-quality="final"] {
   background: var(--render-final);
@@ -82,16 +82,16 @@
   color: white;
 }
 :is(.zet-candidate-board, .zet-candidate-review) button:not(:disabled)[data-quality="final"]:hover {
-  background: #50317f;
-  border-color: #50317f;
+  background: var(--render-final-hover);
+  border-color: var(--render-final-hover);
 }
 :is(.zet-candidate-board, .zet-candidate-review) button:not(:disabled)[data-key="upscale"] {
-  background: #eee8f5;
-  border-color: var(--render-final);
-  color: var(--render-final);
+  background: var(--render-upscale-soft);
+  border-color: var(--render-upscale);
+  color: var(--render-upscale);
 }
 :is(.zet-candidate-board, .zet-candidate-review) button:not(:disabled)[data-key="upscale"]:hover {
-  background: #e0d5ee;
+  background: var(--render-upscale-hover);
 }
 .zet-candidate-board button[data-key^="render-"]:is([data-quality="draft"], [data-quality="final"]) {
   display: inline-flex;
@@ -131,6 +131,7 @@
 .zet-candidate-review[open] { display: grid; grid-template-rows: auto minmax(0, 1fr); }
 .zet-candidate-review header { align-items: center; padding-bottom: .5rem; }
 .zet-candidate-review header h2 { flex: 1 1 16rem; margin: 0; }
+.zet-candidate-review .zcb-candidate-identity { font-size: .8rem; overflow-wrap: anywhere; }
 .zet-candidate-review .zcb-review-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) clamp(17rem, 25vw, 24rem);
@@ -148,7 +149,9 @@
   min-width: 0;
   min-height: 0;
 }
-.zet-candidate-review aside { overflow: auto; }
+.zet-candidate-review .zcb-review-aside { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.zet-candidate-review .zcb-review-persistent { flex: 0 0 auto; }
+.zet-candidate-review [data-part="rail"] { min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .zet-candidate-review figcaption { text-align: center; padding-top: .35rem; }
 .zet-candidate-board [hidden], .zet-candidate-review [hidden] { display: none !important; }
 @media (max-width: 800px), (max-height: 550px) {

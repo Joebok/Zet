@@ -1,9 +1,28 @@
 """Short narrative instructions and deterministic reference bindings."""
 from zet.services.narrative_backdrop_policy import backdrop_reference
 import json
+import hashlib
 import re
 
 from zet.services.narrative_interview_service import FIELD_PURPOSES, MOMENT_FIELDS, VISUAL_FIELDS
+
+
+def prompt_input_basis(detail: dict) -> str:
+    """Stable digest of the saved, effective inputs used to author a target prompt."""
+    keys = (
+        "title", "kind", "narrative", "staging", "physical_context", "framing",
+        "use_transparent_background", "aspect_ratio", "scene_canvas",
+        "context", "inherited_context", "style_source", "universe_style",
+        "universe_style_variant", "visual_overrides", "elements", "source_snapshot",
+        "backdrop_link_mode", "backdrop_adaptation", "assembly_mode", "source_groups",
+    )
+    inputs = {key: detail[key] for key in keys if key in detail}
+    if "layers" in detail:
+        layer_keys = ("id", "target_id", "candidate_id", "element_id", "label", "narrative", "role",
+                      "fit", "cutout", "visible", "strokes", "x", "y", "scale", "z", "opacity")
+        inputs["layers"] = [{key: layer[key] for key in layer_keys if key in layer} for layer in detail["layers"]]
+    encoded = json.dumps(inputs, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def object_schema(properties: dict) -> dict:

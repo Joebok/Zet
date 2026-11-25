@@ -6,7 +6,7 @@ The Character Wizard uses reference images to draft Body and Head and hair obser
 
 1. Choose **New > Character** from any dashboard page. Zet opens **Character Overview** and then the Character Wizard. Confirm the universe in the dashboard header. For testing, use [Zet Test](http://localhost:8082/?page=onboarding) with `ZetTester` selected.
 2. For a clean run, leave **Resume draft** on **Start a new interview**. Enter the **Character Name** and **Character Phase**, then choose **Species** and **Gender Presentation**. Use a name that is free in this universe. Choose **Androgynous** when that is the intended presentation. Choose **Undecided** to describe the visible traits without assigning a gender. You can still create the character and render images with **Undecided**.
-3. Choose a **Vision model**, such as Luna (`codex:gpt-6-luna`). Add one to three **Reference images** using the file controls or **Paste image here**. You can use captions to describe what each image should contribute and **Direction** for any additional instructions. Click **Start interview**.
+3. Choose a **Vision model**, such as Luna (`codex:gpt-6-luna`). Add one to three **Reference images** using **Choose image**, **Paste image**, or **Image Inventory**. Inventory selections are copied into this interview as reference uploads. You can use captions to describe what each image should contribute and **Direction** for any additional instructions. Click **Start interview**.
 4. Wait for **Body** and **Head and hair** to show **Ready**. Both sections use the starting choices. The wizard also prepares Head-Image Edit starter sections. To accept the generated work as-is, leave the observations and starter sections unchanged.
 5. Click **Preview Character.md** and check for validation errors. Click **Create character**. Wait for **Character created.** on **Character Overview**, then verify the new character and phase in the header.
 
@@ -14,7 +14,7 @@ To revise the intended species or presentation, change **Species** or **Gender P
 
 If a section shows **Needs attention**, read its notice. For ordinary authoring you can resume the draft and use **Retry section**. For an as-is acceptance test, record the first error and stop that attempt. Manual edits or using another model would skip the path under test.
 
-To remove an unfinished interview from **Resume draft**, select it and click **Abandon draft**. Older interviews that use retired Head Image Construct sections are labeled **Retired template** and can be cleared the same way. Abandoning retains private interview records and any Character.md already published, including after an interrupted save.
+To remove an unfinished interview from **Resume draft**, select it and click **Abandon draft**. Older interviews that use retired Head Image Construct sections are labeled **Retired template** and can be cleared the same way. Abandoning retains private interview records and any Character.md already published, including after an interrupted save. Closing with unsaved review edits saves those edits first; closing unsubmitted intake edits asks before discarding them.
 
 ## Run Body Reference FRONT
 

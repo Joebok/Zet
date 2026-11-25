@@ -776,6 +776,7 @@ class CharacterAssetContainerService:
         changed = False
         board_applications = []
         harvested = []
+        harvested_thumbnails = {}
         for candidate_id in board["slots"]:
             if not candidate_id:
                 continue
@@ -807,7 +808,9 @@ class CharacterAssetContainerService:
                 if candidate.get("status") == "COMPLETE":
                     record_render_completion(candidate, duration_seconds=updates.get("render_duration_seconds"))
                     if candidate.get("image_path") and candidate["image_path"] != previous_image_path:
-                        harvested.append(f"character:{value['container_id']}:{candidate_id}:{attempt_id}")
+                        attempt = f"character:{value['container_id']}:{candidate_id}:{attempt_id}"
+                        harvested.append(attempt)
+                        harvested_thumbnails[attempt] = candidate["image_path"]
                     if candidate.get("image_path") != previous_image_path and board.get("luna_review", {}).get("status") in {"COMPLETE", "RUNNING"}:
                         board["luna_review"]["status"] = "OBSOLETE"
                         board["luna_review"]["active_id"] = ""
@@ -822,7 +825,8 @@ class CharacterAssetContainerService:
             label = " / ".join(part for part in (
                 character, phase, pipeline.replace("-", " ").title(), costume, view.replace("_", " ")
             ) if part)
-            record_harvests(self.app, harvested, route, label, board_id=f"character:{value['container_id']}:{view}")
+            record_harvests(self.app, harvested, route, label, board_id=f"character:{value['container_id']}:{view}",
+                            thumbnail_paths=harvested_thumbnails)
         for ask_id in board_applications:
             self.app.ai_proxy_service.ai_proxy_path_service.jobs.repository.update(
                 ask_id, board_application_state="SETTLED")

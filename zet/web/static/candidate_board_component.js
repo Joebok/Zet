@@ -43,14 +43,16 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
   dialog.className = 'zet-candidate-review';
   dialog.setAttribute('aria-label', 'Review candidate');
   dialog.innerHTML = `<header><h2 data-part="title"></h2>
+    <span data-part="candidate-identity" class="zcb-candidate-identity"></span>
+    ${button('Copy candidate ID','copy-id')}
     ${button('Previous candidate','previous')}${button('Next candidate','next')}
     ${button('Close review','close')}</header>
     <div class="zcb-review-layout">
       <div class="zcb-pictures"><figure data-part="comparison" hidden></figure><figure data-part="image"></figure></div>
-      <aside><div class="zcb-tools">
+      <aside class="zcb-review-aside"><div class="zcb-review-persistent"><div class="zcb-tools">
         ${button('Zoom In','zoom-in')}${button('Zoom Out','zoom-out')}${button('Reset Zoom','zoom-reset')}
-      </div><div data-part="rail">
-        <div data-part="review-actions"></div><div data-part="review-status" role="status"></div>
+      </div><div data-part="review-actions"></div><div data-part="review-status" role="status"></div></div>
+      <div data-part="rail">
         <details><summary>Compare with</summary><div data-part="choices"></div></details>
         <div data-part="assessment"></div><div data-part="details"></div>
       </div></aside>
@@ -181,8 +183,7 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
   }
 
   function showFeedback(node, result) {
-    node.classList.toggle('error', result?.status === 'error');
-    node.textContent = result?.message || '';
+    window.ZetOperationStatus.render(node, result);
   }
 
   function renderControls() {
@@ -380,7 +381,8 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
     const position = list.indexOf(slot);
     const slotNumber = model.slots.indexOf(slot) + 1;
     patch(view('title'), [model.scope.title, model.scope.view, `Slot ${slotNumber} · ${position + 1} of ${list.length}`]
-      .filter(Boolean).map(escape).join(' · ') + ' · ' + statusMarkup(candidate) + ` · Candidate ID ${escape(candidate.id)}`);
+      .filter(Boolean).map(escape).join(' · ') + ` · ${statusMarkup(candidate)}`);
+    view('candidate-identity').textContent = `Candidate ID ${candidate.id}`;
     command('previous').disabled = pending.size > 0 || position <= 0;
     command('next').disabled = pending.size > 0 || position >= list.length - 1;
     command('close').disabled = pending.size > 0;
@@ -553,7 +555,7 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
         [field.name, field.type === 'checkbox' ? field.checked : field.value]))};
     pending.add(key);
     if (target === 'luna') feedback.delete(target);
-    else feedback.set(target, {message:`${action.label}…`});
+    else feedback.set(target, {status:'submitting', message:`${action.label}…`});
     render();
     let result;
     try { result = await adapter.onAction(intent); }
@@ -589,6 +591,11 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
     const control = event.target.closest('button[data-command]');
     if (!control || control.disabled) return;
     switch (control.dataset.command) {
+      case 'copy-id': {
+        try { await navigator.clipboard.writeText(String(candidateId)); }
+        catch { view('review-status').textContent = 'Clipboard unavailable. Select the Candidate ID text to copy it.'; }
+        return;
+      }
       case 'previous': return moveReview(-1);
       case 'next': return moveReview(1);
       case 'close': return closeReview();

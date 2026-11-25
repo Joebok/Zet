@@ -59,6 +59,16 @@ primary teal. Save, Update, and New do not introduce separate color families.
 Green means a result or assessment, rather than “this is the selected image.”
 The current theme is light; a dark theme is not specified here.
 
+Render quality states use `--render-draft`, `--render-draft-soft`,
+`--render-final`, `--render-final-hover`, and `--render-upscale-*` in `zet.css`.
+Draft uses the primary teal family; Final and Upscale share violet. Keep the
+visible Draft/Final label with the color treatment.
+
+Render quality states use the shared `--render-draft`, `--render-draft-soft`,
+`--render-final`, `--render-final-hover`, and `--render-upscale-*` tokens in
+`zet.css`. Draft uses the primary teal family; Final and Upscale share the
+violet family. Keep the visible Draft/Final label with its color treatment.
+
 ### Type, spacing, and surfaces
 
 - Keep the existing Segoe UI/system sans-serif family. Use monospace for source,
@@ -102,6 +112,12 @@ Unlock uses a secondary treatment plus an explanation of its effect; it is not D
 [image_card_ui.js](../zet/web/static/image_card_ui.js), `ZetImageCardUI.decorate`,
 already supplies the SVG keys listed without an asterisk. Entries marked **target***
 need a shared glyph before adoption; this guide does not add them to the helper.
+The `ZetImageCardUI.actions` registry owns common semantic role and ordering
+metadata. Explicit action keys are preferred where callers know the effect;
+text inference remains a compatibility fallback during migration.
+The shared `ZetImageCardUI.actions` registry owns common semantic role and
+ordering metadata. Explicit action keys are preferred where callers know the
+effect; text inference remains a compatibility fallback during migration.
 The names below describe shapes, not Unicode characters to paste into buttons.
 
 | Function / preferred label | Shared key or target glyph | Usual role / meaning |
@@ -259,6 +275,10 @@ opening control a meaningful accessible name, such as “Review BACK candidate F
 Use the shared card border, surface, and wrapping action row. Selected borders must
 not change the card's outer dimensions or shift the gallery. Destructive hover or
 focus styles must not obscure state markers.
+
+For short mutually exclusive choices, use a labeled native radio group instead of
+a select menu. Keep direct numeric or keyboard alternatives beside pointer-based
+placement controls, and preserve the pointer gesture for users who prefer it.
 
 ### Independent state dimensions
 

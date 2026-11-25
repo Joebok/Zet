@@ -9,11 +9,11 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css?v=20261123-fullscreen-zoom">
+  <link rel="stylesheet" href="/static/zet.css?v=20261125-diagnostics-zoom">
   <link rel="stylesheet" href="/static/task_capture.css?v=20261020-template-publication">
-  <link rel="stylesheet" href="/static/narrative.css?v=20261112-asset-thumbnails">
+  <link rel="stylesheet" href="/static/narrative.css?v=20261124-landscape-controls">
   <link rel="stylesheet" href="/static/candidate_board.css?v=20261122-image-generation-ui">
-<link rel="stylesheet" href="/static/scene_text.css"><script src="/static/scene_text.js" defer></script>
+<link rel="stylesheet" href="/static/scene_text.css?v=20261124-geometry-controls"><script src="/static/scene_text.js" defer></script>
 </head>
 <body>
   <header class="app-header">
@@ -104,7 +104,7 @@
 
       <button class="tab workflow-tab" data-page="narrative">Stories</button>
 
-      <button class="tab workflow-tab" data-page="scene-candidates">Candidates</button>
+      <button class="tab workflow-tab" data-page="scene-candidates">Import Candidates</button>
 
 
       <button class="tab workflow-tab" data-page="zine">Zines</button>
@@ -143,7 +143,8 @@
     <section id="recent-renders-page" class="page">
       <h1>Recent Renders</h1>
       <p id="recent-renders-status" role="status">Loading recent renders...</p>
-      <ul id="recent-renders-list"></ul>
+      <p class="recent-renders-help">Review the latest harvested image or open its Candidate Board to continue work.</p>
+      <ul id="recent-renders-list" class="recent-renders-list" aria-label="Boards with recent renders"></ul>
     </section>
     <p id="task-context-notice" class="action-message" role="status" aria-live="polite" hidden></p>
     <section id="placeholder-page" class="page active">
@@ -183,25 +184,26 @@
       <div class="page-title-row"><h1>New Universe</h1></div>
       <form id="universe-create-form" class="control-panel">
         <label>Universe Name<input id="universe-create-name" name="name" required maxlength="80" autocomplete="off"></label>
-        <label>Canonical Art Style<textarea id="universe-create-art-style" name="canonical_art_style" rows="4"></textarea></label>
-        <label>Environmental style (environments and other non-character images)<textarea id="universe-create-environment-style" name="environmental_art_style" rows="4"></textarea></label>
-        <div id="universe-create-message" class="action-message" hidden></div>
+        <h2>Art style</h2>
+        <label>Canonical art style<textarea id="universe-create-art-style" name="canonical_art_style" rows="4"></textarea></label>
+        <label>Environmental style for environments and other non-character images<textarea id="universe-create-environment-style" name="environmental_art_style" rows="4"></textarea></label>
+        <div id="universe-create-message" class="action-message" role="status" aria-live="polite" hidden></div>
         <div class="button-row compact"><button class="primary-action" type="submit">Create Universe</button><button class="tab" type="button" data-page="universes">Cancel</button></div>
       </form>
     </section>
     <section id="universe-settings-page" class="page">
       <div class="page-title-row"><h1 id="universe-settings-title">Universe Settings</h1><button class="tab" type="button" data-page="universes">Back to Universes</button></div>
-      <div id="universe-settings-message" class="action-message" hidden></div>
+      <div id="universe-settings-message" class="action-message" role="status" aria-live="polite" hidden></div>
       <form id="universe-settings-form" class="control-panel"><p id="universe-settings-identity"></p><h2>Art style</h2>
-        <label>Canonical Art Style<textarea id="universe-settings-art-style" name="canonical_art_style" rows="5"></textarea></label>
+        <label>Canonical art style<textarea id="universe-settings-art-style" name="canonical_art_style" rows="5"></textarea></label>
         <p>Describe the shared finish: linework, shading, color, and material treatment. Set proportions and facial features in the character template and garment design in the costume template.</p>
-        <label>Environmental style (environments and other non-character images)<textarea id="universe-settings-environment-style" name="environmental_art_style" rows="5"></textarea></label>
+        <label>Environmental style for environments and other non-character images<textarea id="universe-settings-environment-style" name="environmental_art_style" rows="5"></textarea></label>
         <p>Describe how environments are illustrated. Set the mood, lighting, and camera for each image in its scene direction or prompt.</p>
         <p>Story lettering overrides take precedence. Changes apply when finishing an image; existing finished images stay unchanged.</p><div class="button-row compact"><button type="button" id="open-universe-scene-text-style">Scene text style</button><button class="primary-action" type="submit">Save Settings</button><button id="universe-settings-select" type="button">Select Universe</button></div>
       </form>
       <section id="species-settings" class="control-panel">
         <h2>Species</h2>
-        <p data-species-status role="status"></p>
+        <p data-species-status role="status" aria-live="polite" aria-atomic="true"></p>
         <div class="button-row compact">
           <label>Defined species<select data-species-list></select></label>
           <button type="button" data-species-edit disabled>Edit</button>
@@ -253,18 +255,18 @@
             </fieldset>
             <details open><summary>Reference images</summary>
               <p>Add one to three reference images and describe what Zet should use from each image.</p>
+              <div class="wizard-image-input" data-image-input="1" aria-label="Reference 1 image"></div>
               <label>Reference 1<input name="image1" type="file" accept="image/*"></label>
-              <button type="button" data-paste="1" aria-label="Paste reference 1">Paste image here</button>
               <button type="button" data-clear-reference="1" hidden>Remove reference 1</button>
               <label>Reference 1 caption (optional)<input name="caption1" maxlength="500"></label>
               <img class="costume-wizard-preview" data-preview="1" alt="Reference 1" hidden>
+              <div class="wizard-image-input" data-image-input="2" aria-label="Reference 2 image"></div>
               <label>Reference 2<input name="image2" type="file" accept="image/*"></label>
-              <button type="button" data-paste="2" aria-label="Paste reference 2">Paste image here</button>
               <button type="button" data-clear-reference="2" hidden>Remove reference 2</button>
               <label>Reference 2 caption (optional)<input name="caption2" maxlength="500"></label>
               <img class="costume-wizard-preview" data-preview="2" alt="Reference 2" hidden>
+              <div class="wizard-image-input" data-image-input="3" aria-label="Reference 3 image"></div>
               <label>Reference 3<input name="image3" type="file" accept="image/*"></label>
-              <button type="button" data-paste="3" aria-label="Paste reference 3">Paste image here</button>
               <button type="button" data-clear-reference="3" hidden>Remove reference 3</button>
               <label>Reference 3 caption (optional)<input name="caption3" maxlength="500"></label>
               <img class="costume-wizard-preview" data-preview="3" alt="Reference 3" hidden>
@@ -747,9 +749,9 @@
             <label>Origin<select id="entity-library-filter-origin"><option value="">All origins</option><option value="import">Imported</option><option value="pipeline">Locked pipeline</option></select></label>
             <label class="checkbox-field"><input id="entity-library-include-obsolete" type="checkbox"> Include obsolete images</label>
             <button id="entity-library-clear-filters" class="text-action" type="button">Clear filters</button>
-            <div id="entity-library-filter-chips" class="inventory-filter-chips" aria-label="Active filters"></div>
-            <div id="entity-library-count" class="status-text" role="status"></div>
           </details>
+          <div id="entity-library-filter-chips" class="inventory-filter-chips" aria-label="Active filters"></div>
+          <div id="entity-library-count" class="status-text" role="status" aria-live="polite"></div>
           <section class="control-panel">
             <h2>Add image</h2>
             <input id="entity-library-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" aria-label="Import image into library">
@@ -999,8 +1001,16 @@
               <summary>Container Settings</summary>
               <div id="mc-source-controls">
                 <img id="mc-source-image" alt="Original Inventory reference" width="160" hidden>
-                <button type="button" id="mc-add-reference">Choose from Inventory</button>
+                <button type="button" id="mc-add-reference">Choose from Image Inventory</button>
                 <p id="mc-source-status"></p>
+                <div class="mc-source-import">
+                  <div id="mc-source-import-zone" aria-label="Import a source image"></div>
+                  <label>Inventory label<input id="mc-source-import-label" maxlength="200" placeholder="Source image"></label>
+                  <img id="mc-source-import-preview" alt="New source image preview" hidden>
+                  <button type="button" id="mc-source-import-use" disabled>Import to Image Inventory and use</button>
+                  <p id="mc-source-import-status" role="status"></p>
+                  <label hidden>Source image file<input id="mc-source-import-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif"></label>
+                </div>
               </div>
               <p class="muted">Use Zet tags such as <code>- [fl,pl] …</code> for view-specific lines.</p>
               <label>Appearance<textarea name="appearance"></textarea></label>
@@ -1127,9 +1137,9 @@
           <label>Costume summary<textarea id="costume-wizard-extra" rows="3" placeholder="Fitted indigo travel coat over charcoal trousers, with brown ankle boots and a brass clasp."></textarea></label>
           <label><input id="costume-wizard-include-equipment" type="checkbox" checked> Include equipment, jewelry, and props</label>
           <div class="costume-wizard-images">
-            <article class="costume-wizard-image-slot" data-slot="1"><h3>Reference image 1</h3><label>Upload reference image 1<input class="costume-wizard-file" type="file" accept="image/*"></label><label>Reference image 1 caption<input class="costume-wizard-caption" type="text" placeholder="Front of the outfit"></label><div class="costume-wizard-paste" tabindex="0" aria-label="Paste reference image 1">Click here and paste an image</div><img class="costume-wizard-preview" alt="Reference image 1 preview" hidden></article>
-            <article class="costume-wizard-image-slot" data-slot="2"><h3>Reference image 2</h3><label>Upload reference image 2<input class="costume-wizard-file" type="file" accept="image/*"></label><label>Reference image 2 caption<input class="costume-wizard-caption" type="text" placeholder="Back of the outfit"></label><div class="costume-wizard-paste" tabindex="0" aria-label="Paste reference image 2">Click here and paste an image</div><img class="costume-wizard-preview" alt="Reference image 2 preview" hidden></article>
-            <article class="costume-wizard-image-slot" data-slot="3"><h3>Reference image 3</h3><label>Upload reference image 3<input class="costume-wizard-file" type="file" accept="image/*"></label><label>Reference image 3 caption<input class="costume-wizard-caption" type="text" placeholder="Close-up of the top"></label><div class="costume-wizard-paste" tabindex="0" aria-label="Paste reference image 3">Click here and paste an image</div><img class="costume-wizard-preview" alt="Reference image 3 preview" hidden></article>
+            <article class="costume-wizard-image-slot" data-slot="1"><h3>Reference image 1</h3><div class="wizard-image-input costume-wizard-paste" aria-label="Reference image 1"></div><label>Upload reference image 1<input class="costume-wizard-file" type="file" accept="image/*"></label><label>Reference image 1 caption<input class="costume-wizard-caption" type="text" placeholder="Front of the outfit"></label><img class="costume-wizard-preview" alt="Reference image 1 preview" hidden></article>
+            <article class="costume-wizard-image-slot" data-slot="2"><h3>Reference image 2</h3><div class="wizard-image-input costume-wizard-paste" aria-label="Reference image 2"></div><label>Upload reference image 2<input class="costume-wizard-file" type="file" accept="image/*"></label><label>Reference image 2 caption<input class="costume-wizard-caption" type="text" placeholder="Back of the outfit"></label><img class="costume-wizard-preview" alt="Reference image 2 preview" hidden></article>
+            <article class="costume-wizard-image-slot" data-slot="3"><h3>Reference image 3</h3><div class="wizard-image-input costume-wizard-paste" aria-label="Reference image 3"></div><label>Upload reference image 3<input class="costume-wizard-file" type="file" accept="image/*"></label><label>Reference image 3 caption<input class="costume-wizard-caption" type="text" placeholder="Close-up of the top"></label><img class="costume-wizard-preview" alt="Reference image 3 preview" hidden></article>
           </div>
           <button id="costume-wizard-create" class="primary-action" type="button">Create Costume Draft</button>
         </section>
@@ -1318,38 +1328,48 @@
           </label>
           <datalist id="zine-scene-options"></datalist>
           <div class="zine-slot-groups">
-            <section class="zine-cover-slot"><h3>Front</h3><label>Scene<input id="zine-front" type="text" list="zine-scene-options"></label></section>
+            <section class="zine-cover-slot"><h3>Front</h3><button type="button" data-zine-choose="front">Choose scene</button><figure data-zine-preview="front" hidden><img alt=""><figcaption></figcaption></figure><label>Source tag<input id="zine-front" type="text" list="zine-scene-options"></label><small class="zine-slot-error" data-zine-error="front" hidden></small></section>
             <section class="zine-page-pair">
               <h3>Pages 1–2</h3>
-              <label>Page 1<input id="zine-page-1" type="text" list="zine-scene-options"></label>
-              <label>Page 2<input id="zine-page-2" type="text" list="zine-scene-options"><small>Blank when Page 1 is a spread.</small></label>
+              <button type="button" data-zine-choose="page_1">Choose scene for Page 1</button><figure data-zine-preview="page_1" hidden><img alt=""><figcaption></figcaption></figure><label>Page 1 source tag<input id="zine-page-1" type="text" list="zine-scene-options"></label><small class="zine-slot-error" data-zine-error="page_1" hidden></small>
+              <button type="button" data-zine-choose="page_2">Choose scene for Page 2</button><figure data-zine-preview="page_2" hidden><img alt=""><figcaption></figcaption></figure><label>Page 2 source tag<input id="zine-page-2" type="text" list="zine-scene-options"><small>Leave blank when Page 1 is a spread.</small></label><small class="zine-slot-error" data-zine-error="page_2" hidden></small>
               <label class="zine-spread-toggle"><input id="zine-spread-1" type="checkbox"> Use Page 1 as a two-page spread</label>
+              <small class="zine-group-status" data-zine-group-status="page_1" aria-live="polite"></small>
             </section>
             <section class="zine-page-pair">
               <h3>Pages 3–4</h3>
-              <label>Page 3<input id="zine-page-3" type="text" list="zine-scene-options"></label>
-              <label>Page 4<input id="zine-page-4" type="text" list="zine-scene-options"><small>Blank when Page 3 is a spread.</small></label>
+              <button type="button" data-zine-choose="page_3">Choose scene for Page 3</button><figure data-zine-preview="page_3" hidden><img alt=""><figcaption></figcaption></figure><label>Page 3 source tag<input id="zine-page-3" type="text" list="zine-scene-options"></label><small class="zine-slot-error" data-zine-error="page_3" hidden></small>
+              <button type="button" data-zine-choose="page_4">Choose scene for Page 4</button><figure data-zine-preview="page_4" hidden><img alt=""><figcaption></figcaption></figure><label>Page 4 source tag<input id="zine-page-4" type="text" list="zine-scene-options"><small>Leave blank when Page 3 is a spread.</small></label><small class="zine-slot-error" data-zine-error="page_4" hidden></small>
               <label class="zine-spread-toggle"><input id="zine-spread-3" type="checkbox"> Use Page 3 as a two-page spread</label>
+              <small class="zine-group-status" data-zine-group-status="page_3" aria-live="polite"></small>
             </section>
             <section class="zine-page-pair">
               <h3>Pages 5–6</h3>
-              <label>Page 5<input id="zine-page-5" type="text" list="zine-scene-options"></label>
-              <label>Page 6<input id="zine-page-6" type="text" list="zine-scene-options"><small>Blank when Page 5 is a spread.</small></label>
+              <button type="button" data-zine-choose="page_5">Choose scene for Page 5</button><figure data-zine-preview="page_5" hidden><img alt=""><figcaption></figcaption></figure><label>Page 5 source tag<input id="zine-page-5" type="text" list="zine-scene-options"></label><small class="zine-slot-error" data-zine-error="page_5" hidden></small>
+              <button type="button" data-zine-choose="page_6">Choose scene for Page 6</button><figure data-zine-preview="page_6" hidden><img alt=""><figcaption></figcaption></figure><label>Page 6 source tag<input id="zine-page-6" type="text" list="zine-scene-options"><small>Leave blank when Page 5 is a spread.</small></label><small class="zine-slot-error" data-zine-error="page_6" hidden></small>
               <label class="zine-spread-toggle"><input id="zine-spread-5" type="checkbox"> Use Page 5 as a two-page spread</label>
+              <small class="zine-group-status" data-zine-group-status="page_5" aria-live="polite"></small>
             </section>
-            <section class="zine-cover-slot"><h3>Back</h3><label>Scene<input id="zine-back" type="text" list="zine-scene-options"></label></section>
+            <section class="zine-cover-slot"><h3>Back</h3><button type="button" data-zine-choose="back">Choose scene</button><figure data-zine-preview="back" hidden><img alt=""><figcaption></figcaption></figure><label>Source tag<input id="zine-back" type="text" list="zine-scene-options"></label><small class="zine-slot-error" data-zine-error="back" hidden></small></section>
           </div>
+          <p id="zine-completion-status" class="status-text" aria-live="polite"></p>
           <section id="zine-preview-section" class="zine-preview-section" hidden>
             <h3>Print Layout</h3>
-            <img id="zine-preview" alt="Zine print layout">
+            <img id="zine-preview" alt="Zine print layout. Open full screen to zoom and inspect pages.">
           </section>
         </section>
       </div>
+      <dialog id="zine-source-picker" class="zine-source-picker" aria-labelledby="zine-source-picker-title">
+        <header><h2 id="zine-source-picker-title">Choose a finished scene</h2><button type="button" data-zine-picker-close>Close</button></header>
+        <p>Select a finished scene image for <strong data-zine-picker-slot></strong>.</p>
+        <div id="zine-source-options" class="zine-source-options"></div>
+        <p id="zine-source-empty" hidden>No finished scene images are available for this story.</p>
+      </dialog>
     </section>
 
     <section id="scene-candidates-page" class="page">
       <div class="page-title-row">
-        <h1>Scene Candidates</h1>
+        <h1>Import Scene Candidates</h1>
         <div id="scene-candidate-status" class="status-text"></div>
       </div>
       <div id="scene-candidate-message" class="action-message" hidden></div>
@@ -1871,22 +1891,31 @@
         <details open><summary>Assets</summary><ul data-ig-assets></ul></details>
       </div>
       <div data-ig-asset hidden>
-        <div class="button-row compact image-generation-asset-actions"><button type="button" data-ig-rename>Rename</button>
+        <h2 data-ig-asset-heading></h2>
+        <div class="button-row compact image-generation-asset-actions" data-ig-asset-actions><button type="button" data-ig-rename>Rename</button>
           <button type="button" class="danger-action" data-ig-delete>Delete asset</button>
           <button type="button" data-ig-refresh>Refresh</button></div>
+        <button type="button" data-ig-back-to-generation hidden>Back to generation</button>
+        <p data-ig-view-label></p>
+        <p data-ig-operation-status role="status" aria-live="polite"></p>
+        <p data-ig-source role="status"></p>
+        <p data-ig-analysis role="status"></p>
+        <p data-ig-report role="status"></p>
         <section data-ig-generate-view>
-          <div class="image-generation-setup">
-            <label>Generation mode<select data-ig-mode><option value="txt2img">Text to image</option><option value="img2img">Image to image</option></select></label>
-            <label>Universe style<select data-ig-style-variant><option value="canonical">Canonical</option><option value="environmental">Environmental</option></select></label>
-            <button type="button" data-ig-style>Insert universe style</button>
+          <div data-ig-generation-preparation>
+            <div class="image-generation-setup">
+              <fieldset class="ig-choice-group"><legend>Generation mode</legend><label><input type="radio" name="ig-mode" data-ig-mode value="txt2img"> Text to image</label><label><input type="radio" name="ig-mode" data-ig-mode value="img2img"> Image to image</label></fieldset>
+              <fieldset class="ig-choice-group"><legend>Universe style</legend><label><input type="radio" name="ig-style-variant" data-ig-style-variant value="canonical"> Canonical</label><label><input type="radio" name="ig-style-variant" data-ig-style-variant value="environmental"> Environmental</label></fieldset>
+              <button type="button" data-ig-style>Insert universe style</button>
+            </div>
+            <details data-ig-references hidden><summary>Reference images</summary>
+              <div data-ig-reference-list></div>
+            </details>
           </div>
-          <div data-ig-board></div>
-          <details data-ig-references hidden><summary>Reference images</summary>
-            <div data-ig-reference-list></div>
-          </details>
+          <div data-ig-generation-results><div data-ig-board></div></div>
         </section>
         <section data-ig-reconstruction-view hidden>
-          <div class="page-title-row"><h2>Reconstruction</h2><button type="button" data-ig-back-to-generation>Back to generation</button></div>
+          <div data-ig-reconstruction-preparation>
           <p>Choose a source, describe what to preserve and change, then review the proposed prompt before rendering.</p>
           <details data-ig-authoring><summary>Source and intent</summary>
             <div class="button-row"><button type="button" data-ig-pick aria-label="Choose reconstruction source from Inventory">Choose Inventory source</button>
@@ -1900,17 +1929,19 @@
             <label>Reconstruction prompt <textarea rows="5" data-ig-draft></textarea></label>
             <button type="button" data-ig-use>Apply reconstruction prompt</button>
           </details>
-          <div data-ig-board-reconstruction></div>
           <details data-ig-true-up><summary>Compare and correct reconstruction</summary>
-            <p data-ig-report role="status"></p><div class="image-generation-gallery" data-ig-comparison hidden>
+            <div class="image-generation-gallery" data-ig-comparison hidden>
               <figure><img data-ig-original alt="Original reconstruction source"><figcaption>Original source</figcaption></figure>
               <figure><img data-ig-compared alt="Selected reconstruction"><figcaption>Selected reconstruction</figcaption></figure></div>
             <div data-ig-findings></div><label>Additional corrections <textarea data-ig-corrections rows="3"></textarea></label>
             <label>Correction quality <select data-ig-quality><option value="draft">Draft</option><option value="final">Final</option></select></label>
             <button type="button" data-ig-correct>Render correction</button>
           </details>
+          </div>
+          <div data-ig-reconstruction-results><div data-ig-board-reconstruction></div></div>
         </section>
       </div>
+      <dialog data-ig-form-dialog aria-label="Image Generation form"></dialog>
       <div data-ig-dialog></div>
     </section>
 
@@ -1926,9 +1957,9 @@
           <thead>
             <tr>
               <th>process</th>
-              <th>running</th>
-              <th>duplicates</th>
-              <th>pids</th>
+              <th>status</th>
+              <th>additional processes</th>
+              <th>process details</th>
               <th>actions</th>
             </tr>
           </thead>
@@ -1943,20 +1974,25 @@
         <section class="control-panel ai-automation-panel local-image-config-panel">
           <h2>Project Automation</h2>
           <form id="automation-form" class="settings-form">
-            <label>Draft target pixels<input id="setting-draft-target-pixels" type="number" min="65536" max="16777216" step="1" required></label>
-            <label>Final target pixels<input id="setting-final-target-pixels" type="number" min="65536" max="16777216" step="1" required></label>
-            <p class="status-text">Image Generation uses these targets. Draft and Final sizing is being integrated into the other workflows.</p>
-            <label><input id="setting-ai-harvest-auto" type="checkbox"> Standalone harvest host enabled</label>
-            <label>Standalone harvest interval seconds<input id="setting-ai-harvest-interval" type="number" min="0" max="86400" step="1"></label>
-            <label><input id="setting-ai-prompt-analysis-auto-queue-on-render" type="checkbox"> Auto-queue prompt analysis when rendering a scene</label>
-            <label>
-              Final render backend
-              <select id="setting-render-backend">
-                <option value="manual_chatgpt">manual_chatgpt</option>
-                <option value="local_image">local_image</option>
-              </select>
-            </label>
-            <button class="primary-action" type="submit">Save Project Settings</button>
+            <section class="settings-group" data-settings-section>
+              <div class="settings-group-heading"><h3>Image sizing</h3><span data-settings-save-state role="status" aria-live="polite"></span></div>
+              <label>Draft target pixels<input id="setting-draft-target-pixels" type="number" min="65536" max="16777216" step="1" required></label>
+              <label>Final target pixels<input id="setting-final-target-pixels" type="number" min="65536" max="16777216" step="1" required></label>
+              <p class="status-text">Image Generation uses these targets. Draft and Final sizing is being integrated into the other workflows.</p>
+            </section>
+            <section class="settings-group" data-settings-section>
+              <div class="settings-group-heading"><h3>Background work</h3><span data-settings-save-state role="status" aria-live="polite"></span></div>
+              <label><input id="setting-ai-harvest-auto" type="checkbox"> Standalone harvest host enabled</label>
+              <label>Standalone harvest interval (seconds)<input id="setting-ai-harvest-interval" type="number" min="0" max="86400" step="1"></label>
+            </section>
+            <section class="settings-group" data-settings-section>
+              <div class="settings-group-heading"><h3>Scene automation</h3><span data-settings-save-state role="status" aria-live="polite"></span></div>
+              <label><input id="setting-ai-prompt-analysis-auto-queue-on-render" type="checkbox"> Auto-queue prompt analysis when rendering a scene</label>
+            </section>
+            <section class="settings-group" data-settings-section>
+              <div class="settings-group-heading"><h3>Final image rendering</h3><span data-settings-save-state role="status" aria-live="polite"></span></div>
+              <label>Final render backend<select id="setting-render-backend"><option value="manual_chatgpt">Manual ChatGPT</option><option value="local_image">Local image</option></select></label>
+            </section>
           </form>
         </section>
         <section class="control-panel managed-llm-panel">
@@ -1967,7 +2003,8 @@
             </div>
             <button id="refresh-ollama-models" type="button">Refresh Models</button>
           </div>
-          <h3>Model defaults</h3>
+          <section class="settings-group" data-settings-section>
+          <div class="settings-group-heading"><h3>Model defaults</h3><span data-settings-save-state role="status" aria-live="polite"></span></div>
           <div class="settings-form">
             <label>Codex default model<select id="setting-codex-default-model" form="automation-form"></select></label>
             <label>Narrative default model<select id="setting-narrative-default-model" form="automation-form"></select></label>
@@ -1977,9 +2014,15 @@
             <label>Minor / Quick Character default<select id="setting-quick-character-wizard-model" form="automation-form"></select></label>
             <label>Body local assessment default<select id="setting-local-body-reference-review-model" form="automation-form"></select></label>
           </div>
+          </section>
+          <section class="settings-group" data-settings-section>
+          <div class="settings-group-heading"><h3>Active workflow roles</h3><span data-settings-save-state role="status" aria-live="polite"></span></div>
           <div id="managed-llm-active" class="managed-llm-grid"></div>
+          </section>
+          <section class="settings-group" data-settings-section>
+          <div class="settings-group-heading"><h3>Compatibility and retired roles</h3><span data-settings-save-state role="status" aria-live="polite"></span></div>
           <details class="managed-llm-compatibility">
-            <summary>Compatibility and retired roles</summary>
+            <summary>Show saved compatibility settings</summary>
             <p>Saved settings and historical continuations are retained. These settings do not enable retired workflows.</p>
             <div class="settings-form">
               <label>Traditional asset default<select id="setting-ai-asset-workflow-model" form="automation-form"></select></label>
@@ -1989,9 +2032,12 @@
             </div>
             <div id="managed-llm-compatibility" class="managed-llm-grid"></div>
           </details>
+          </section>
         </section>
         <section class="control-panel">
           <h2>Image Generation</h2>
+          <section class="settings-group" data-settings-section>
+          <div class="settings-group-heading"><h3>Render service</h3><span data-settings-save-state role="status" aria-live="polite"></span></div>
           <div class="settings-form">
             <label>
               Image generation
@@ -2041,9 +2087,12 @@
               </label>
             </fieldset>
           </div>
+          </section>
         </section>
         <section class="control-panel">
           <h2>Zines</h2>
+          <section class="settings-group" data-settings-section>
+          <div class="settings-group-heading"><h3>Page and print dimensions</h3><span data-settings-save-state role="status" aria-live="polite"></span></div>
           <div class="settings-form">
             <label>
               Zine Print Scale (0–1)
@@ -2063,6 +2112,7 @@
               <input id="setting-turnaround-width" type="number" min="44" step="44" value="3960" form="automation-form">
             </label>
           </div>
+          </section>
         </section>
       </div>
     </section>
@@ -2073,11 +2123,12 @@
         <div id="pipeline-inspection-status" class="status-text"></div>
       </div>
       <div id="pipeline-inspection-message" class="action-message" hidden></div>
+      <p class="status-text">Read-only diagnostics include current Character Asset Containers and Narrative records, plus any files still present in the legacy pipeline folder. Current work is owned by its workspace and may not have a legacy pipeline directory.</p>
       <div class="pipeline-inspection-layout">
         <aside class="control-panel pipeline-inspection-sidebar">
           <label>
             Filter pipelines
-            <input id="pipeline-inspection-search" type="search" placeholder="Character, phase, pipeline, or scene">
+            <input id="pipeline-inspection-search" type="search" placeholder="Character, phase, pipeline, or story">
           </label>
           <div id="pipeline-inspection-list" class="inspection-list" aria-label="Pipelines"></div>
         </aside>
@@ -2114,6 +2165,7 @@
         </section>
         <section class="control-panel pipeline-wide">
           <h2>Character / Phase Pipeline Config</h2>
+          <p id="pipeline-controls-legacy-message" class="status-text" role="status">Legacy pipeline reset is unavailable for current Character Asset Containers. Manage candidates from the Character workspace board.</p>
           <table id="pipeline-stage-table">
             <thead>
               <tr>
@@ -2128,18 +2180,6 @@
             <tbody></tbody>
           </table>
         </section>
-        <section class="control-panel pipeline-wide batch-reset-panel">
-          <h2>Batch Render Reset</h2>
-          <div class="batch-controls">
-            <label>
-              Pipeline
-              <select id="batch-render-pipeline"></select>
-            </label>
-            <label class="checkbox-row"><input id="batch-include-locked" type="checkbox"> Include locked assets</label>
-            <button id="batch-render-reset" class="danger-action">Set Pipeline Assets Back To Render</button>
-          </div>
-          <table id="batch-render-result-table"><tbody></tbody></table>
-        </section>
       </div>
     </section>
 
@@ -2152,9 +2192,19 @@
       <div id="source-editor-warning" class="action-message error" hidden></div>
       <div class="source-editor-layout">
         <section class="review-main">
+          <section class="control-panel source-editor-picker" aria-labelledby="source-editor-picker-title">
+            <h2 id="source-editor-picker-title">Choose a template</h2>
+            <p id="source-editor-template-scope" role="status" aria-live="polite"></p>
+            <div class="button-row compact">
+              <label>Template source<select id="source-editor-template-select" disabled></select></label>
+              <button id="source-editor-open-template" type="button" disabled>Open template</button>
+              <button id="source-editor-refresh-templates" type="button">Reload choices</button>
+            </div>
+          </section>
           <div class="review-header">
             <h2 id="source-editor-title">Open a character or costume template to edit</h2>
           </div>
+          <p id="source-editor-empty" class="source-editor-empty" role="status">Choose a template above to start editing. The master on disk will load here.</p>
           <div class="source-editor-toolbar editor-sticky-header">
             <button id="source-editor-save" class="primary-action" disabled>Save Source</button>
             <span id="source-editor-save-state" class="save-state" aria-live="polite"></span>
@@ -2179,7 +2229,7 @@ Add prompt language here.
           <dl id="source-editor-meta" class="editor-meta"></dl>
           <div id="template-editor-full">
             <pre id="template-editor-decoration" aria-hidden="true" hidden></pre>
-            <textarea id="source-editor-text" aria-label="Template source text" spellcheck="false"></textarea>
+            <textarea id="source-editor-text" aria-label="Template source text" spellcheck="false" disabled></textarea>
           </div>
           <section id="template-editor-diff" aria-label="Master on disk versus current edits" hidden>
             <p id="template-editor-diff-status" role="status"></p>
@@ -2301,25 +2351,27 @@ Add prompt language here.
   </main>
 
 
-  <script src="/static/review_image_zoom.js?v=20261108-board-lifecycle"></script>
+  <script src="/static/review_image_zoom.js?v=20261125-standalone-viewer"></script>
   <script src="/static/image_card_ui.js?v=20261111-generation-controls"></script>
+  <script src="/static/image_inventory_picker.js?v=20261124-unified-image-input"></script>
+  <script src="/static/operation_status.js?v=20261124-operation-status"></script>
   <script src="/static/image_input.js?v=20261019"></script>
-  <script src="/static/task_capture.js?v=20261019-responsive"></script>
+  <script src="/static/task_capture.js?v=20261125-screenshot-zoom"></script>
   <script src="/static/task_attention.js?v=20261020-template-publication"></script>
   <script src="/static/render_slots.js?v=20261020-image-cards"></script>
   <script src="/static/ai_model_picker.js?v=20261016"></script>
   <script src="/static/storage_status.js?v=20261017"></script>
   <script src="/static/pipeline_labels.js"></script>
-  <script src="/static/ai_queue.js?v=20261017"></script>
+  <script src="/static/ai_queue.js?v=20261125-queue-review"></script>
   <script src="/static/template_editor.js?v=20261026"></script>
   <script src="/static/character_hub.js?v=20261123-fullscreen-views"></script>
   <script src="/static/species_settings.js?v=1"></script>
   <script src="/static/character_wizard.js?v=20261115-unique-review-controls"></script>
-  <script src="/static/zet.js?v=20261123-fullscreen-zoom"></script>
+  <script src="/static/zet.js?v=20261125-pipeline-diagnostics-zoom"></script>
   <script type="module" src="/static/minor_characters.js?v=20261116-board-navigation"></script>
   <script src="/static/local_template_improvement.js?v=20261115-unique-review-controls"></script>
-  <script src="/static/local_asset_pipeline.js?v=20261103-rerun-rejected"></script>
-  <script type="module" src="/static/character_asset_container.js?v=20261115-unique-review-controls"></script>
+  <script src="/static/local_asset_pipeline.js?v=20261125-review-zoom"></script>
+  <script type="module" src="/static/character_asset_container.js?v=20261125-inventory-source"></script>
 
 </body>
 </html>

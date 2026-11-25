@@ -155,9 +155,15 @@ mappings and strict lookup failures; the four approved fast scenarios passed.
 
 The target has one lock across Draft and Final. Locking also selects the candidate. Unlock the current image before selecting or locking a different image.
 
-Responsive cards and image review follow [Dashboard UI](DASHBOARD_UI.md). Existing
-targets with images prioritize viewing on compact screens, with direction and
-generation inputs available in disclosures. These visual conventions preserve
+Responsive cards and image review follow [Dashboard UI](DASHBOARD_UI.md). Target
+boards use the shared expandable production workspace: target selection and
+results remain visible while shared scene and target preparation live in a
+per-target disclosure. Preparation opens when no image exists and otherwise
+defaults closed; explicit choices persist for that target. Async status remains
+outside the disclosure. The shared scene panel edits direction and visual
+defaults without leaving the board; target-local overrides remain available.
+Scene intent is planning context, while target prompt writing uses the target's
+moment and effective shared visual settings. These visual conventions preserve
 Narrative's independent records and selection/lock lifecycle. Cards show quality, render time, and applicable status badges. The review disclosure holds the captured prompt, sources, and assembly provenance. Frozen raw composites are available in the comparison chooser. Pending/failed occupied slots can open details;
 selection and locking still require an image.
 
@@ -165,7 +171,17 @@ Narrative JSON persistence uses the shared portable library-path codec for expli
 
 Inputs include scene intent/visual settings, named elements/library asset IDs, target narrative/staging/physical context/framing, model selection, candidate slot controls, and assembly layers. Targets include backdrop/subscene/assembly behavior. Outputs are authored prose, generated prompts with provenance, durable job/candidate records, image files, selections and locked images. Storage is under universe `NarrativeStories/`; [DATA_MODEL](../DATA_MODEL.md) owns identifiers/formats.
 
-The element library-image picker seeds its editable search from the current Name field, including unsaved edits. `NarrativeSceneService.library_options` queries at most ten approved catalog images before hydration and omits unavailable files; searches may return fewer than ten images.
+Prompt provenance includes `input_basis`, a digest of effective shared and local
+direction, target/source mode, style, element bindings and assembly placement.
+Target reads report ready, stale, unknown or missing. Rendering is admitted only
+when the saved prompt matches the current basis. Update Prompt writes a fresh AI
+prompt; Save Prompt explicitly adopts the edited text for current inputs. Late
+writer results are retained in job history but cannot replace a prompt after its
+basis changes. Records predating the digest are unknown and must be saved or
+updated before rendering. Retry continues to use the original frozen request.
+See [ADR 0054](../DECISIONS/0054-narrative-prompt-freshness.md).
+
+The element Image Inventory picker seeds its editable search from the current Name field, including unsaved edits. Scene elements can also Browse or Paste an image and explicitly import it into the image library before binding; the element record changes only when Save element is submitted. `NarrativeSceneService.library_options` queries at most ten approved catalog images before hydration and omits unavailable files; searches may return fewer than ten images.
 
 1. Author creates a story, scenes, elements, and targets with stable IDs. Target visual settings combine scene defaults and target overrides.
 2. `start` chooses interview/synthesis/generate/render or a supported replay action. All text/image work uses File Proxy; its trusted registration selects Codex, Ollama or ComfyUI execution. Jobs persist model/provider provenance and a baseline for result application.
@@ -353,6 +369,13 @@ Selected final assemblies feed discovery, story summaries and zines through
 `finished_sources`; `NARRATIVE` image tags bind an explicit candidate. Legacy images
 are separately labeled and never count as newly completed assemblies.
 
+Zine Maker keeps the saved source tag editable while offering a finished-scene
+thumbnail picker for each cover/page slot. The page and spread groups report
+assigned counts, the five required scenes are validated beside their fields, and
+print output opens in the shared zoomable full-screen viewer. Partial page fills
+remain possible as drafts; creating a print layout requires the front/back covers
+and pages 1, 3 and 5.
+
 ## Universe-style adoption (2026-10-14)
 
 Scene `use_universe_style` defaults true on creation; records missing the flag normalize false to preserve their saved style. Legacy scene migration also explicitly retains its authored style. The scene editor retains saved custom style and displays the universe alternative. When enabled, current universe style supplies inherited style; a nonblank target override replaces it. Target detail reports the effective source and universe style snapshot. Applying an interview style proposal to Shared explicitly chooses that custom scene style and disables universe inheritance.
@@ -378,6 +401,8 @@ Interview and prompt writing are separate model roles, preserving explicit per-t
 ## Manual scene text (2026-10-29)
 
 Final assemblies have Scene text authoring and a full-viewport placement editor. Add/reorder entries, use restricted bold/italic markup, choose no tail or a straight tail, draw boxes and move/resize them. Tail tips stay in image space while the attachment can move around the bubble. Font size, padding, outline and tail width scale by the square root of actual image pixel count relative to the packaged 896x1184 draft preview backdrop. The shared universe/story style dialog previews against that backdrop; its sample bubble fits the sample text. Shrink box minimizes a candidate box while preserving its current wrapping. Overflow prevents confirmation. Full screen is optional; the viewport editor remains available without browser fullscreen.
+
+The placement editor also exposes percentage-based left, top, width and height fields, so a box can be created, moved or resized without dragging. Scene tail and animation transition choices use labeled radio groups. Animation zoom targets can be clicked, nudged with arrow keys or set with percentage fields. These controls remain inside the editor's scrollable side panel at landscape tablet height; confirmed lettering and saved animation data contracts are unchanged.
 
 In an empty raw placement editor, typing text, choosing a tail or dragging on the image creates the first entry automatically. Add scene text creates subsequent entries. Text typed before placement is saved with the entry even if no box has been drawn yet.
 

@@ -30,7 +30,12 @@ class RecentRenderStore:
             board = boards.setdefault(row["board"], {
                 "label": row["label"], "route": row["route"], "count": 0,
             })
+            is_latest = board["count"] == 0
             board["count"] += 1
+            if is_latest:
+                board["latest_rendered_at"] = row.get("harvested_at", "")
+                if row.get("thumbnail_path"):
+                    board["thumbnail_path"] = row["thumbnail_path"]
         return {"universe_id": self.universe, "revision": state["revision"], "boards": list(boards.values())}
 
     def snapshot(self):
@@ -50,16 +55,18 @@ class RecentRenderStore:
                 if not callbacks:
                     del _subscribers[self.path]
 
-    def record(self, attempts, route, label, *, board_id=None, now=None):
+    def record(self, attempts, route, label, *, board_id=None, now=None, thumbnail_paths=None):
         now = now or datetime.now(timezone.utc)
         timestamp = now.astimezone(timezone.utc).isoformat(timespec="microseconds")
         board = board_id or json.dumps(route, sort_keys=True)
+        thumbnail_paths = thumbnail_paths or {}
         with file_lock(self.path.with_suffix(".lock"), shared=True):
             state = self._read()
             images = {row["id"]: row for row in state["images"]}
             additions = {
                 attempt: {"id": attempt, "board": board, "route": route, "label": label,
-                          "harvested_at": timestamp}
+                          "harvested_at": timestamp,
+                          **({"thumbnail_path": str(thumbnail_paths[attempt])} if thumbnail_paths.get(attempt) else {})}
                 for attempt in attempts if attempt not in images
             }
             if not additions:

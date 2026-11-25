@@ -15,7 +15,7 @@ from PIL import Image
 
 from zet.models.narrative import NarrativeCandidate, new_id
 from zet.services.atomic_file_service import write_bytes_atomic
-from zet.services.narrative_prompt_service import assemble_prompt, llm_request
+from zet.services.narrative_prompt_service import assemble_prompt, llm_request, prompt_input_basis
 from zet.services.narrative_interview_service import interview_review
 from zet.services.narrative_proxy_service import CONSUMER, NarrativeProxyService
 from zet.services.image_render_request import draft_upscale_request, verify_upscale_output
@@ -254,6 +254,10 @@ class NarrativeGenerationService:
                     raise ValueError("Use the local reuse action for this backdrop mode.")
             if kind == "render" and detail["kind"] == "assembly" and record["prompt_provenance"].get("assembly_mode", "finish_composite") != detail.get("assembly_mode", "finish_composite"):
                 raise ValueError("The prompt belongs to another assembly mode. Write or edit the prompt before rendering.")
+            if kind == "render" and detail.get("prompt_state") != "ready":
+                reason = {"stale": "Preparation changed. Update the prompt, then render.",
+                          "unknown": "Prompt readiness is unknown. Update or save the prompt before rendering."}
+                raise ValueError(reason.get(detail.get("prompt_state"), "Write or save a prompt before rendering."))
             refs = [] if detail["kind"] == "assembly" else (deepcopy(replay["references"]) if replay else self.author.references(detail))
             job = {"id": new_id(), "kind": kind, "status": "SUBMITTING", "error": "", "detail": detail_without_jobs(detail),
                    "references": refs, "candidate_ids": [], "result": None, "baseline": baseline,
@@ -301,6 +305,8 @@ class NarrativeGenerationService:
                     write_bytes_atomic(path, source.read_bytes())
                     frozen.append({**reference, "path": str(path)})
                 job["references"] = frozen
+            if kind in {"synthesize", "generate", "render"}:
+                job["prompt_input_basis"] = prompt_input_basis(job["detail"])
             if kind in {"generate", "render"}:
                 mode = (job.get("render_sizing") or {}).get("render_mode", "draft")
                 board = record["slots"]
@@ -530,17 +536,27 @@ class NarrativeGenerationService:
                         else:
                             prompt = assemble_prompt(job["detail"], value, job["references"])
                             job["result"] = prompt
-                            if (record["active_llm_job"] == job["id"] and record["prompt"] == job.get("baseline", job["detail"])["prompt"]
-                                    and self._same_mode(record, job["detail"])):
+                            current_detail = self.author.target(story, scene, target)
+                            still_current = (record["active_llm_job"] == job["id"]
+                                             and record["prompt"] == job.get("baseline", job["detail"])["prompt"]
+                                             and self._same_mode(record, job["detail"])
+                                             and prompt_input_basis(current_detail) == job.get("prompt_input_basis"))
+                            if still_current:
                                 previous_prompt = record["prompt"]
                                 record["prompt"] = prompt
-                                record["prompt_provenance"] = {**job.get("provenance", {}), "job_id": job["id"], "edited": False}
+                                record["prompt_provenance"] = {**job.get("provenance", {}), "job_id": job["id"],
+                                                                "edited": False, "input_basis": job["prompt_input_basis"]}
                                 self.author.mark_prompt_change(record, previous_prompt)
+                            else:
+                                job["prompt_stale"] = True
                             if job["kind"] == "generate":
-                                job["status"] = "DISPATCHING"
-                                self.repository.write(record, story, scene, target)
-                                self._stage_renders(story, scene, target, record, job, prompt)
-                                job["status"] = "COMPLETE"
+                                if still_current:
+                                    job["status"] = "DISPATCHING"
+                                    self.repository.write(record, story, scene, target)
+                                    self._stage_renders(story, scene, target, record, job, prompt)
+                                    job["status"] = "COMPLETE"
+                                else:
+                                    job["status"] = "COMPLETE"
                 except (ValueError, KeyError, TypeError, OSError) as exc:
                     self._fail(record, job, str(exc))
                     if job["kind"] == "image" and candidate:
@@ -553,10 +569,16 @@ class NarrativeGenerationService:
             label = " / ".join(part for part in (
                 titles.get("story"), titles.get("scene"), record["title"]
             ) if part)
+            attempts = [f"narrative:{job['id']}" for job in harvested]
+            thumbnails = {}
+            for job in harvested:
+                candidate = record["candidates"].get(job.get("candidate_id"))
+                if candidate and candidate.get("image"):
+                    thumbnails[f"narrative:{job['id']}"] = self.repository.folder(story, scene, target) / candidate["image"]
             record_harvests(
-                self.author.app, [f"narrative:{job['id']}" for job in harvested],
+                self.author.app, attempts,
                 {"page": "narrative", "workspace": "story", "story": story, "scene": scene, "target": target},
-                label,
+                label, thumbnail_paths=thumbnails,
             )
         self._cleanup_pending(story, scene, target, record)
         for job in release:

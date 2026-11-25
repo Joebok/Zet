@@ -5,6 +5,7 @@
   const sessionId = params.get("session_id") || "", costume = params.get("costume") || "";
   const universe = params.get("universe_id") || "", page = params.get("page") || "";
   const $ = id => document.getElementById(`post-${id}`);
+  const viewerZoom = window.ZetReviewImageZoom.attach($("viewer"), () => [$("viewer-image")]);
   let data, busy = false, refreshing = false, deciding = false, criteriaSaving = false, responseVersion = 0;
   const isCostume = pipeline === "costume-dressing";
   let criteriaDraft = null, criteriaRevision = 0, criteriaDirty = false;
@@ -59,6 +60,7 @@
       for (const candidate of view.candidates.filter(item => item.image_available)) {
         const card = el("article"); card.className = "post-view-card";
         const img = el("img"); img.src = cardImage(candidate.candidate_id); img.alt = `${view.view} ${candidate.candidate_id}`; img.loading = "lazy";
+        window.ZetReviewImageZoom.enableStandalone(img);
         card.append(img, el("p", `${candidate.candidate_id}${candidate.selected ? " · selected" : ""}`));
         if (data.representatives.some(item => item.candidate_id === candidate.candidate_id)) card.append(el("strong", "Evidence for this view"));
         else if (["OBSERVING", "REVIEW_READY", "FAILED"].includes(data.status)) {
@@ -265,6 +267,7 @@
     const image = $("viewer-image"), url = endpoint(`/images/${encodeURIComponent(attempt.id)}`);
     if (image.getAttribute("src") !== url) image.src = url;
     image.alt = `${attempt.view} trial ${attempt.number}`;
+    viewerZoom.sync(attempt.id);
     $("viewer-previous").disabled = index === 0;
     $("viewer-next").disabled = index === attempts.length - 1;
   }
@@ -411,6 +414,10 @@
     const attempt = readyTrials().find(item => item.id === viewerAttemptId);
     if (attempt) showPrompt(attempt);
   });
+  $("viewer-zoom-out").addEventListener("click", () => viewerZoom.step(-1));
+  $("viewer-zoom-reset").addEventListener("click", () => viewerZoom.reset());
+  $("viewer-zoom-in").addEventListener("click", () => viewerZoom.step(1));
+  $("viewer-image").addEventListener("load", () => viewerZoom.sync(viewerAttemptId));
   $("viewer").addEventListener("keydown", event => {
     if ($("prompt-dialog").open) return;
     if (event.key === "ArrowLeft" || event.key === "ArrowRight") {

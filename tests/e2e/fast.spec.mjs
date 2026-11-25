@@ -366,7 +366,7 @@ test("unified AI queue collects all universes in the background and shares model
   const first = await submit("Test", "codex:gpt-6-luna");
   const second = await submit("TestOther", "general:latest");
   await page.goto("/?page=ai-controls");
-  await expect(page.locator(`#ai-jobs-table tr[data-job-id="${first}"]`)).toContainText("QUEUED");
+  await expect(page.locator(`#ai-jobs-table tr[data-job-id="${first}"]`)).toContainText("Queued");
   await expect(page.locator(`#ai-jobs-table tr[data-job-id="${second}"]`)).toContainText("TestOther");
   await page.goto("/?page=auxiliary-resources");
   await deliverEnvelope(page, first, Buffer.from(JSON.stringify({ summary: "Cloud prepared answer" })));
@@ -376,11 +376,11 @@ test("unified AI queue collects all universes in the background and shares model
     return [first, second].every(id => payload.items.some(item => item.ask_id === id && item.status === "COMPLETE"));
   }, { timeout: 12000 }).toBe(true);
   await page.goto("/?page=ai-controls");
-  await expect(page.locator(`#ai-jobs-table tr[data-job-id="${first}"]`)).toContainText("COMPLETE");
+  await expect(page.locator(`#ai-jobs-table tr[data-job-id="${first}"]`)).toContainText("Complete");
   expect((await (await page.request.get("/api/ai/jobs")).json()).items.find(item => item.ask_id === first).universe_id).toBe("Test");
   await expect(page.locator("#recent-harvest-table")).toContainText(first);
   await page.reload();
-  await expect(page.locator(`#ai-jobs-table tr[data-job-id="${second}"]`)).toContainText("COMPLETE");
+  await expect(page.locator(`#ai-jobs-table tr[data-job-id="${second}"]`)).toContainText("Complete");
   expect((await (await page.request.get("/api/ai/jobs")).json()).items.find(item => item.ask_id === second).universe_id).toBe("TestOther");
   await page.locator("#ai-filter-universe").selectOption("TestOther");
   await expect(page.locator(`#ai-jobs-table tr[data-job-id="${first}"]`)).toHaveCount(0);

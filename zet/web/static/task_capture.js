@@ -136,6 +136,14 @@
       const preview = document.createElement("img");
       preview.src = `data:${image.content_type};base64,${image.content_base64}`;
       preview.alt = image.filename;
+      preview.tabIndex = 0;
+      preview.setAttribute("role", "button");
+      preview.setAttribute("aria-label", `Open full screen: ${image.filename}`);
+      preview.addEventListener("click", () => window.ZetOpenFullscreenImage?.(preview.src, preview.alt));
+      preview.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault(); window.ZetOpenFullscreenImage?.(preview.src, preview.alt);
+      });
       const label = document.createElement("span");
       label.textContent = image.filename + (image.attachment_id ? " Ã‚Â· uploaded" : " Ã‚Â· saved in draft");
       const remove = document.createElement("button");

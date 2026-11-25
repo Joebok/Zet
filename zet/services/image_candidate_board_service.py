@@ -40,14 +40,15 @@ def record_render_completion(candidate, completed_at=None, duration_seconds=None
         return
 
 
-def record_harvests(app, attempts, route, label, *, board_id=None, harvested_at=None):
+def record_harvests(app, attempts, route, label, *, board_id=None, harvested_at=None, thumbnail_paths=None):
     """Publish an advisory snapshot after the owning workflow commits its images."""
     if not attempts:
         return
     from zet.services.recent_render_service import RecentRenderStore
 
     try:
-        RecentRenderStore(app).record(attempts, route, label, board_id=board_id, now=harvested_at)
+        RecentRenderStore(app).record(attempts, route, label, board_id=board_id, now=harvested_at,
+                                      thumbnail_paths=thumbnail_paths)
     except (OSError, ValueError, KeyError, TypeError):
         logging.getLogger(__name__).exception("Unable to record recent renders for %s", app.universe_id)
 

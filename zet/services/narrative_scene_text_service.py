@@ -92,8 +92,6 @@ class NarrativeSceneTextService:
             relative=f'lettering/{candidate}/{uuid4().hex}.png'
             write_bytes_atomic(root/relative,output.getvalue())
             item['scene_text_final']={**state,'image':relative}
-            from zet.services.image_candidate_board_service import select
-            select(record, candidate)
             self.repository.write(record,story,scene,target)
             return self.author.target(story,scene,target)
 

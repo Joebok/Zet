@@ -6,10 +6,10 @@ Minor Characters are independent workspaces for people who do not need a full Ch
 
 1. Select the intended universe and open **Minor Characters**.
 2. Enter a unique name in **New Minor Character** and create the workspace.
-3. In **Container Settings**, choose **Choose from Inventory**. Select the exact reference and verify its label and preview. Use the workspace's **Authoring Model** selector for Intake, interviews, and prompt writing. The selector is shared across Style and the official views. **Luna Review** always uses Luna and has no model selector.
+3. In **Container Settings**, choose **Choose from Image Inventory** to bind an existing reference. To add a new source, choose or paste an image, enter its Inventory label, then click **Import to Image Inventory and use**. The new image is not bound as the source until the explicit import action succeeds. Use the workspace's **Authoring Model** selector for Intake, interviews, and prompt writing. The selector is shared across Style and the official views. **Luna Review** always uses Luna and has no model selector.
 4. Run Intake. Review the fields it fills and correct anything that does not match the source.
 
-The workspace keeps its original Inventory reference. Add the image to the same universe before creating the workspace.
+The workspace keeps its selected Inventory reference. Add the image to the same universe before creating the workspace.
 
 ## Build and refine Style
 

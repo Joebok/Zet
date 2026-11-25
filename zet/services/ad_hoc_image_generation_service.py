@@ -761,10 +761,12 @@ class AdHocImageGenerationService:
             if child.get("harvested_at") and not board:
                 board = self._existing_board_reservation(job, child)
             if board and child.get("harvested_at"):
+                image_path = self.results_root / job["request_id"] / f"image-{child['index']}.bin"
                 record_harvests(
                     self.zet_app, [f"image-generation:{child['ask_id']}"],
                     {"page": "image-generation", "generation_asset": board["asset_id"]},
                     board["label"], harvested_at=datetime.fromtimestamp(child["harvested_at"], timezone.utc),
+                    thumbnail_paths={f"image-generation:{child['ask_id']}": image_path},
                 )
             path = self.results_root / job["request_id"] / f"image-{child['index']}.bin"
             evidence["applied_artifact"] = {"path": str(path), "sha256": child.get("image_sha256", ""), "image": True}
