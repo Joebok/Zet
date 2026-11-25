@@ -432,9 +432,17 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
       await update(operation, {...slot, expected_upscale_id:expectedUpscale, count:intent.count, render_mode:intent.mode || expected?.quality || "draft"}, token);
       return {status:"success", message:intent.key === "cancel" ? "Render cancelled." : undefined};
     } catch (error) {
-      if (intent.key === "cancel" && live(token)) {
-        const next = await fetchJson(endpoint()).catch(() => null);
-        if (next && live(token) && !dirty) { data = next; render(); }
+      let next = null;
+      if (live(token)) {
+        if (intent.key === "cancel") await fetchJson(endpoint("progress")).catch(() => null);
+        next = await fetchJson(endpoint()).catch(() => null);
+        if (next && live(token)) {
+          data = dirty ? {...next, inputs:data.inputs} : next;
+          render();
+        }
+        if (error instanceof TypeError) {
+          return window.ZetOperationStatus.unknownOutcome(Boolean(next));
+        }
       }
       throw error;
     } finally { if (live(token)) { busy = false; schedulePoll(); } }

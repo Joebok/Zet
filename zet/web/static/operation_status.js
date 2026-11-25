@@ -13,5 +13,11 @@
     node.textContent = label && message ? `${label}: ${message}` : label || message;
   }
 
-  window.ZetOperationStatus = { render };
+  function unknownOutcome(reconciled) {
+    return {status: "unknown", message: reconciled
+      ? "The response was lost. The board was refreshed; verify the result before retrying."
+      : "The response was lost and the board could not be refreshed. Refresh before retrying."};
+  }
+
+  window.ZetOperationStatus = { render, unknownOutcome };
 })();

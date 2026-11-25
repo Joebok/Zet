@@ -354,17 +354,34 @@ import {mountProductionWorkspace} from "./production_workspace.js?v=20261124-wor
   }
 
   async function characterBoardAction(intent) {
+    const aspectRatioDraft = state.aspectRatio;
+    try {
+      return await runCharacterBoardAction(intent);
+    } catch (error) {
+      if (intent.key === "cancel") await request(api(`/views/${encodeURIComponent(state.view)}/progress`)).catch(() => {});
+      let reconciled = false;
+      try {
+        await loadDetail();
+        reconciled = true;
+        if (state.detail?.render_settings?.aspect_ratio !== aspectRatioDraft) {
+          state.aspectRatio = aspectRatioDraft;
+          render();
+        }
+      } catch { /* Keep the action outcome unknown if refresh also fails. */ }
+      if (error instanceof TypeError) {
+        return window.ZetOperationStatus.unknownOutcome(reconciled);
+      }
+      throw error;
+    }
+  }
+
+  async function runCharacterBoardAction(intent) {
     if (state.mutation) return {status:"cancelled"};
     if (["render-1","render-4","render-final-1","render-final-4","stage-image-generation"].includes(intent.key)) {
       const saved = state.detail.render_settings?.aspect_ratio || (isHead() ? "1:1" : "2:3");
       if (state.aspectRatio !== saved) {
-        try {
-          state.detail = await request(api("/render-settings"), {method:"PUT",
-            body:JSON.stringify({aspect_ratio:state.aspectRatio,expected_revision:state.detail.revision})});
-        } catch (error) {
-          await loadDetail().catch(() => {});
-          return {status:"error",message:error.message};
-        }
+        state.detail = await request(api("/render-settings"), {method:"PUT",
+          body:JSON.stringify({aspect_ratio:state.aspectRatio,expected_revision:state.detail.revision})});
       }
     }
     if (intent.key === "stage-image-generation") {
@@ -433,12 +450,6 @@ import {mountProductionWorkspace} from "./production_workspace.js?v=20261124-wor
       const result=await request(api(endpoint),{method:"POST",body:JSON.stringify(payload)});
       if(result.revision<state.detail.revision)return {status:"cancelled"};
       state.detail=result;render();return {status:"success",message:intent.key==="lock"?"Locked and published.":intent.key==="cancel"?"Render cancelled.":"Candidate updated."};
-    } catch (error) {
-      if (intent.key === "cancel") {
-        await request(api(`/views/${encodeURIComponent(view)}/progress`)).catch(() => {});
-        await loadDetail().catch(() => {});
-      }
-      throw error;
     } finally { state.mutation=false; }
   }
 

@@ -560,13 +560,18 @@ async function boardAction(intent) {
     return {status:"success", message:messages[key]};
   } catch (error) {
     if (!isCurrent()) return cancelled;
+    let reconciled = false;
     try {
       if (key === "cancel") await api(asset()+"/progress").catch(() => {});
       if (!isCurrent()) return cancelled;
       const {character:value} = await api(base());
       if (isCurrent() && value.revision >= character.revision &&
-          (!edits.size || value.template_hash === character.template_hash)) adopt(value);
+          (!edits.size || value.template_hash === character.template_hash)) {
+        adopt(value);
+        reconciled = true;
+      }
     } catch { /* Keep the original action error. */ }
+    if (error instanceof TypeError) return window.ZetOperationStatus.unknownOutcome(reconciled);
     return {status:"error", message:error.message};
   } finally {
     busy = false;

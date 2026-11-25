@@ -456,10 +456,33 @@ class NarrativeSceneService:
                 raise ValueError("Settings changed; run a new interview before applying proposals.")
             from zet.services.narrative_interview_service import proposal_choices
             choices = data.get("choices")
+            decisions = list(proposal_choices(review["proposals"], choices))
             parent = self.repository.read(story, scene)
             elements = {item["id"]: item for item in parent["elements"]}
+            changed = []
+            for row, choice in decisions:
+                if choice == "reject" or "old" not in row:
+                    continue
+                key = row["field"]
+                if row["scope"] == "moment" and key in MOMENT_FIELDS:
+                    current = record.get(key, "")
+                elif row["scope"] == "appearance" and key == "appearance":
+                    current = elements.get(row["element_id"], {}).get("appearance", "")
+                elif row["scope"] == "visual" and key in VISUAL_FIELDS:
+                    current = record["visual_overrides"].get(key) or parent.get(key, "")
+                else:
+                    current = row["old"]
+                if current != row["old"]:
+                    label = row.get("element_name") or key.replace("_", " ").title()
+                    changed.append(label)
+            if changed:
+                labels = ", ".join(dict.fromkeys(changed))
+                raise ValueError(
+                    f"Current values changed after this interview for: {labels}. "
+                    "Reject those proposals or rerun the interview."
+                )
             scene_changed = False
-            for row, choice in proposal_choices(review["proposals"], choices):
+            for row, choice in decisions:
                 if choice == "reject":
                     continue
                 key = row["field"]

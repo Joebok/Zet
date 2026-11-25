@@ -165,3 +165,13 @@ The first fresh Minor Character run found that switching to Style failed because
 ### Read-only disposition of remaining page states (2026-11-25)
 
 On the current healthy Test release, the Inventory organization endpoint returned zero collections and zero keywords, and Narrative candidate-source discovery returned no configured sources. The populated Inventory organization and populated importer states therefore have no existing Test data to inspect; the empty states are configuration/data conditions, not demonstrated UI defects. Do not invent an Adventure Log source or add persistent organization data solely for screenshots. The approved 20-scenario deployment suite passed its Narrative Zine preview and Universe/Species editing scenarios, so those behaviors have existing functional coverage, although their interaction states were not captured in the final pixel sweep. No physical tablet is available in the current evidence set; landscape emulation remains the agreed acceptance target.
+
+## Image Inventory observations and deferred scope (2026-11-25)
+
+Joe requested that further Image Inventory work move to a separate, more focused effort. This plan records the current observations and does not schedule additional Inventory implementation. The shared image picker, input adapters, and existing page changes already completed in this plan remain in scope as delivered work.
+
+Read-only inspection used the updated Production release `3254602ce7f2b9b02ee67875f7769099be3f05f3`, which is the same code revision as Test. Production contains 214 images, 19 entities and 10 reference sets. The image-catalog organization endpoint reports no collections or keywords. The Image Inventory search page shows nine cards across at 1920px; long logical-reference tags wrap across several lines and make cards uneven. At 1133x610, the responsive selector and organization tabs remain reachable; the Entities view shows a left list and a wide details pane that asks the user to choose an item. Entity, Variant, Reference Sets and Facets views were captured without edits.
+
+Production has one configured read-only candidate source, Moonsea Adventures, with 11 candidate rows. The populated importer displays source-changed, imported, passed and available states together. Several source-changed rows show a Review source changes action; these are outstanding source-reconciliation tasks, not confirmed importer defects. The source path and record content are campaign data and remain unchanged.
+
+Desktop and landscape captures are retained at `E:\Zet\Zet_Tester\runs\ui-review-2026-11-24\production-readonly-image-inventory-3254602\`. They are read-only page observations and do not constitute a complete interaction or touch audit.

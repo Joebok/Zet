@@ -19,6 +19,10 @@ Non-Selected previews its exact slots and preserves selected/locked candidates;
 non-selected deletion waits for affected renders to settle. Draft deletion cancels
 matching Draft work using its existing job cleanup path.
 
+After a failed mutation, the adapter reloads target detail before enabling a retry.
+Transport failures show an unknown outcome so a committed action is not presented
+as a definitive failure. Unsaved target fields remain in the editor during refresh.
+
 Scene settings provide independent Interview and Prompt writing model choices.
 Targets inherit these scene choices unless they have a target override. Empty
 scene choices inherit the configured role model. Job records freeze the model
@@ -223,7 +227,9 @@ within the mount. Reload keeps the pending review but resets uncommitted choices
 `POST /api/narrative/stories/{story}/scenes/{scene}/targets/{target}/interview-review`
 delegates to `NarrativeSceneService.apply_interview`, taking `job_id` and proposal-ID/action
 `choices`. It validates choices before writing selected current fields under the repository
-lock. Repeating a successfully applied request is harmless. Individual files use atomic writes;
+lock. Accepted rows compare their captured old value with the current field; a stale value
+returns a conflict and preserves all fields so the user can reject that proposal or rerun the
+interview. Repeating a successfully applied request is harmless. Individual files use atomic writes;
 multi-file updates are not a transaction. A failed write leaves the persisted review pending
 for retry. Old completed interviews remain historical; newly received old-format replies become
 review proposals. Superseded attempts cannot expose an applicable review.

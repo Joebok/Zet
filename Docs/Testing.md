@@ -5,8 +5,44 @@
 Follow-up deployment: Test revision `3254602ce7f2b9b02ee67875f7769099be3f05f3`
 / boot `3b880b6502b24ddfa6ac836c8ef11b3a` is health-verified against its active
 release record. The deployment log records 20/20 approved E2E scenarios passed.
-It includes WP02/WP03 focus and confirmation-message fixes. Production remains at
-its prior revision.
+It includes WP02/WP03 focus and confirmation-message fixes. Production was later
+updated to the same revision and is live at boot
+`f965e194f87a47db9799f1cb3c90eecf`. Its active-release record identifies the
+revision but does not include a boot ID.
+
+A read-only 1133x610 browser check on Test activated Minor Characters, Recent
+Renders, Universes and Universe Settings without page errors or horizontal
+overflow. No settings or workflow records were changed.
+
+A disposable Python service check for WP10 confirmed duplicate field proposals
+and incomplete decision maps are rejected, while an explicit rejection is valid.
+Another disposable check confirmed a stale accepted proposal is rejected without
+writes, and rejecting it permits another proposal to apply without losing the
+newer field edit. A disposable Narrative browser workflow also verified the
+conflict message, preserved editor value, and successful application of the
+remaining proposals after rejecting the stale one. No permanent test was added.
+
+A disposable Node check rendered the shared WP06 unknown operation status with
+visible recovery context and without styling it as a definitive failure. This
+does not exercise adapter-specific unknown-outcome reconciliation.
+
+A disposable WP04 service check repeated import for a candidate with an existing
+scene association and confirmed it returned that scene without repository writes.
+An isolated Markdown source integration check used a temporary library and the
+real Narrative repository: first import created its scene and three targets;
+repeat import returned the completed scene without changing its bytes. The
+temporary fixture was removed; no Test or Production records were written.
+
+Disposable Character and Narrative browser checks committed a candidate lock,
+dropped the successful HTTP response, and verified the board refreshed to the
+locked state with a visible “Status unknown” message. An Image Generation check
+did the same for candidate selection. Temporary interception code was removed;
+no permanent scenario was added. Failure injection was not exercised for Minor
+Character.
+
+After the WP06 adapter changes, `npm.cmd run test:e2e` passed all 20 approved
+scenarios in 2.2 minutes. The checkout changes have not been staged to Test;
+`Update_Test.ps1` requires a clean checkout and stages merged `origin/main`.
 
 The four approved fast E2E journeys passed (4/4) through
 `npm.cmd run test:e2e -- --grep "library and narrative authoring|narrative interview, prompt, render|character-to-costume workflow|unified AI queue"`.

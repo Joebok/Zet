@@ -335,9 +335,13 @@ async function boardAction(intent) {
     if (key === 'upscale' && result.candidates[candidateId]?.error) throw Error(result.candidates[candidateId].error);
     return {...success, message: key === 'cancel' ? 'Render cancelled.' : 'Updated.'};
   } catch (error) {
-    if (key === 'cancel' && current()) {
+    if (current()) {
+      if (key === 'cancel') await api(base() + '/progress').catch(() => null);
       const next = await api(base()).catch(() => null);
       if (next && current()) mergeTarget(next);
+      if (error instanceof TypeError) {
+        return window.ZetOperationStatus.unknownOutcome(Boolean(next));
+      }
     }
     throw error;
   } finally {
