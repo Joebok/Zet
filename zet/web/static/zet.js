@@ -2248,6 +2248,7 @@ const RESPONSIVE_WORKSPACE_PAGES = {
 };
 
 const RESPONSIVE_TOOL_PAGES = [
+  ["recent-renders", "Recent Renders"],
   ["image-generation", "Image Generation"],
   ["minor-characters", "Minor Characters"],
   ["auxiliary-resources", "Image Inventory"], ["template-editor", "Template Editor"], ["ai-controls", "AI Queue"],

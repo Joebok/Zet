@@ -51,10 +51,11 @@ P1 means a blocked or misleading production interaction requiring an early fix. 
 | UI-16 | P2, pixels and source | Config mixes process management, model discovery, rendering settings and legacy backend values in a long form with a distant Save action. Process rows expose Start, Stop and Restart together without matching their visibility to running state. Group settings by purpose, show per-section save state, and put process feedback in the affected row. Confirm which settings are active before removing stale controls. | Sweep Desktop `page-local-image-config`; `zet.js` `renderProcessRows`, `runConfigProcessAction`, `renderPipelineControls`; config/process services. No process action was executed. |
 | UI-17 | P2, pixels and source | Pipeline Controls exposes a reset form alongside a message that legacy pipelines are unavailable. Pipeline Inspection shows No matching pipelines in an empty diagnostic layout. Make active workflow support explicit; remove obsolete active navigation/actions after checking consumers, or present an informative unavailable state with a route to supported tools. Do not restore retired pipelines to fill the page. | Sweep `page-pipeline-controls` and `page-pipeline-inspection`; `zet.js` `loadPipelineControls`, `loadPipelineInspections`; corresponding service/router owners. The full legacy caller audit is an implementation prerequisite. |
 | UI-18 | P2, pixels and source | Queue rows combine raw exceptions, stage, recovery instructions and ages measured in thousands of minutes in a very wide Details cell. Use a compact state/target summary with a local recovery action and expandable technical details. Preserve failed job history and durable queue semantics; a failed historical row is not evidence that this campaign's rendering failed. | Sweep Desktop `page-ai-controls`; `ai_queue.js` row formatter and action lifecycle; AI job service. |
-| UI-19 | P2, accessibility confirmed | Recent Renders repeats the accessible name `Review latest` for every board row. Screen-reader and automation users cannot identify which board a button opens without row scoping. Keep the short visible label and include the board name in each button's accessible name. | 96fd Reconstruction resume: direct browser helper could not target one of the repeated controls; live DOM/AX tree showed duplicate names. `zet.js` `subscribeRecentRenders`. Local fix adds the board label; release verification remains pending. |
-| UI-19 | P2, pixels | Recent Renders presents a long list of links and counts with little visual recognition. Use a shared thumbnail row/card, readable scope and latest activity, plus Open board / Review where supported. Preserve the existing event-driven updates and do not add idle polling. | Sweep Desktop `page-recent-renders`; `zet.js` Recent Renders rendering/events; shared board harvest service. |
-| UI-20 | P2, pixels and source | A directly opened Template Editor shows a large empty editor and instructions to open a template without an obvious chooser in that view. Add an in-place template picker and clear empty/loading/unavailable state. Preserve conflict handling and the user's unsaved text. | Sweep Desktop `page-template-editor`; `template_editor.js`; `SourceEditorService`; existing template-edit scenario. |
+| UI-19 | P2, accessibility confirmed; fixed and verified | Recent Renders repeated the accessible name `Review latest` for every board row. The short visible label remains, and each button now includes its board name in the accessible name. | 96fd Reconstruction resume exposed duplicate names; direct f64b Test inspection at desktop and tablet landscape verified board-specific names. |
+| UI-22 | P2, pixels | Recent Renders presents a long list of links and counts with little visual recognition. Use a shared thumbnail row/card, readable scope and latest activity, plus Open board / Review where supported. Preserve the existing event-driven updates and do not add idle polling. | Sweep Desktop `page-recent-renders`; `zet.js` Recent Renders rendering/events; shared board harvest service. |
+| UI-20 | P2, pixels and source; implementation complete | A directly opened Template Editor showed a large empty editor and instructions to open a template without an obvious chooser in that view. WP27 adds an in-place template picker and clear empty/loading/unavailable state while retaining the draft on a failed source switch. | Sweep Desktop `page-template-editor`; approved template-edit scenario and disposable chooser/open/conflict checks; `template_editor.js`; `SourceEditorService`. |
 | UI-21 | P2, pixels and source | Costumes uses generic Open/Add New alongside Costume Wizard, while shared primary/secondary emphasis varies in neighboring settings pages. Name actions by outcome, make wizard versus existing template import clear, and apply the same form/action/status anatomy. Universe lists/settings and Help use different content widths and heading/action placement. | Sweep Desktop `page-costumes`, `page-universes`, `page-help`; `index.html`, costume handlers, shared page/form styles. Markdown imports remain file inputs, not image inputs. |
+| UI-23 | P2, responsive navigation; fix pending Test verification | At 1180x820 on Recent Renders, the responsive section selector appeared visually blank because the current route had no matching option. Added Recent Renders to the compact section list; verify the selected label and return navigation on Test after staging. The updater requires a clean checkout and stages merged `origin/main`, so this local edit has not been staged. | Direct f64b Test route check; `responsive-section-menu` and `RESPONSIVE_TOOL_PAGES` in `zet.js`; deployment boundary in `Docs/DEVELOPMENT.md`. |
 
 ## Reusable foundations to retain or improve
 
@@ -196,7 +197,43 @@ All new evidence manifests in this campaign identify Test revision `f9fc7b0e1c60
 4. **Costume section action is not uniquely addressable in the wizard (needs direct keyboard/touch confirmation).** The saved correction remained in the draft, but the helper matched several visible controls in `Upper body and waist` and could not identify `Refine section`. Review section headings, action labels and focus order; do not treat the image-fidelity mismatch as evidence that the UI action itself failed for a person.
 5. **Reconstruction case prerequisite is incomplete, not yet an app defect.** The source action is intentionally attached to a selected completed candidate. Update the case to generate/select a baseline candidate before entering Reconstruction, then complete its analysis and compare/correct stages.
 
-WP32 remains incomplete. Fresh 96fd evidence now covers the full Narrative flow and Image Generation Reconstruction/Compare and Correct, including direct selection of the corrected draft. Costume Wizard and Dressing are partially complete; the accepted template update left contradictory instructions in the saved prompt, so no corrected batch was rendered. Viewer placement and Narrative model naming are verified. Costume Wizard action targeting, Recent Renders release verification, and tablet header dropdown truncation remain open. Inventory card naming and details scope are recorded as observations for the separate deferred Inventory effort, not as remaining work in this plan.
+WP32 is on the current f64b Test release. Fresh runs completed all planned AI workflow branches, including the full Character FRONT chain and Costume Dressing lock. Recent Renders board-specific accessible names are verified. The initial correction-checkbox failure was resolved by expanding the collapsed Template Improvement disclosure before selecting the correction. The blank-looking responsive section selector has a local fix, awaiting a Test release. Prior Story/Scene header truncation at tablet landscape remains open. Costume Wizard model provenance remains unavailable in visible task/queue records, and its accepted preview has a remaining overskirt embroidery mismatch. Image Inventory findings are retained for the separately deferred effort, not implementation work in this plan. Production is out of scope. See the current f64b release evidence in [Testing](../../../Docs/Testing.md).
+
+### Current-release workflow evidence (2026-11-26, revision f64b)
+
+Test revision `f64bafc3ec125122354b1c08eb06da094eb2e69e` / boot
+`ba42a0de1bf448fdbd1627b9d38346fd` matches the active-release record. The
+deployment log reports all 20 approved E2E scenarios passed. New AI work was
+run for this release. The complete Character FRONT report is
+[retained here](../../../../Zet_Tester/runs/ui-review-2026-11-24/2026-11-26T06-36-01-676Z-eae544e0/resume-2026-11-26T06-55-51-770Z-91c2c197/report.md).
+
+The Body Reference baseline stayed in Slot 2; the accepted corrected FRONT
+ranked Slot 4 #1 and was locked. Its waist/hip change was modest, with age and
+pose retained. Head Image Edit FRONT retained violet eyes, pointed ears, and
+the short black bob. Assembly FRONT was ranked and locked, with slight
+softness at the hair/neck edge. The accepted Costume Wizard draft completed
+its private render and two correction/retest cycles. Its final overskirt
+embroidery remained higher and sparser than the reference. Costume Dressing
+FRONT completed a fresh four-image batch; Slot 4 #1 was locked and remained
+locked after Refresh. Costume Wizard model provenance remains unverified
+because no visible task or queue entry exposed it.
+
+The first checkbox attempt failed because Template Improvement was collapsed.
+Expanding the disclosure via the current accessibility tree exposed the
+visible checkbox; the prompt preview showed the accepted waist/hip correction
+and it saved successfully. This is a Zet_Tester targeting limitation, not
+evidence of an application checkbox failure. During Costume Wizard's third
+private render, Test displayed storage reconnect/unavailable feedback; after
+the prescribed five-minute wait the same render returned `TEST_READY` without
+resubmission.
+
+Direct Recent Renders inspection verified board-specific `Review latest`
+accessible names and no horizontal overflow at 1180x820. The responsive
+section selector looked blank on that route and needs a follow-up visual
+check. Earlier tablet observation: Story and Scene header selectors truncate
+long selected names. These navigation findings remain open. Image Inventory
+observations are intentionally retained for its separate effort and are not
+scheduled here. Production was not accessed for this evidence pass.
 
 ### Targeted verification of viewer and model controls (2026-11-25, revision 96fd)
 

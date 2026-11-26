@@ -1,6 +1,55 @@
 # Local testing
 
-## Test after viewer/model accessibility merge (2026-11-25)
+## Current Test evidence after f64b release (2026-11-26)
+
+Test serves revision `f64bafc3ec125122354b1c08eb06da094eb2e69e`, boot
+`ba42a0de1bf448fdbd1627b9d38346fd`, matching its active-release record. The
+deployment log reports all 20 approved E2E scenarios passed. New Zet_Tester
+workflow runs were created for this release because prior AI runs used earlier
+revisions. The E2E suite was not rerun during this evidence pass. Production
+was not used or changed.
+
+Current-release evidence is retained in
+`../Zet_Tester/runs/ui-review-2026-11-24/`:
+
+- [Character, Body Reference, Head Image Edit, Assembly, Costume Wizard and
+  Dressing report](../Zet_Tester/runs/ui-review-2026-11-24/2026-11-26T06-36-01-676Z-eae544e0/resume-2026-11-26T06-55-51-770Z-91c2c197/report.md)
+  completed the requested FRONT scope. The resumed report and status reconcile
+  the initial partial run: the accepted Body Reference correction was saved and
+  compiled, all four downstream FRONT boards were freshly rendered and ranked,
+  and their selected locks survived refresh. Its visible effect is modest; the
+  neutral pose and apparent age remained consistent.
+- Costume Wizard completed two correction/retest cycles and accepted the
+  costume; Costume Dressing FRONT produced and verified a fresh rank #1 lock.
+  The accepted wizard image still places overskirt embroidery higher and
+  sparser than the source. This is a visual-quality observation. The wizard's
+  effective model was not exposed in visible task or queue records and remains
+  unverified.
+- During the third private costume render, Test displayed a storage reconnect
+  banner. The run waited five minutes and resumed at `TEST_READY` without
+  refreshing or resubmitting. This is a recovered async-status observation,
+  not a render failure.
+- The initial correction-helper failure came from targeting a checkbox while
+  its Template Improvement disclosure was collapsed. Expanding the section via
+  the current accessibility tree exposed the checkbox; preview, compiled
+  prompt inspection, and acceptance then succeeded. The initial partial status
+  is superseded by its complete resume.
+- Fresh current-release reports document the other workflow branches:
+  [Image Generation](../Zet_Tester/runs/ui-review-2026-11-24/2026-11-26T03-53-19-179Z-00b49a91/report.md),
+  [Narrative resume](../Zet_Tester/runs/ui-review-2026-11-24/2026-11-26T04-37-31-656Z-b0cca9df/resume-2026-11-26T05-14-10-360Z-36e633ce/report.md),
+  and [Minor Character](../Zet_Tester/runs/ui-review-2026-11-24/2026-11-26T05-29-50-706Z-014c1471/report.md).
+  They record the fresh output, review, and lock evidence.
+
+Direct desktop and 1180x820 landscape-tablet inspection of Recent Renders
+found no horizontal overflow and confirmed board-specific accessible names on
+all `Review latest` buttons. On the auxiliary Recent Renders page, the
+responsive section selector appeared blank because Recent Renders was missing
+from its option list. The local implementation now includes that route; Test
+verification remains pending. Image Inventory organization and card-scope
+observations remain recorded for the separately deferred Inventory effort and
+are not implementation work in this plan.
+
+## Historical Test evidence after viewer/model accessibility merge (2026-11-25)
 
 Test now serves revision `96fd8790ad714a867ad433390e46a638db016e6b`, boot
 `0ec1054cd14e432e8f7aedeb5783add1`, matching its active-release record. The
@@ -48,7 +97,7 @@ unlocked. The wizard exposed one configured model and no section-level
 suggestion checkboxes; direct keyboard/touch targeting of its section actions
 remains unverified. See the [Costume workflow report](../Zet_Tester/runs/ui-review-96fd-costume/2026-11-26T01-51-36-444Z-38d8ec08/report.md).
 
-## Pre-merge UI consolidation Test evidence (f9fc, 2026-11-25)
+## Historical pre-merge UI consolidation Test evidence (f9fc, 2026-11-25)
 
 This section records the pre-merge baseline and is superseded by the successful
 96fd deployment and focused verification above.
