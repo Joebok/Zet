@@ -2,15 +2,12 @@
 
 ## Current Test release and recent UI evidence (2026-11-26)
 
-Test serves revision `2250eb9012f5627eedb11669c81eb7241368f93e`, boot
-`6de02022944e4204bde3302aa5477cc7`, matching its active-release record and
-`/api/health`. Recovery status is complete. The deployment log
-`test-update-6f2aaf51a08f41aa8b05027d7be36b1d.log` reports all 20 approved E2E
-scenarios passed. The 2250 release changes since the fresh f64b workflow runs
-are the Recent Renders option in the responsive section menu and a board-
-specific accessible name for the Costume Hub template-edit button. Neither
-changes pipeline behavior, so AI workflows were not repeated. Production was
-not used or changed.
+Test serves revision `70392303cf7c2b9e51d30549dc665e5c230008f5`, boot
+`10f33f0a911e4ff7bd84445dab49d91e`, matching its active-release record and
+`/api/health`. Health is ready and recovery is complete. The prior 2250
+deployment log reports all 20 approved E2E scenarios passed. Later Test updates
+changed dashboard presentation only; no AI workflows were repeated. Production
+was not used or changed.
 
 Current-release evidence is retained in
 `../Zet_Tester/runs/ui-review-2026-11-24/`:
@@ -43,18 +40,30 @@ Current-release evidence is retained in
   and [Minor Character](../Zet_Tester/runs/ui-review-2026-11-24/2026-11-26T05-29-50-706Z-014c1471/report.md).
   They record the fresh output, review, and lock evidence.
 
-Direct desktop and 1180x820 landscape-tablet inspection on f64b found no
-horizontal overflow and confirmed board-specific accessible names on all
-`Review latest` buttons. The responsive section selector appeared blank on
-Recent Renders because that route was missing from its options. The route is
-present in 2250's deployed `zet.js`, verified from the release source. A visible
-browser check remains pending because CUA currently returns a Windows
-access-denied error before opening the Test page. A 1133x610 retained Narrative
-capture shows the selected Story and Scene names are truncated. Local CSS now
-gives header context controls a full row from 761px through 1360px; this change
-awaits staging and visual Test verification. Image Inventory organization and
-card-scope observations remain recorded for the separately deferred Inventory
-effort and are not implementation work in this plan.
+Direct desktop and 1133x610 landscape-tablet inspection on Test 703 verified
+the Story and Scene thumbnail actions, workspace-title links, full-screen zoom,
+and next/previous navigation across selected target images. The route remained
+on the scene while images changed. The full-screen viewer and target-card layout
+fit the landscape viewport without horizontal overflow. Minor Character view
+titles navigated to their workspaces, and locked images opened full screen with
+navigation limited to locked views. Screenshot inspection found its Rename,
+Delete, and New Minor Character controls still spanning grid columns. A CSS
+correction is merged as `d4b399a` but is not in Test 703 yet; visual confirmation
+of compact sizing remains pending. No AI_Proxy jobs were submitted during these
+checks. Image Inventory observations remain deferred to its separate effort.
+
+## Minor Character and Narrative image-card review (2026-11-26)
+
+Read-only UI review used existing ZetTester records on the health-verified Test
+release above. Story-list scene titles and scene-page target titles retained
+workspace links. Thumbnail buttons opened the shared full-screen viewer. On the
+scene page, Next changed from the selected backdrop to the selected subscene
+without changing the route, and Zoom In enlarged the displayed image. At
+1133x610, the Story page and the three-column target-card layout fit without
+horizontal overflow; image viewing remained usable. Minor Character heading
+links and the locked-image viewer also worked, including next-view navigation.
+No AI_Proxy job or mutation was initiated. The compact Minor Character action
+CSS is in `d4b399a`; deploy that revision before confirming its final sizing.
 
 ## Historical Test evidence after viewer/model accessibility merge (2026-11-25)
 
