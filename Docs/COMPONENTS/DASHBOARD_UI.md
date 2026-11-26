@@ -259,6 +259,11 @@ includes all four character pipelines. Header selectors retain current context;
 native selectors expose full choices when labels are long. Coarse pointers receive
 touch sizing even above the compact breakpoint.
 
+Between 761 and 1360 CSS pixels, the header places workspace navigation and
+context selectors on separate rows, with wider columns for universe and current
+subject or scene. This is intended to make selected Story and Scene names more
+readable in landscape tablet layouts. Test visual confirmation remains pending.
+
 Character batch settings and Image Generation settings use disclosures. Existing
 batches collapse new-batch settings on compact screens; pages without a batch
 open those settings. Toggling disclosures preserves form controls and drafts.

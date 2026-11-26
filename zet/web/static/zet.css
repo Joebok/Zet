@@ -6147,6 +6147,14 @@ dd {
   .asset-table-panel, .queue-panel { overflow-x: auto; }
 }
 
+@media (min-width: 761px) and (max-width: 1360px) {
+  .app-header { grid-template-columns: auto minmax(0, 1fr); }
+  .context-controls {
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(120px, .8fr) minmax(180px, 1.5fr) minmax(180px, 1.5fr) auto;
+  }
+}
+
 @media (max-height: 500px) and (max-width: 700px) {
   .local-pipeline-review-dialog { height: 96dvh; max-height: 96dvh; }
   .local-pipeline-review-layout { grid-template-rows: minmax(125px, .55fr) minmax(190px, .8fr); }

@@ -1,13 +1,16 @@
 # Local testing
 
-## Current Test evidence after f64b release (2026-11-26)
+## Current Test release and recent UI evidence (2026-11-26)
 
-Test serves revision `f64bafc3ec125122354b1c08eb06da094eb2e69e`, boot
-`ba42a0de1bf448fdbd1627b9d38346fd`, matching its active-release record. The
-deployment log reports all 20 approved E2E scenarios passed. New Zet_Tester
-workflow runs were created for this release because prior AI runs used earlier
-revisions. The E2E suite was not rerun during this evidence pass. Production
-was not used or changed.
+Test serves revision `2250eb9012f5627eedb11669c81eb7241368f93e`, boot
+`6de02022944e4204bde3302aa5477cc7`, matching its active-release record and
+`/api/health`. Recovery status is complete. The deployment log
+`test-update-6f2aaf51a08f41aa8b05027d7be36b1d.log` reports all 20 approved E2E
+scenarios passed. The 2250 release changes since the fresh f64b workflow runs
+are the Recent Renders option in the responsive section menu and a board-
+specific accessible name for the Costume Hub template-edit button. Neither
+changes pipeline behavior, so AI workflows were not repeated. Production was
+not used or changed.
 
 Current-release evidence is retained in
 `../Zet_Tester/runs/ui-review-2026-11-24/`:
@@ -40,14 +43,18 @@ Current-release evidence is retained in
   and [Minor Character](../Zet_Tester/runs/ui-review-2026-11-24/2026-11-26T05-29-50-706Z-014c1471/report.md).
   They record the fresh output, review, and lock evidence.
 
-Direct desktop and 1180x820 landscape-tablet inspection of Recent Renders
-found no horizontal overflow and confirmed board-specific accessible names on
-all `Review latest` buttons. On the auxiliary Recent Renders page, the
-responsive section selector appeared blank because Recent Renders was missing
-from its option list. The local implementation now includes that route; Test
-verification remains pending. Image Inventory organization and card-scope
-observations remain recorded for the separately deferred Inventory effort and
-are not implementation work in this plan.
+Direct desktop and 1180x820 landscape-tablet inspection on f64b found no
+horizontal overflow and confirmed board-specific accessible names on all
+`Review latest` buttons. The responsive section selector appeared blank on
+Recent Renders because that route was missing from its options. The route is
+present in 2250's deployed `zet.js`, verified from the release source. A visible
+browser check remains pending because CUA currently returns a Windows
+access-denied error before opening the Test page. A 1133x610 retained Narrative
+capture shows the selected Story and Scene names are truncated. Local CSS now
+gives header context controls a full row from 761px through 1360px; this change
+awaits staging and visual Test verification. Image Inventory organization and
+card-scope observations remain recorded for the separately deferred Inventory
+effort and are not implementation work in this plan.
 
 ## Historical Test evidence after viewer/model accessibility merge (2026-11-25)
 
