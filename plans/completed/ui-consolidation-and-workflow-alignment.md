@@ -2,7 +2,7 @@
 
 Review the captured Zet evidence and current implementation to produce a detailed plan for fixing defects, aligning similar workflows, and making the site consistent and usable on desktop and landscape tablets. Treat existing patterns as evidence to assess; their presence does not establish a deliberate design decision.
 
-The plan is approved and implementation is in progress. Supporting documents are the [evidence review and 21 findings](ui-consolidation/review.md), [proposed UI and workflow design](ui-consolidation/design.md), and [32 Luna sized implementation packets with progress](ui-consolidation/implementation.md).
+The approved implementation is complete. Supporting documents are the [evidence review and recorded observations](ui-consolidation/review.md), [UI and workflow design](ui-consolidation/design.md), and [34 Luna sized implementation packets with final results](ui-consolidation/implementation.md). Image Inventory-specific follow-up is deferred to a separate effort; Costume Wizard model provenance remains unverified and is recorded as an observation.
 
 ## In scope
 

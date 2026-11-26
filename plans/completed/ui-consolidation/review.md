@@ -190,6 +190,14 @@ All new evidence manifests in this campaign identify Test revision `f9fc7b0e1c60
 | Image Generation | Txt2img, img2img, and canonical/environmental style variants completed and were visually inspected. The run stopped at Reconstruction because the case expected an entry point before selecting a completed candidate. Source inspection shows the action is enabled on the selected candidate board; correct the case prerequisite and rerun Reconstruction/compare-and-correct before counting it complete. No candidates were added to Inventory. | [Image Generation report](../../../../Zet_Tester/runs/ui-consolidation-f9fc-20261125/2026-11-25T21-39-58-780Z-86ff0fe5/report.md), [evidence manifest](../../../../Zet_Tester/runs/ui-consolidation-f9fc-20261125/2026-11-25T21-39-58-780Z-86ff0fe5/evidence/manifest.json) |
 | Narrative | Both new references were verified in the approved catalog. A first attempt stopped at inaccessible Details scoping; the retry used IDs and provenance from a read-only authoritative catalog check. It created the story and scene shell, then stopped before references or AI work because both effective model selectors stayed `general:latest`; field-specific helper selection did not work. | [Narrative report](../../../../Zet_Tester/runs/ui-consolidation-f9fc-20261125/2026-11-25T22-22-53-495Z-6af9c9dc/report.md), [resume report](../../../../Zet_Tester/runs/ui-consolidation-f9fc-20261125/2026-11-25T22-22-53-495Z-6af9c9dc/resume-2026-11-25T23-02-13-408Z-077fef36/report.md), [evidence manifest](../../../../Zet_Tester/runs/ui-consolidation-f9fc-20261125/2026-11-25T22-22-53-495Z-6af9c9dc/evidence/manifest.json) |
 
+The f9fc workflow row above records the initial Test campaign only. The workflow
+evidence was refreshed on Test `f8feb446` after deployment; current-release
+reports are indexed in [Testing.md](../../../Docs/Testing.md). Costume Dressing
+was subsequently corrected from the saved costume source and freshly rendered
+and reviewed; the earlier accepted Costume Wizard image's model provenance and
+embroidery placement remain unresolved observations, not downstream Dressing
+failures.
+
 ### New actionable findings
 
 1. **Full-size image viewer close is obscured by zoom controls (high confidence).** Reproduced in the Costume Wizard and Inventory preview. The Close and zoom toolbar occupied the same upper-right corner; `zet.css` gave `.fullscreen-image-tools` z-index 10004 and `.fullscreen-image-close` z-index 10002. The merged fix moves Close to the safe-area-aware upper-left. The fresh 96fd Zet_Tester run verified that Close and zoom remain separate at desktop and tablet-landscape.

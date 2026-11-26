@@ -60,4 +60,4 @@ alter already submitted requests, finished images, selection or locks.
 - [Narrative target service](../../zet/services/narrative_scene_service.py)
 - [Narrative component](../COMPONENTS/NARRATIVE.md)
 - [Data model](../DATA_MODEL.md)
-- [Implementation packets](../../plans/active/ui-consolidation/implementation.md)
+- [Implementation packets](../../plans/completed/ui-consolidation/implementation.md)

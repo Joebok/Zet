@@ -2,18 +2,18 @@
 
 ## Current Test release and recent UI evidence (2026-11-26)
 
-Test serves revision `70392303cf7c2b9e51d30549dc665e5c230008f5`, boot
-`10f33f0a911e4ff7bd84445dab49d91e`, matching its active-release record and
+Test serves revision `f8feb44682c59a277380243febd97cfda8e19606`, boot
+`c125a8747cbe4973a2fa7b6d4c2a2006`, matching its active-release record and
 `/api/health`. Health is ready and recovery is complete. The prior 2250
-deployment log reports all 20 approved E2E scenarios passed. Later Test updates
-changed dashboard presentation only; no AI workflows were repeated. Production
-was not used or changed.
+deployment log reports all 20 approved E2E scenarios passed. The UI follow-up
+below was gathered after this release update; fresh AI workflows are linked
+separately from viewport-only inspections. Production was not used or changed.
 
 Current-release evidence is retained in
-`../Zet_Tester/runs/ui-review-2026-11-24/`:
+`../../Zet_Tester/runs/ui-review-2026-11-24/`:
 
 - [Character, Body Reference, Head Image Edit, Assembly, Costume Wizard and
-  Dressing report](../Zet_Tester/runs/ui-review-2026-11-24/2026-11-26T06-36-01-676Z-eae544e0/resume-2026-11-26T06-55-51-770Z-91c2c197/report.md)
+  Dressing report](../../Zet_Tester/runs/ui-review-2026-11-24/2026-11-26T06-36-01-676Z-eae544e0/resume-2026-11-26T06-55-51-770Z-91c2c197/report.md)
   completed the requested FRONT scope. The resumed report and status reconcile
   the initial partial run: the accepted Body Reference correction was saved and
   compiled, all four downstream FRONT boards were freshly rendered and ranked,
@@ -35,22 +35,24 @@ Current-release evidence is retained in
   prompt inspection, and acceptance then succeeded. The initial partial status
   is superseded by its complete resume.
 - Fresh current-release reports document the other workflow branches:
-  [Image Generation](../Zet_Tester/runs/ui-review-2026-11-24/2026-11-26T03-53-19-179Z-00b49a91/report.md),
-  [Narrative resume](../Zet_Tester/runs/ui-review-2026-11-24/2026-11-26T04-37-31-656Z-b0cca9df/resume-2026-11-26T05-14-10-360Z-36e633ce/report.md),
-  and [Minor Character](../Zet_Tester/runs/ui-review-2026-11-24/2026-11-26T05-29-50-706Z-014c1471/report.md).
+  [Image Generation](../../Zet_Tester/runs/ui-review-2026-11-24/2026-11-26T03-53-19-179Z-00b49a91/report.md),
+  [Narrative resume](../../Zet_Tester/runs/ui-review-2026-11-24/2026-11-26T04-37-31-656Z-b0cca9df/resume-2026-11-26T05-14-10-360Z-36e633ce/report.md),
+  and [Minor Character](../../Zet_Tester/runs/ui-review-2026-11-24/2026-11-26T05-29-50-706Z-014c1471/report.md).
   They record the fresh output, review, and lock evidence.
 
-Direct desktop and 1133x610 landscape-tablet inspection on Test 703 verified
+Direct desktop and 1133x610 landscape-tablet inspection on Test f8feb44 verified
 the Story and Scene thumbnail actions, workspace-title links, full-screen zoom,
 and next/previous navigation across selected target images. The route remained
 on the scene while images changed. The full-screen viewer and target-card layout
 fit the landscape viewport without horizontal overflow. Minor Character view
 titles navigated to their workspaces, and locked images opened full screen with
-navigation limited to locked views. Screenshot inspection found its Rename,
-Delete, and New Minor Character controls still spanning grid columns. A CSS
-correction is merged as `d4b399a` but is not in Test 703 yet; visual confirmation
-of compact sizing remains pending. No AI_Proxy jobs were submitted during these
-checks. Image Inventory observations remain deferred to its separate effort.
+navigation limited to locked views. The deployed CSS correction makes Rename
+(68x34), Delete (59x34), and New Minor Character (148x34) compact at desktop
+and at 1133x610. The landscape page has no horizontal overflow (1118px document
+width in a 1133px viewport). The full-size viewer's Zoom In changed the image
+transform to 1.25x, and view navigation remains available. No AI_Proxy jobs
+were submitted during these checks. Image Inventory observations remain
+deferred to its separate effort.
 
 ## Minor Character and Narrative image-card review (2026-11-26)
 
@@ -62,8 +64,31 @@ without changing the route, and Zoom In enlarged the displayed image. At
 1133x610, the Story page and the three-column target-card layout fit without
 horizontal overflow; image viewing remained usable. Minor Character heading
 links and the locked-image viewer also worked, including next-view navigation.
-No AI_Proxy job or mutation was initiated. The compact Minor Character action
-CSS is in `d4b399a`; deploy that revision before confirming its final sizing.
+No AI_Proxy job or record mutation was initiated. The compact Minor Character
+action CSS deployed in `f8feb44` is visually confirmed at desktop and landscape
+tablet sizes.
+
+## Costume Dressing source correction and fresh render (2026-11-26)
+
+On the health-verified Test release `f8feb44682c59a277380243febd97cfda8e19606`
+(`c125a8747cbe4973a2fa7b6d4c2a2006`), a fresh Zet_Tester run updated the
+selected costume source through Template Editor, verified the compiled Costume
+Dressing FRONT prompt at desktop and 1133x610 landscape, then rendered and
+reviewed four new Draft candidates. The prompt explicitly preserves the narrow
+midriff, removes blouse/sleeve embroidery, and confines overskirt embroidery to
+the lower half of each panel. All four renders completed without provider
+errors. Luna Review ranked slot 6 first; the preexisting slot 4 selection and
+lock remained unchanged, and all new candidates remained unlocked. Zoom In,
+Zoom Out, and Reset Zoom were exercised in the full-size comparison viewer.
+
+The saved-source correction and fresh Dressing outputs verify this downstream
+workflow. The previously accepted Costume Wizard image still shows embroidery
+higher and sparser than the source, and its effective model ID was not exposed
+in the UI/queue records. Its provenance and visual discrepancy remain an
+observation for focused follow-up; this Dressing run does not resolve them.
+The report and 24-capture evidence package are retained at
+[Costume source correction report](../../Zet_Tester/runs/ui-review-2026-11-24/2026-11-26T15-02-06-958Z-6766774c/report.md)
+and [evidence captures](../../Zet_Tester/runs/ui-review-2026-11-24/2026-11-26T15-02-06-958Z-6766774c/evidence/manifest.json).
 
 ## Historical Test evidence after viewer/model accessibility merge (2026-11-25)
 
@@ -86,8 +111,8 @@ assembly on the same release. All three selected locks persisted after reload;
 async status remained visible through interviews, prompt writing, rendering,
 and Luna Review. The subscene output had a solid purple matte despite explicit
 transparency instructions; final tea-item hand placement was crowded but
-readable. See the [full Narrative report](../Zet_Tester/runs/ui-review-96fd-full-narrative/2026-11-25T23-53-15-866Z-2c54d219/report.md)
-and [evidence manifest](../Zet_Tester/runs/ui-review-96fd-full-narrative/2026-11-25T23-53-15-866Z-2c54d219/evidence/manifest.json).
+readable. See the [full Narrative report](../../Zet_Tester/runs/ui-review-96fd-full-narrative/2026-11-25T23-53-15-866Z-2c54d219/report.md)
+and [evidence manifest](../../Zet_Tester/runs/ui-review-96fd-full-narrative/2026-11-25T23-53-15-866Z-2c54d219/evidence/manifest.json).
 
 A fresh Reconstruction run verified the selected-candidate entry path, the
 `image-analysis:latest` role, source analysis and prompt adoption, a no-input
@@ -101,8 +126,8 @@ full-screen preview action, not a Luna ranking step; it was outside the case's
 Compare and Correct acceptance. Direct dashboard follow-up selected the
 corrected draft in Slot 4 and confirmed it remained selected after reload; no
 lock or Inventory publication was made. Desktop and landscape-tablet captures
-are retained in the [initial run report](../Zet_Tester/runs/ui-review-96fd-reconstruction/2026-11-26T00-41-37-454Z-09b3dc96/report.md)
-and [resume report](../Zet_Tester/runs/ui-review-96fd-reconstruction/2026-11-26T00-41-37-454Z-09b3dc96/resume-2026-11-26T01-21-49-509Z-a7a55f53/report.md). The latest runner status remains partial because it treated that unrelated preview action as required.
+are retained in the [initial run report](../../Zet_Tester/runs/ui-review-96fd-reconstruction/2026-11-26T00-41-37-454Z-09b3dc96/report.md)
+and [resume report](../../Zet_Tester/runs/ui-review-96fd-reconstruction/2026-11-26T00-41-37-454Z-09b3dc96/resume-2026-11-26T01-21-49-509Z-a7a55f53/report.md). The latest runner status remains partial because it treated that unrelated preview action as required.
 
 A fresh Costume Wizard and Costume Dressing workflow reached an accepted
 template, a private FRONT test render, initial Draft 4, Luna review, and accepted
@@ -111,7 +136,7 @@ embroidery-near-hem wording and a separate blouse-embroidery instruction, so no
 corrected render was submitted. The existing baseline stayed intact and
 unlocked. The wizard exposed one configured model and no section-level
 suggestion checkboxes; direct keyboard/touch targeting of its section actions
-remains unverified. See the [Costume workflow report](../Zet_Tester/runs/ui-review-96fd-costume/2026-11-26T01-51-36-444Z-38d8ec08/report.md).
+remains unverified. See the [Costume workflow report](../../Zet_Tester/runs/ui-review-96fd-costume/2026-11-26T01-51-36-444Z-38d8ec08/report.md).
 
 ## Historical pre-merge UI consolidation Test evidence (f9fc, 2026-11-25)
 
@@ -150,7 +175,7 @@ Fresh Zet_Tester evidence is retained under
 The runs surfaced a full-size viewer close/zoom overlap, unnamed Inventory card
 scopes that prevent per-card Details targeting, repeated Narrative model-button
 names, and a Costume Wizard section-action locator ambiguity. Screenshots,
-manifests and reports are linked from the [UI evidence review](../plans/active/ui-consolidation/review.md).
+manifests and reports are linked from the [UI evidence review](../plans/completed/ui-consolidation/review.md).
 These are newly observed UI/accessibility or automation findings, not E2E
 failures. The test-created uniquely named workspaces and render outputs remain in
 the Zet Test universe as retained evidence; no reset was performed.
@@ -206,8 +231,11 @@ Disposable Character and Narrative browser checks committed a candidate lock,
 dropped the successful HTTP response, and verified the board refreshed to the
 locked state with a visible “Status unknown” message. An Image Generation check
 did the same for candidate selection. Temporary interception code was removed;
-no permanent scenario was added. Failure injection was not exercised for Minor
-Character.
+no permanent scenario was added. A disposable Minor Character browser check
+saved aspect-ratio settings in a new isolated workspace, allowed the server
+mutation to commit, dropped its response, and verified the board refreshed to
+the saved setting with “Status unknown”. No AI_Proxy job was submitted and no
+permanent scenario was added.
 
 After the WP06 adapter changes, `npm.cmd run test:e2e` passed all 20 approved
 scenarios in 2.2 minutes. The checkout changes have not been staged to Test;
@@ -231,8 +259,8 @@ no ACL changes were made, and the tester process identity was not reproduced.
 The fresh Minor Character run found a form-ownership bug when opening Style. The
 workspace mount now remains inside `#mc-authoring`; its fresh rerun completed on
 the staged release. Production remained on its prior revision. Tablet captures
-use landscape viewport emulation, not a physical device. See the [active UI
-consolidation implementation](../plans/active/ui-consolidation/implementation.md)
+use landscape viewport emulation, not a physical device. See the [completed UI
+consolidation implementation](../plans/completed/ui-consolidation/implementation.md)
 and retained evidence at E:/Zet/Zet_Tester/runs/ui-review-2026-11-24/.
 
 WP02 and WP03 follow-up: a disposable isolated Playwright check exercised the real
