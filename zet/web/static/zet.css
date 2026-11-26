@@ -5847,12 +5847,15 @@ dd {
 #mc-board-authoring { display: grid; gap: 10px; margin-bottom: 12px; }
 #minor-characters-page .mc-asset-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(125px, 100%), 1fr)); gap: 10px; }
 #minor-characters-page #mc-assets.mc-asset-cards { grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); }
-#minor-characters-page .mc-asset-card { display: grid; grid-template-rows: auto 1fr auto; align-items: start; gap: 7px; min-width: 0; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); text-decoration: none; overflow-wrap: anywhere; }
-#minor-characters-page .mc-asset-card strong { min-width: 0; overflow: hidden; font-size: .72rem; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
-#minor-characters-page .mc-asset-card img,
+#minor-characters-page .mc-asset-card { display: grid; grid-template-rows: auto 1fr auto; align-items: start; gap: 7px; min-width: 0; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); overflow-wrap: anywhere; }
+#minor-characters-page .mc-asset-heading { min-width: 0; overflow: hidden; font-size: .8rem; font-weight: 600; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
 #minor-characters-page .mc-asset-card > span { display: grid; place-items: center; width: 100%; height: 160px; box-sizing: border-box; object-fit: contain; background: var(--surface-subtle); color: var(--text-muted); text-align: center; }
+#minor-characters-page .mc-asset-image { display: block; width: 100%; min-width: 0; height: 160px; min-height: 0; padding: 0; border: 0; background: var(--surface-subtle); cursor: zoom-in; }
 #minor-characters-page .mc-asset-card img { display: block; width: 100%; height: 160px; object-fit: contain; background: var(--surface-subtle); }
 #minor-characters-page .mc-asset-card small { color: var(--text-muted); font-size: .75rem; }
+#minor-characters-page #mc-list > .control-panel > .button-row button[data-mc-rename],
+#minor-characters-page #mc-list > .control-panel > .button-row button[data-mc-delete],
+#minor-characters-page #mc-create-form > button { flex: 0 0 auto; width: auto; min-width: 0; min-height: 34px; padding: 5px 9px; font-size: .85rem; }
 #minor-characters-page .character-container-output h4 { margin: 0 0 8px; }
 #minor-characters-page .character-container-output img { width: 100%; height: 160px; object-fit: contain; }
 #minor-characters-page .character-container-output .placeholder[hidden] { display: none; }
@@ -5891,6 +5894,11 @@ dd {
 #mc-entry-image { max-width: 150px; max-height: 180px; object-fit: contain; }
 #mc-list-panel form label { flex: 1; }
 #mc-list-panel form input { width: 100%; box-sizing: border-box; }
+@media (pointer: coarse) {
+  #minor-characters-page #mc-list > .control-panel > .button-row button[data-mc-rename],
+  #minor-characters-page #mc-list > .control-panel > .button-row button[data-mc-delete],
+  #minor-characters-page #mc-create-form > button { min-height: 44px; }
+}
 @media (max-width: 1000px) {
   .mc-workspace { grid-template-columns: minmax(280px, 340px) minmax(0, 1fr); gap: 12px; }
 }

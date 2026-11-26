@@ -60,6 +60,11 @@
 .narrative-story-scene { display:flex; flex-direction:column; gap:.4rem; min-width:0; font-size:.85rem; }
 .narrative-story-thumbnail { display:block; width:100%; aspect-ratio:16/9; object-fit:contain; background:var(--surface-subtle); border:1px solid var(--border); border-radius:5px; }
 .narrative-story-placeholder { box-sizing:border-box; }
+.narrative-image-open { display:block; width:100%; min-width:0; min-height:0; padding:0; border:0; border-radius:5px; background:transparent; cursor:zoom-in; }
+.narrative-image-open:focus-visible { outline:3px solid var(--focus); outline-offset:3px; }
+.narrative-target-images { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(220px,100%),1fr)); gap:1rem; margin-top:1rem; }
+.narrative-target-images .narrative-target-card { min-width:0; }
+.narrative-target-images .narrative-target-preview { margin-top:.5rem; }
 .narrative-scene-card .narrative-story-thumbnail { margin:.5rem 0; }
 .narrative-scene-card .narrative-actions { margin-top:.5rem; }
 #story-dialog { max-width:560px; }

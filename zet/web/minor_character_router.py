@@ -81,6 +81,10 @@ def create_minor_character_router(provider):
     def locked_thumbnail(sid: str, view: str, cid: str):
         return FileResponse(call("locked_thumbnail", sid, view, cid), headers={"Cache-Control": "no-store"})
 
+    @router.get("/{sid}/assets/{view}/locked-image/{cid}")
+    def locked_image(sid: str, view: str, cid: str):
+        return FileResponse(call("locked_image", sid, view, cid), headers={"Cache-Control": "no-store"})
+
     @router.get("/{sid}/assets/{view}/progress")
     def progress(sid: str, view: str):
         return call("progress", sid, view)

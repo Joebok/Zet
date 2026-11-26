@@ -90,6 +90,13 @@ Identity Key source choices identify Draft or Final source locks in the option t
 
 Character Overview view titles link directly to the matching Asset Container workspace, while thumbnails open the shared full-screen viewer. Turnaround missing views link to the corresponding local source workspace for eligible Local rows. A full turnaround remains unavailable until all eight source views are locked; partial sheets remain available from a ready full row.
 
+Minor Character asset cards follow the same separation: each view heading links to
+its workspace, while a locked thumbnail opens the shared full-screen viewer with
+zoom and previous/next navigation across that character's locked views. Unlocked
+views are omitted from the viewer sequence. Collection Rename/Delete and New
+Minor Character actions remain content-sized on desktop and keep touch-sized
+targets on coarse pointers.
+
 Character Run available, slot generation/retry, view regeneration, Re-evaluate,
 batch Start/Resume and candidate-review retry show immediate submission feedback.
 The shared Activity menu lists in-progress preparation and undismissed actions

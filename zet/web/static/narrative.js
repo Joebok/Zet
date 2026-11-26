@@ -82,6 +82,9 @@ function href(next) {
   return `/?page=narrative&workspace=story&${query}`;
 }
 function link(text, next) { return `<a href="${esc(href(next))}" data-navigate>${esc(text)}</a>`; }
+function fullscreenImage(image, alt, className) {
+  return `<button type="button" class="narrative-image-open" data-fullscreen-image="${esc(image)}" data-fullscreen-alt="${esc(alt)}" aria-label="Open image full size: ${esc(alt)}"><img class="${className}" src="${esc(image)}" alt="" loading="lazy"></button>`;
+}
 function base() {
   let value = `/api/narrative/stories/${route.story}`;
   if (route.scene) value += `/scenes/${route.scene}`;
@@ -379,7 +382,7 @@ function renderStoryScenes(scenes) {
     const assembly = scene.final_assembly;
     const image = assembly ? `/api/narrative/stories/${route.story}/scenes/${scene.id}/targets/${assembly.target_id}/candidates/${assembly.candidate_id}/finished-image?universe_id=${encodeURIComponent(universe)}` : '';
     return `<article class="narrative-card narrative-scene-card"><h2>${link(scene.title,{story:route.story,scene:scene.id})}</h2>
-      ${assembly ? `<a href="${esc(href({story:route.story,scene:scene.id,target:assembly.target_id}))}" data-navigate><img class="narrative-story-thumbnail" src="${esc(image)}" alt="Selected final assembly for ${esc(scene.title)}" loading="lazy"></a>` : `<span class="narrative-story-thumbnail narrative-story-placeholder" role="img" aria-label="No selected final assembly for ${esc(scene.title)}"></span>`}
+      ${assembly ? fullscreenImage(image,`Selected final assembly for ${scene.title}`,'narrative-story-thumbnail') : `<span class="narrative-story-thumbnail narrative-story-placeholder" role="img" aria-label="No selected final assembly for ${esc(scene.title)}"></span>`}
       <p>${esc(scene.intent)}</p><div class="narrative-actions"><button type="button" data-move-scene="${scene.id}" data-direction="-1" ${index===0?'disabled':''}>Move earlier</button><button type="button" data-move-scene="${scene.id}" data-direction="1" ${index===scenes.length-1?'disabled':''}>Move later</button></div></article>`;
   }).join('');
 }
@@ -451,13 +454,12 @@ async function loadPageContent() {
     const stories = await api('/api/narrative/stories');
     root.innerHTML = `<div class="narrative-stories-heading"><h1>Narrative Scenes</h1><button id="new-story-button" class="primary">New Story</button></div>
       <div class="narrative-grid">${stories.map(story => `<article class="narrative-card"><h2>${link(story.title, {story:story.id})}</h2><p>${esc(story.brief)}</p>
-        <div class="narrative-story-scenes">${story.scenes.map(scene => {
+      <div class="narrative-story-scenes" data-fullscreen-set>${story.scenes.map(scene => {
           const assembly = scene.final_assembly;
-          const destination = {story:story.id,scene:scene.id,...(assembly ? {target:assembly.target_id} : {})};
           const image = assembly ? `/api/narrative/stories/${story.id}/scenes/${scene.id}/targets/${assembly.target_id}/candidates/${assembly.candidate_id}/finished-image?universe_id=${encodeURIComponent(universe)}` : '';
-          return `<a class="narrative-story-scene" href="${esc(href(destination))}" data-navigate>
-            ${assembly ? `<img class="narrative-story-thumbnail" src="${esc(image)}" alt="Selected final assembly for ${esc(scene.title)}" loading="lazy">` : `<span class="narrative-story-thumbnail narrative-story-placeholder" role="img" aria-label="No selected final assembly for ${esc(scene.title)}"></span>`}
-            <span>${esc(scene.title)}</span></a>`;
+          return `<div class="narrative-story-scene">
+            ${assembly ? fullscreenImage(image,`Selected final assembly for ${scene.title}`,'narrative-story-thumbnail') : `<span class="narrative-story-thumbnail narrative-story-placeholder" role="img" aria-label="No selected final assembly for ${esc(scene.title)}"></span>`}
+            ${link(scene.title,{story:story.id,scene:scene.id})}</div>`;
         }).join('')}</div></article>`).join('')}</div>`;
     host.querySelector('#narrative-breadcrumb').textContent = 'Stories';
   } else if (!route.scene) {
@@ -467,7 +469,7 @@ async function loadPageContent() {
       <div class="narrative-actions"><button data-action="save">Save story</button><button class="danger" data-action="delete">Delete story</button></div></section>
       <section class="narrative-card"><h2>Story animation</h2><p>Create a silent animation from locked final assemblies. Camera motion and confirmed text visibility can be edited per shot.</p><button type="button" id="open-story-animation">Open Animation workspace</button><div id="story-animation-workspace" hidden></div></section>
       <section class="narrative-card"><h2>New scene</h2><form id="new-narrative-scene" class="narrative-inline"><input aria-label="Scene title" name="title" required placeholder="Scene title"><button class="primary">Create scene</button></form></section>
-      <div class="narrative-grid" id="narrative-story-scenes"></div>`;
+      <div class="narrative-grid" id="narrative-story-scenes" data-fullscreen-set></div>`;
     renderStoryScenes(detail.scenes);
     host.querySelector('#scene-text-story-style')?.addEventListener('click',()=>window.ZetSceneText.style({universe,story:route.story}));
     host.querySelector('#open-story-animation')?.addEventListener('click', () => action(async () => {
@@ -622,8 +624,8 @@ async function loadPageContent() {
         <input aria-label="Target title" name="title" required placeholder="Title"><select name="kind" aria-label="Target kind"><option value="subscene">Subscene</option><option value="backdrop">Backdrop</option></select><button class="primary">Create and edit</button></form>
         ${detail.targets.some(target=>target.kind==='assembly') ? '' : '<button data-action="create-assembly">Create final assembly</button>'}
         <div class="narrative-actions"><button data-action="reference-backdrop">Reference backdrop from another scene</button><button data-action="import-subscene">Import subscene from another scene</button></div>
-        ${targetsWithAssemblyLast(detail.targets).map((target,index)=>{const selected=target.selected_id;const targetLabel=`${target.title} · ${title(target.kind)} ${index+1}`;return `<article class="narrative-card narrative-target-card" data-target-id="${target.id}" aria-label="${esc(targetLabel)}"><h3>${link(target.title,{...route,target:target.id})}</h3><p class="narrative-muted">${esc(target.kind)}${selected ? ' · Image selected' : ''}</p>
-          ${selected ? `<a href="${esc(href({...route,target:target.id}))}" data-navigate><img class="narrative-target-preview" src="${esc(imageUrl(selected,target.id))}" alt="Selected image for ${esc(target.title)}"></a>` : ''}${target.kind==='subscene' ? `<button class="danger" aria-label="Delete subscene ${esc(targetLabel)}" data-delete-subscene="${target.id}">Delete subscene</button>` : ''}</article>`;}).join('')}</section>
+        <div class="narrative-target-images" data-fullscreen-set>${targetsWithAssemblyLast(detail.targets).map((target,index)=>{const selected=target.selected_id;const targetLabel=`${target.title} · ${title(target.kind)} ${index+1}`;return `<article class="narrative-card narrative-target-card" data-target-id="${target.id}" aria-label="${esc(targetLabel)}"><h3>${link(target.title,{...route,target:target.id})}</h3><p class="narrative-muted">${esc(target.kind)}${selected ? ' · Image selected' : ''}</p>
+          ${selected ? fullscreenImage(imageUrl(selected,target.id),`Selected image for ${target.title}`,'narrative-target-preview') : ''}${target.kind==='subscene' ? `<button class="danger" aria-label="Delete subscene ${esc(targetLabel)}" data-delete-subscene="${target.id}">Delete subscene</button>` : ''}</article>`;}).join('')}</div></section>
       <section class="narrative-card"><h2>Scene elements</h2><button data-action="new-element">Add element</button><div id="narrative-elements">${elementsHtml(detail.elements,false)}</div></section></div></div>`;
     root.querySelectorAll('[data-ai-model-picker]').forEach(control => window.ZetModelPicker?.attach(control, {allowDefault:false}));
     host.querySelector('#narrative-breadcrumb').innerHTML = link('Stories',{})+' / '+link(story.title,{story:route.story});
@@ -1356,6 +1358,12 @@ listen(host,'change',event=>{
 listen(host,'click',event=>{
   const button = event.target.closest('button,a');
   if (!button) return;
+  if (button.dataset.fullscreenImage) {
+    const images = [...(button.closest('[data-fullscreen-set]')?.querySelectorAll('button[data-fullscreen-image]') || [])]
+      .map(item=>({src:item.dataset.fullscreenImage,alt:item.dataset.fullscreenAlt}));
+    window.ZetOpenFullscreenImage(button.dataset.fullscreenImage,button.dataset.fullscreenAlt,{images});
+    return;
+  }
   if (button.dataset.clearModel) {
     const key = button.dataset.clearModel;
     const field = root.querySelector(`#narrative-${key}`);

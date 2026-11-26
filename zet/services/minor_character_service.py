@@ -125,6 +125,7 @@ class MinorCharacterService(QuickCharacterWizardService):
             if item:
                 asset.update(
                     thumbnail_url=f"/api/minor-characters/{sid}/assets/{view}/locked-thumbnail/{item['id']}",
+                    image_url=f"/api/minor-characters/{sid}/assets/{view}/locked-image/{item['id']}",
                     render_mode=item["render_mode"],
                 )
             assets.append(asset)
@@ -137,6 +138,13 @@ class MinorCharacterService(QuickCharacterWizardService):
                 raise MinorCharacterNotFound("No matching locked image.")
             source = self._owned_file(sid, item["image_path"])
             return self._thumbnail(source)
+
+    def locked_image(self, sid, view, cid):
+        with self._lock(sid):
+            item = self._locked_candidate(self._board(self._read(sid), view))
+            if not item or item["id"] != cid:
+                raise MinorCharacterNotFound("No matching locked image.")
+            return self._owned_file(sid, item["image_path"])
 
     def create_character(self, data):
         name = self._name(data.get("name"))

@@ -13,6 +13,7 @@ New filenames below are proposed modules, not existing APIs. Prefer extending th
 | 3. Production migrations | WP12-WP20 | Character, Minor Character, Narrative, Image Generation and wizards follow the agreed flow and prompt-readiness rules. |
 | 4. Site completion | WP21-WP31 | Inventory, derived images, finishing, Zines, navigation, settings, editors, Queue and diagnostics use the same conventions. |
 | 5. Acceptance | WP32 | Existing regressions pass and a corrected before/after evidence package demonstrates desktop and landscape tablet usability. |
+| 6. Review follow-up | WP33-WP34 | Minor Character and Narrative image-card actions match the shared viewer and workspace-link patterns; affected acceptance evidence is refreshed. |
 
 Review a Character board as the first shared-layout pilot before migrating the other three main workspace families. Keep existing APIs/services behind adapters throughout. Do not switch all pages to an unvalidated generic controller in one change.
 
@@ -343,6 +344,27 @@ The failed disposable render and initial disposable assertion/navigation mistake
 - Validation: ALL; targeted prepared checks only where remaining concerns justify them; inspect representative screenshots and error logs. Live model/render checks remain separately requested.
 
 | WP32 | Workflow evidence recorded; final visual responsive checks remain | Test revision `2250eb9012f5627eedb11669c81eb7241368f93e` / boot `6de02022944e4204bde3302aa5477cc7` matches the active-release record; health is ready and the deployment log reports 20/20 approved E2E scenarios passed. Fresh AI workflow evidence was captured on f64b and completed Image Generation, Narrative, Minor Character, and the Character FRONT pipeline chain through Costume Dressing, with locks and key selections verified after refresh. 2250 adds the Recent Renders compact-menu option and a board-specific accessible name for the Costume Hub template-edit button; neither changes pipeline behavior. The menu option is present in deployed source, but visible selection could not be checked because browser UI access failed. Local CSS now gives landscape-tablet context selectors a full row to reduce Story/Scene title truncation; this change is not in Test yet. The accepted Costume Wizard image still has an overskirt embroidery mismatch and its model provenance remains unverified. Inventory observations remain deferred. Production was not used or changed. Current release and evidence details are in `Docs/Testing.md`. |
+
+## Wave 6: review follow-up
+
+### WP33 - Minor Character image cards and compact actions
+
+- Dependencies: WP08, WP09, WP21. Finding: image-card behavior and action sizing are inconsistent with Character Overview.
+- Files/interfaces: `zet/web/static/minor_characters.js`, `zet/web/static/zet.css`, `zet/web/templates/index.html`, `zet/services/minor_character_service.py`, `zet/web/minor_character_router.py`, and dashboard/local-character UI documentation.
+- Work: make each asset heading an independent link to its workspace; make locked thumbnails open the shared full-screen viewer with zoom and previous/next across that character's available locked views. Compact Rename/Delete and New Minor Character buttons while retaining suitable touch targets.
+- Acceptance: headings navigate without opening the image; image actions never navigate away; only available locked views participate in viewer navigation; sizing is compact on desktop and usable on landscape tablet.
+- Validation: source checks, `node --check zet/web/static/minor_characters.js`, `git diff --check`, and the existing approved Minor Character flow if the Test environment remains available. No permanent scenarios added.
+
+### WP34 - Narrative scene thumbnail actions
+
+- Dependencies: WP08, WP21, WP25. Finding: scene and subscene thumbnails route to workspaces even though title links already provide that navigation.
+- Files/interfaces: `zet/web/static/narrative.js`, `zet/web/static/narrative.css`, `zet/web/static/zet.js`, `zet/web/templates/index.html`, and Narrative/Dashboard UI documentation.
+- Work: split image actions from workspace links on the Stories list and story scene list; open selected images in the shared zoomable full-screen viewer. On a scene page, open a selected subscene/backdrop image full screen rather than navigating to its target; keep the target title link as workspace navigation.
+- Acceptance: clicking an image opens the viewer without route changes; title links keep their workspace destinations; empty image states are not actionable; viewer navigation, where offered, stays within the displayed story/scene image set.
+- Validation: source checks, `node --check zet/web/static/narrative.js`, `git diff --check`, and the existing approved Narrative flow if the Test environment remains available. No permanent scenarios added.
+
+| WP33 | Implemented locally; Test visual acceptance pending | Shared viewer uses a new locked-image endpoint guarded by the same locked-slot ownership check as thumbnails. Asset headings link independently; viewer navigation includes locked views only. Rename/Delete/New actions have compact desktop sizing and 44px coarse-pointer height. `node --check zet/web/static/minor_characters.js` and `git diff --check` passed. Test deployment and visual acceptance remain pending. |
+| WP34 | Implemented locally; Test visual acceptance pending | Stories, story scene, and scene target thumbnails now open through the shared zoomable viewer; explicit title links retain workspace navigation. Viewer arrows stay within their displayed story/scene set. `node --check zet/web/static/narrative.js` and `git diff --check` passed. Test deployment and visual acceptance remain pending. |
 
 ### Remaining validation limits and deferred scope
 

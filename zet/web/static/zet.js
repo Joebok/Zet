@@ -3864,7 +3864,7 @@ if (page === "onboarding") void window.ZetCharacterHub?.activate({fetchJson, cha
         history.replaceState({}, '', '/?'+params);
       } catch (error) { window.ZetTaskCapture.notice(error.message); }
     }
-    const {mountNarrative} = await import('/static/narrative.js?v=20261124-landscape-controls');
+    const {mountNarrative} = await import('/static/narrative.js?v=20261126-image-card-viewer');
     if (!pageLoadIsCurrent(pageLoad)) return false;
     const pending = mountNarrative(document.querySelector('#narrative-page'), state.universeId, async next=>{
       const requested = location.search;

@@ -12,6 +12,12 @@ image's quality, and scene-text confirmation selects the affected image.
 Older two-board targets require the versioned dry-run migration before opening.
 See the Narrative-specific decision following ADR 0039.
 
+On Stories and story scene cards, selected assembly thumbnails open in the shared
+zoomable full-screen viewer; scene titles remain the workspace links. On a scene's
+target list, selected subscene and backdrop thumbnails open in the viewer while
+their titles navigate to the target workspace. Previous/next stays within the
+image set shown by the relevant story or scene list.
+
 Narrative mounts the shared Candidate Board for Render Controls, slots, and review. The Narrative adapter supplies workflow actions, frozen evidence, and progress. Prompt authoring keeps the model picker and Write Prompt above the editable prompt and render settings. Render Controls include
 blue Draft 1/4, green Final 1/4, outlined Delete Drafts, and solid-red Delete
 Non-Selected. Draft deletion retains its protected-effects preview. Delete

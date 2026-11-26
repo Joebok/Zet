@@ -166,13 +166,13 @@ function cards(id, assets) {
   return assets.map(item => {
     const href = escape(routeUrl(id, item.view));
     const label = item.view === "STYLE" ? "Style" : item.label;
-    const preview = item.thumbnail_url
-      ? `<img loading="lazy" src="${escape(scoped(item.thumbnail_url))}" alt="Locked ${escape(label)}">`
+    const preview = item.thumbnail_url && item.image_url
+      ? `<button type="button" class="mc-asset-image" data-mc-image="${escape(scoped(item.image_url))}" data-mc-image-alt="Locked ${escape(label)}" aria-label="Open locked ${escape(label)} full size"><img loading="lazy" src="${escape(scoped(item.thumbnail_url))}" alt=""></button>`
       : `<span>No locked image</span>`;
     const status = item.thumbnail_url
       ? `<small><span class="narrative-render-mode-pill ${item.render_mode === "final" ? "final" : "draft"}">${item.render_mode === "final" ? "Final" : "Draft"}</span> · Locked</small>`
       : "";
-    return `<a data-mc-route class="mc-asset-card" href="${href}"><strong>${escape(label)}</strong>${preview}${status}</a>`;
+    return `<article class="mc-asset-card"><h3 class="mc-asset-heading"><a data-mc-route href="${href}">${escape(label)}</a></h3>${preview}${status}</article>`;
   }).join("");
 }
 async function load() {
@@ -646,6 +646,13 @@ page.addEventListener("click", event => {
   const control = event.target.closest("button");
   if (!control || control.disabled) return;
   const data = control.dataset;
+  if (data.mcImage) {
+    const card = control.closest(".mc-asset-card");
+    const images = [...(card?.parentElement?.querySelectorAll(".mc-asset-card [data-mc-image]") || [])]
+      .map(button => ({src:button.dataset.mcImage, alt:button.dataset.mcImageAlt}));
+    window.ZetOpenFullscreenImage(data.mcImage, data.mcImageAlt, {images});
+    return;
+  }
   if (data.mcRename) return run(() => renameCharacter(data.mcRename, data.name));
   if (data.mcDelete) return run(() => deleteCharacter(data.mcDelete, data.name));
   if ("applyProposals" in data) return run(()=>author("apply", {
