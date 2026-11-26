@@ -2,14 +2,15 @@
 
 ## Current Test release and recent UI evidence (2026-11-26)
 
-Test serves revision `f8feb44682c59a277380243febd97cfda8e19606`, boot
-`c125a8747cbe4973a2fa7b6d4c2a2006`, matching its active-release record and
-`/api/health`. Health is ready and recovery is complete. The prior 2250
-deployment log reports all 20 approved E2E scenarios passed. The UI follow-up
-below was gathered after this release update; fresh AI workflows are linked
-separately from viewport-only inspections. Production was not used or changed.
+Test serves revision `3c6d66a6546f8f65897fb4c55bdeb8491d8901ba`, boot
+`c6b93d49eb1b47e5a0606419b0fea5ef`, matching its active-release record and
+`/api/health`. Health is ready and recovery is complete. The current release
+log reports all 20 approved E2E scenarios passed. Fresh current-release Wizard
+evidence is recorded below. Earlier workflow and viewport evidence in this
+section is from Test `f8feb44` and is retained as the preceding release record.
+Production was not used or changed.
 
-Current-release evidence is retained in
+Earlier fresh workflow evidence from Test `f8feb44` is retained in
 `../../Zet_Tester/runs/ui-review-2026-11-24/`:
 
 - [Character, Body Reference, Head Image Edit, Assembly, Costume Wizard and
@@ -89,6 +90,52 @@ observation for focused follow-up; this Dressing run does not resolve them.
 The report and 24-capture evidence package are retained at
 [Costume source correction report](../../Zet_Tester/runs/ui-review-2026-11-24/2026-11-26T15-02-06-958Z-6766774c/report.md)
 and [evidence captures](../../Zet_Tester/runs/ui-review-2026-11-24/2026-11-26T15-02-06-958Z-6766774c/evidence/manifest.json).
+
+## Costume Wizard provenance and embroidery check (2026-11-26)
+
+A fresh Test `3c6d66a` run used the existing `UI Review Luna 20261126 f64b`
+Adult character and a unique new costume draft. The active-release record and
+`/api/health` agreed on revision `3c6d66a6546f8f65897fb4c55bdeb8491d8901ba`
+and boot `c6b93d49eb1b47e5a0606419b0fea5ef`; the 20 approved E2E scenarios
+passed in the release log. The existing Assembly FRONT lock was preserved.
+
+All four Wizard sections reached Ready. The saved preview explicitly says no
+blouse embroidery and confines embroidery to the lower half of each panel. The
+four matching AI Queue asks identify the section-authoring model as
+`codex:gpt-6-luna`. The Wizard has no model selector, and the private image
+render record exposes neither a render job ID nor an image-render model ID.
+Therefore section-authoring provenance is now known for this run, but image
+render model provenance remains unverified.
+
+The private FRONT render reached `TEST_READY` and was inspected at full size and
+zoom. It followed the written no-blouse-embroidery and lower-panel-placement
+rules, despite the supplied AdventureGear reference showing embroidery on the
+blouse bodice. This indicates the earlier Wizard embroidery mismatch is
+consistent with contradictory inputs, rather than evidence of a renderer
+failure. The output retained the midriff and main outfit; pointed ears were not
+visible and the neckline ruffle was weak or absent. The new costume remains an
+unaccepted private draft; the existing character, costume, and board locks were
+not changed.
+
+The full [Costume Wizard report](../../Zet_Tester/runs/ui-review-2026-11-24/2026-11-26T15-37-01-926Z-f34d91a0/report.md)
+and [14-capture manifest](../../Zet_Tester/runs/ui-review-2026-11-24/2026-11-26T15-37-01-926Z-f34d91a0/evidence/manifest.json)
+record the current-release evidence.
+
+## Costume Wizard section-action accessibility follow-up (2026-11-26)
+
+On Test `3c6d66a`, the browser helper could not target the repeated **Refine
+section** action for Upper body and waist: the article scope matched its heading
+and two field labels. The saved draft stayed `TEST_READY`; no refinement ask or
+new render was submitted. The partial baseline and blocker evidence are retained
+in the [follow-up report](../../Zet_Tester/runs/ui-review-2026-11-24/2026-11-26T16-09-18-987Z-e8a1ffa9/report.md).
+
+The local dashboard now gives section action buttons and suggested-replacement
+checkboxes section-specific accessible names. `node --check zet/web/static/zet.js`
+and the approved Costume Wizard E2E scenario passed. A disposable assertion
+confirmed the four Refine section buttons have distinct accessible names; that
+assertion was removed afterward, so no permanent test scenario was added. This
+source fix has not yet been deployed to Test; the helper interaction and
+landscape behavior remain to be verified after the next merged Test release.
 
 ## Historical Test evidence after viewer/model accessibility merge (2026-11-25)
 

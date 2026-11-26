@@ -4545,6 +4545,7 @@ function renderCostumeSections(session, running) {
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = name;
+      button.setAttribute("aria-label", `${name}: ${entry.label}`);
       button.addEventListener("click", () => costumeSectionAction(session, key, action, direction.value));
       actions.append(button);
     };
@@ -4560,6 +4561,7 @@ function renderCostumeSections(session, running) {
       accept.type = "checkbox";
       accept.dataset.proposalAccept = key;
       accept.checked = costumeProposalAcceptance.has(key);
+      accept.setAttribute("aria-label", `Accept suggested replacement: ${entry.label}`);
       accept.addEventListener("change", () => {
         if (accept.checked) costumeProposalAcceptance.add(key);
         else costumeProposalAcceptance.delete(key);
