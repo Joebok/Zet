@@ -11655,6 +11655,7 @@ function subscribeRecentRenders() {
       const review = document.createElement("button");
       review.type = "button";
       review.textContent = "Review latest";
+      review.setAttribute("aria-label", `Review latest image: ${board.label}`);
       review.disabled = !board.thumbnail_path;
       review.title = board.thumbnail_path ? "Inspect the latest harvested image full screen." : "No saved thumbnail is available for this board.";
       if (board.thumbnail_path) {

@@ -51,6 +51,7 @@ P1 means a blocked or misleading production interaction requiring an early fix. 
 | UI-16 | P2, pixels and source | Config mixes process management, model discovery, rendering settings and legacy backend values in a long form with a distant Save action. Process rows expose Start, Stop and Restart together without matching their visibility to running state. Group settings by purpose, show per-section save state, and put process feedback in the affected row. Confirm which settings are active before removing stale controls. | Sweep Desktop `page-local-image-config`; `zet.js` `renderProcessRows`, `runConfigProcessAction`, `renderPipelineControls`; config/process services. No process action was executed. |
 | UI-17 | P2, pixels and source | Pipeline Controls exposes a reset form alongside a message that legacy pipelines are unavailable. Pipeline Inspection shows No matching pipelines in an empty diagnostic layout. Make active workflow support explicit; remove obsolete active navigation/actions after checking consumers, or present an informative unavailable state with a route to supported tools. Do not restore retired pipelines to fill the page. | Sweep `page-pipeline-controls` and `page-pipeline-inspection`; `zet.js` `loadPipelineControls`, `loadPipelineInspections`; corresponding service/router owners. The full legacy caller audit is an implementation prerequisite. |
 | UI-18 | P2, pixels and source | Queue rows combine raw exceptions, stage, recovery instructions and ages measured in thousands of minutes in a very wide Details cell. Use a compact state/target summary with a local recovery action and expandable technical details. Preserve failed job history and durable queue semantics; a failed historical row is not evidence that this campaign's rendering failed. | Sweep Desktop `page-ai-controls`; `ai_queue.js` row formatter and action lifecycle; AI job service. |
+| UI-19 | P2, accessibility confirmed | Recent Renders repeats the accessible name `Review latest` for every board row. Screen-reader and automation users cannot identify which board a button opens without row scoping. Keep the short visible label and include the board name in each button's accessible name. | 96fd Reconstruction resume: direct browser helper could not target one of the repeated controls; live DOM/AX tree showed duplicate names. `zet.js` `subscribeRecentRenders`. Local fix adds the board label; release verification remains pending. |
 | UI-19 | P2, pixels | Recent Renders presents a long list of links and counts with little visual recognition. Use a shared thumbnail row/card, readable scope and latest activity, plus Open board / Review where supported. Preserve the existing event-driven updates and do not add idle polling. | Sweep Desktop `page-recent-renders`; `zet.js` Recent Renders rendering/events; shared board harvest service. |
 | UI-20 | P2, pixels and source | A directly opened Template Editor shows a large empty editor and instructions to open a template without an obvious chooser in that view. Add an in-place template picker and clear empty/loading/unavailable state. Preserve conflict handling and the user's unsaved text. | Sweep Desktop `page-template-editor`; `template_editor.js`; `SourceEditorService`; existing template-edit scenario. |
 | UI-21 | P2, pixels and source | Costumes uses generic Open/Add New alongside Costume Wizard, while shared primary/secondary emphasis varies in neighboring settings pages. Name actions by outcome, make wizard versus existing template import clear, and apply the same form/action/status anatomy. Universe lists/settings and Help use different content widths and heading/action placement. | Sweep Desktop `page-costumes`, `page-universes`, `page-help`; `index.html`, costume handlers, shared page/form styles. Markdown imports remain file inputs, not image inputs. |
@@ -176,7 +177,7 @@ Production has one configured read-only candidate source, Moonsea Adventures, wi
 
 Desktop and landscape captures are retained at `E:\Zet\Zet_Tester\runs\ui-review-2026-11-24\production-readonly-image-inventory-3254602\`. They are read-only page observations and do not constitute a complete interaction or touch audit.
 
-## Fresh Test-release evidence (2026-11-25, revision f9fc7b0e)
+## Pre-merge Test evidence (2026-11-25, revision f9fc7b0e)
 
 All new evidence manifests in this campaign identify Test revision `f9fc7b0e1c60c5e76800c4629fb55ed6b1137440` and boot `bb4e7d0b15344574a598b70494ada5af`, matching `/api/health` and `state/active-release.json`. The 20 approved E2E scenarios passed during the Test release update. The cases were run serially with new unique workspace names; no prior workflow outputs were reset. Landscape tablet means the Zet_Tester 1133x610 CSS-pixel emulation, not a physical tablet.
 
@@ -189,10 +190,96 @@ All new evidence manifests in this campaign identify Test revision `f9fc7b0e1c60
 
 ### New actionable findings
 
-1. **Full-size image viewer close is obscured by zoom controls (high confidence).** Reproduced in the Costume Wizard and Inventory preview. The Close and zoom toolbar occupy the same upper-right corner; `zet.css` gives `.fullscreen-image-tools` z-index 10004 and `.fullscreen-image-close` z-index 10002. The checkout now moves Close to the safe-area-aware upper-left, separate from zoom controls. This local change has not yet been staged to Test or browser-verified there.
+1. **Full-size image viewer close is obscured by zoom controls (high confidence).** Reproduced in the Costume Wizard and Inventory preview. The Close and zoom toolbar occupied the same upper-right corner; `zet.css` gave `.fullscreen-image-tools` z-index 10004 and `.fullscreen-image-close` z-index 10002. The merged fix moves Close to the safe-area-aware upper-left. The fresh 96fd Zet_Tester run verified that Close and zoom remain separate at desktop and tablet-landscape.
 2. **Inventory card actions lack a named card scope (high confidence).** The live `image-catalog-card` is an unnamed `article`, and every Details button has the same accessible name. The tester could verify titles, IDs and Approved status but could not scope Details to verify provenance. Give each card a programmatic name from its title and make repeated actions identify their image, then verify keyboard/screen-reader and per-card operation.
-3. **Narrative model picker controls are ambiguous (high confidence for the observed dashboard/helper contract).** The custom picker hides the labeled text input and inserts a button whose text is only the current model; Interview and Prompt writing controls therefore expose the same name when both inherit the same value. The required `codex:gpt-6-luna` could not be selected through Zet_Tester, even with field-scoped instructions. The checkout now adds each source field label and current value to the replacement button's accessible name. This local change has not yet been staged to Test or browser-verified there.
+3. **Narrative model picker controls are ambiguous (high confidence for the observed dashboard/helper contract).** The custom picker hid the labeled text input and inserted a button whose text was only the current model; Interview and Prompt writing controls therefore exposed the same name when both inherited the same value. The required `codex:gpt-6-luna` could not be selected through Zet_Tester. The merged fix adds each source field label and current value to its replacement button's accessible name. A fresh 96fd case independently set both selectors, saved, and verified persistence after reload at desktop and tablet-landscape.
 4. **Costume section action is not uniquely addressable in the wizard (needs direct keyboard/touch confirmation).** The saved correction remained in the draft, but the helper matched several visible controls in `Upper body and waist` and could not identify `Refine section`. Review section headings, action labels and focus order; do not treat the image-fidelity mismatch as evidence that the UI action itself failed for a person.
 5. **Reconstruction case prerequisite is incomplete, not yet an app defect.** The source action is intentionally attached to a selected completed candidate. Update the case to generate/select a baseline candidate before entering Reconstruction, then complete its analysis and compare/correct stages.
 
-WP32 remains incomplete: Costume Dressing, Image Generation Reconstruction/compare-and-correct, and Narrative generation/review/locking still need fresh evidence on this release. Viewer placement and model-button naming now have localized checkout fixes pending Test validation. Inventory card naming, Costume Wizard action targeting and the Image Generation case prerequisite remain open. Image Inventory feature scope remains deferred as Joe requested.
+WP32 remains incomplete. Fresh 96fd evidence now covers the full Narrative flow and Image Generation Reconstruction/Compare and Correct, including direct selection of the corrected draft. Costume Wizard and Dressing are partially complete; the accepted template update left contradictory instructions in the saved prompt, so no corrected batch was rendered. Viewer placement and Narrative model naming are verified. Costume Wizard action targeting, Recent Renders release verification, and tablet header dropdown truncation remain open. Inventory card naming and details scope are recorded as observations for the separate deferred Inventory effort, not as remaining work in this plan.
+
+### Targeted verification of viewer and model controls (2026-11-25, revision 96fd)
+
+Test release `96fd8790ad714a867ad433390e46a638db016e6b` / boot
+`0ec1054cd14e432e8f7aedeb5783add1` was health-verified. The focused Narrative
+setup case confirmed both model controls can be set independently to
+`codex:gpt-6-luna`, saved, and reloaded with those effective values intact. The
+full-size viewer Close remained distinct from zoom controls in desktop and
+1133x610 tablet-landscape captures. Report and captures:
+[targeted Zet_Tester report](../../../../Zet_Tester/runs/ui-review-96fd/2026-11-25T23-39-59-669Z-dd25c46a/report.md)
+and [evidence manifest](../../../../Zet_Tester/runs/ui-review-96fd/2026-11-25T23-39-59-669Z-dd25c46a/evidence/manifest.json).
+
+New observation: at 1133x610, Story and Scene header selectors truncate their
+selected names. The authoring model values remain legible. Consider moving or
+reflowing context selection controls within the responsive shell while keeping
+the active story/scene names discoverable without hover.
+
+### Full Narrative workflow verification (2026-11-25, revision 96fd)
+
+The fresh Zet_Tester run completed story and scene setup, backdrop creation,
+transparent subscene preparation, final assembly, candidate review, and all
+three locks. The Interview and Prompt writing models were independently set
+to `codex:gpt-6-luna` and survived reload. Both exact approved Inventory IDs
+were bound to the subject elements. Async progress was visible through
+interviews, prompt writing, Draft 4 and Luna Review. Candidate full-screen
+zoom in/out/reset worked. All three selected locks persisted after returning
+to the scene overview and reopening each target.
+
+Visual findings: the backdrop is coherent but adds a centered table and chairs
+that reduce open floor. The subscene has a solid purple matte despite the
+explicit transparent-background prompt, a significant output quality defect.
+The final assembly is cohesive and follows left/right staging, though hands
+around the teapot and cup are crowded. These are generated-image outcomes, not
+workflow blockers. A prompt-model selection action initially matched multiple
+visible controls in the helper; the fresh snapshot resolved the target and the
+saved prompt provenance was correct, so retain as a targeting observation.
+
+Evidence: [full Narrative Zet_Tester report](../../../../Zet_Tester/runs/ui-review-96fd-full-narrative/2026-11-25T23-53-15-866Z-2c54d219/report.md)
+and [evidence manifest](../../../../Zet_Tester/runs/ui-review-96fd-full-narrative/2026-11-25T23-53-15-866Z-2c54d219/evidence/manifest.json).
+
+### Image Generation Reconstruction workflow (2026-11-26, revision 96fd)
+
+The selected completed candidate correctly exposed the Reconstruction action.
+The configured `image-analysis:latest` role, source and prompt controls were
+visible, and the analysis recovered from a temporary storage banner after the
+prescribed waits and refresh. The first reconstructed candidate omitted the
+gown. Universe-style continuation generated a gown image. Compare first showed
+Permission denied while still marked RUNNING; its report later settled to
+COMPLETE with two major findings, and the live view reached READY without
+resubmitting. One finding was selected and one Draft correction rendered with
+the baseline as its ordered input. The corrected candidate restored the gown
+and was reviewed at desktop and tablet landscape. Luna ranking and ranking-based
+selection were not part of this Image Generation case's Compare and Correct
+acceptance. The tester's extra attempt to invoke `Review latest` targeted a
+Recent Renders full-screen preview, not Luna ranking. Direct dashboard
+follow-up selected the corrected draft in Slot 4 and verified persistence after
+reload; no lock or Inventory publication was made. A separate direct dashboard
+inspection confirmed the repeated Recent Renders accessible names, and a local
+board-specific label fix is pending release verification.
+
+The comparison write warning remains under observation. Read-only inspection
+found the report directory and report file present with inherited Modify access
+for Authenticated Users; no ACL changes were made. Do not classify it as an
+access-control denial without reproducing the actual writer identity and
+failing operation. Evidence: [initial Reconstruction report](../../../../Zet_Tester/runs/ui-review-96fd-reconstruction/2026-11-26T00-41-37-454Z-09b3dc96/report.md),
+[resume report](../../../../Zet_Tester/runs/ui-review-96fd-reconstruction/2026-11-26T00-41-37-454Z-09b3dc96/resume-2026-11-26T01-21-49-509Z-a7a55f53/report.md),
+and [completed comparison JSON](../../../../Zet_Library_Test/ZetTester/_state/ImageReconstruction/84737e290e7c4f80ac4f6f1e50a6d141/reports/f189bd908a534cea8c22da474ab25b5b/report.json).
+
+### Costume Wizard and Dressing workflow (2026-11-26, revision 96fd)
+
+The Costume Wizard produced and accepted a new outfit template, and its private
+FRONT test render confirmed identity and most clothing details. The render did
+not show the requested exposed midriff, and embroidery appeared on the blouse
+as well as the lower panels. A fresh Costume Dressing FRONT batch also failed
+those visual requirements. Template Improvement accepted three relevant edits,
+but the compiled board prompt retained earlier embroidery-near-hem text and a
+separate instruction to embroider the blouse. This is a prompt handoff defect
+to resolve or explicitly explain before another render; no corrected batch was
+submitted, and the existing baseline candidate remains intact and unlocked.
+
+The wizard exposed one configured model (`codex:gpt-6-luna`) rather than
+separate selectors for its substeps. Its draft and section readiness persisted
+after reopening. The wizard had no section-level suggestion checkboxes. Costume
+Wizard and Dressing were usable through the tested workflow, but keyboard/touch
+confirmation of section-action targeting remains outstanding. The run's full
+checkpoint and evidence details are in the [Costume workflow report](../../../../Zet_Tester/runs/ui-review-96fd-costume/2026-11-26T01-51-36-444Z-38d8ec08/report.md).

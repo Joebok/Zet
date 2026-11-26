@@ -150,6 +150,15 @@ standards, including button/glyph roles, card anatomy, review dialogs, immediate
 action acknowledgement, and feedback beside its initiating action. Adoption is
 partial; this component document records implemented behavior and verification limits.
 
+## Recent Renders
+
+Recent Renders lists one row per board with a saved thumbnail, image count,
+**Review latest**, and **Open board** actions. The local implementation keeps
+the visible review label short and includes the board label in its accessible
+name so repeated actions can be identified independently. Release verification
+of this accessible-name change is pending. Rows with no saved thumbnail disable
+review and explain why.
+
 ## Optional legacy context (2026-10-28)
 
 `zet.js:loadAssets` uses onboarding's `assets_exists` flag to skip an absent

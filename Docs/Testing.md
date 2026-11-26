@@ -1,6 +1,57 @@
 # Local testing
 
-## Latest UI consolidation Test evidence (2026-11-25)
+## Test after viewer/model accessibility merge (2026-11-25)
+
+Test now serves revision `96fd8790ad714a867ad433390e46a638db016e6b`, boot
+`0ec1054cd14e432e8f7aedeb5783add1`, matching its active-release record. The
+deployment log `test-update-3ba990fa957f4eaf800336b03a1114e5.log` reports all 20
+approved E2E scenarios passed in 2.4 minutes.
+
+A fresh, focused Zet_Tester case verified both shared Narrative authoring-model
+selectors independently set to `codex:gpt-6-luna`, saved, and retained after
+reload. The full-size image viewer Close control stayed separate from the zoom
+toolbar at desktop and tablet-landscape. The case intentionally stopped before
+references, prompts, or AI jobs. Evidence is retained at
+`E:\Zet\Zet_Tester\runs\ui-review-96fd\2026-11-25T23-39-59-669Z-dd25c46a\`.
+The scene and story header dropdowns truncate their selected names at
+tablet-landscape width; record this for the responsive header packet.
+
+A separate fresh Narrative run completed story setup, backdrop, subscene, and
+assembly on the same release. All three selected locks persisted after reload;
+async status remained visible through interviews, prompt writing, rendering,
+and Luna Review. The subscene output had a solid purple matte despite explicit
+transparency instructions; final tea-item hand placement was crowded but
+readable. See the [full Narrative report](../Zet_Tester/runs/ui-review-96fd-full-narrative/2026-11-25T23-53-15-866Z-2c54d219/report.md)
+and [evidence manifest](../Zet_Tester/runs/ui-review-96fd-full-narrative/2026-11-25T23-53-15-866Z-2c54d219/evidence/manifest.json).
+
+A fresh Reconstruction run verified the selected-candidate entry path, the
+`image-analysis:latest` role, source analysis and prompt adoption, a no-input
+text-to-image reconstruction, universe-style continuation, and Compare and
+Correct. The comparison first surfaced a Permission denied message while the
+page remained RUNNING; its report later reached COMPLETE on disk and the live
+dashboard. Two major findings were returned. One selected correction rendered
+successfully with its baseline as the ordered input. The tester's final
+attempt to invoke a repeated Recent Renders `Review latest` action was a
+full-screen preview action, not a Luna ranking step; it was outside the case's
+Compare and Correct acceptance. Direct dashboard follow-up selected the
+corrected draft in Slot 4 and confirmed it remained selected after reload; no
+lock or Inventory publication was made. Desktop and landscape-tablet captures
+are retained in the [initial run report](../Zet_Tester/runs/ui-review-96fd-reconstruction/2026-11-26T00-41-37-454Z-09b3dc96/report.md)
+and [resume report](../Zet_Tester/runs/ui-review-96fd-reconstruction/2026-11-26T00-41-37-454Z-09b3dc96/resume-2026-11-26T01-21-49-509Z-a7a55f53/report.md). The latest runner status remains partial because it treated that unrelated preview action as required.
+
+A fresh Costume Wizard and Costume Dressing workflow reached an accepted
+template, a private FRONT test render, initial Draft 4, Luna review, and accepted
+Template Improvement edits. The saved Dressing prompt still contained older
+embroidery-near-hem wording and a separate blouse-embroidery instruction, so no
+corrected render was submitted. The existing baseline stayed intact and
+unlocked. The wizard exposed one configured model and no section-level
+suggestion checkboxes; direct keyboard/touch targeting of its section actions
+remains unverified. See the [Costume workflow report](../Zet_Tester/runs/ui-review-96fd-costume/2026-11-26T01-51-36-444Z-38d8ec08/report.md).
+
+## Pre-merge UI consolidation Test evidence (f9fc, 2026-11-25)
+
+This section records the pre-merge baseline and is superseded by the successful
+96fd deployment and focused verification above.
 
 The active Test dashboard and release record both identify revision
 `f9fc7b0e1c60c5e76800c4629fb55ed6b1137440`, boot
