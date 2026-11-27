@@ -2,13 +2,13 @@
 
 ## Current Test release and recent UI evidence (2026-11-26)
 
-Test serves revision `3c6d66a6546f8f65897fb4c55bdeb8491d8901ba`, boot
-`c6b93d49eb1b47e5a0606419b0fea5ef`, matching its active-release record and
+Test serves revision `75711fba5483d670e78684379ecfc25d125b3fa5`, boot
+`31accc06c6594258b8c52b480a3be15c`, matching its active-release record and
 `/api/health`. Health is ready and recovery is complete. The current release
-log reports all 20 approved E2E scenarios passed. Fresh current-release Wizard
-evidence is recorded below. Earlier workflow and viewport evidence in this
-section is from Test `f8feb44` and is retained as the preceding release record.
-Production was not used or changed.
+log reports all 20 approved E2E scenarios passed. Current-release Wizard
+action and render evidence is recorded below. Earlier workflow and viewport
+evidence in this section is from Test `f8feb44` and `3c6d66a`, and is retained
+as preceding release records. Production was not used or changed.
 
 Earlier fresh workflow evidence from Test `f8feb44` is retained in
 `../../Zet_Tester/runs/ui-review-2026-11-24/`:
@@ -129,13 +129,37 @@ and two field labels. The saved draft stayed `TEST_READY`; no refinement ask or
 new render was submitted. The partial baseline and blocker evidence are retained
 in the [follow-up report](../../Zet_Tester/runs/ui-review-2026-11-24/2026-11-26T16-09-18-987Z-e8a1ffa9/report.md).
 
-The local dashboard now gives section action buttons and suggested-replacement
+The dashboard fix gives section action buttons and suggested-replacement
 checkboxes section-specific accessible names. `node --check zet/web/static/zet.js`
 and the approved Costume Wizard E2E scenario passed. A disposable assertion
 confirmed the four Refine section buttons have distinct accessible names; that
-assertion was removed afterward, so no permanent test scenario was added. This
-source fix has not yet been deployed to Test; the helper interaction and
-landscape behavior remain to be verified after the next merged Test release.
+assertion was removed afterward, so no permanent test scenario was added. The
+fix was deployed in Test `75711fba`; its fresh follow-up case successfully
+targeted the named Upper body and waist action and proposal checkbox at desktop
+and landscape tablet.
+
+## Costume Wizard neckline refinement and render provenance (2026-11-26)
+
+On health-verified Test `75711fba5483d670e78684379ecfc25d125b3fa5` / boot
+`31accc06c6594258b8c52b480a3be15c`, the saved draft reached `TEST_READY` again
+after one accepted **Upper body and waist** proposal and one private FRONT
+render. The proposal strengthens the off-shoulder gathered neckline to a
+clearly visible raised scalloped ruffle. It preserved the plain blouse,
+lower-half-only embroidery, exposed midriff, and other saved facts. The render
+passed visual review for the ruffle and those preservation criteria. It adds
+diagonal brown hip straps absent from the reference, and the layered necklace
+remains indistinct.
+
+AI Queue exposed refinement model `codex:gpt-6-luna` for job
+`AI_8cd9587549f1a9e15ff9810785e9b650`, and render job
+`Ask_Render_Task_LOCAL_RENDER_20261126_091333_960005_919de7fc81fb4c55bfd25fa02bc11321`
+as `comfyui · qwen_image_2.1_int8_convrot.safetensors`. This resolves the
+previously unverified image-render model for this render. The costume remains
+an unaccepted private Test draft; no accepted asset or existing lock changed.
+
+The full [neckline refinement report](../../Zet_Tester/runs/ui-review-2026-11-24/2026-11-26T17-05-32-705Z-c11f918f/report.md)
+and [evidence manifest](../../Zet_Tester/runs/ui-review-2026-11-24/2026-11-26T17-05-32-705Z-c11f918f/evidence/manifest.json)
+record the current-release result.
 
 ## Historical Test evidence after viewer/model accessibility merge (2026-11-25)
 
