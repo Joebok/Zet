@@ -2867,6 +2867,7 @@ summary:focus-visible {
 }
 .fullscreen-image-tools { position: fixed; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); z-index: 10004; display: flex; gap: 8px; }
 .fullscreen-image-tools button { min-width: 44px; min-height: 44px; background: rgba(32,37,43,.92); border-color: #fff; color: #fff; }
+.fullscreen-image-tools button:not(:disabled):hover { background: rgba(52,58,65,.95); border-color: #fff; color: #fff; }
 .fullscreen-image-tools button:focus-visible, .fullscreen-image-close:focus-visible, .fullscreen-image-navigation:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 
 .fullscreen-image-navigation {
@@ -6049,6 +6050,10 @@ dd {
 [data-state="locked"] > .image-card-state { color: var(--text); }
 [data-state="locked"] > .image-card-state::before { content: "🔒 "; }
 .image-input-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; }
+.review-zoom-control { min-height: 36px; }
+@media (pointer: coarse) {
+  .review-zoom-control { min-height: 44px; }
+}
 .image-input-status { flex-basis: 100%; color: var(--text-muted); font-size: .85rem; overflow-wrap: anywhere; }
 .image-input-status:empty { display: none; }
 .inventory-nav.active { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); }

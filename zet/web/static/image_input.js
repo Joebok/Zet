@@ -1,7 +1,7 @@
 /** Touch clipboard access feeds the same file-input path as choosing a file. */
 (() => {
   const attached = new WeakMap();
-  function attach(zone, input, {onInventory} = {}) {
+  function attach(zone, input, {onInventory, inventoryButton} = {}) {
     if (!zone || !input || attached.has(zone)) return;
     const controls = document.createElement("div");
     controls.className = "image-input-actions";
@@ -11,10 +11,13 @@
     const choose = document.createElement("button");
     choose.type = "button";
     choose.textContent = "Choose image";
-    const inventory = document.createElement("button");
+    const inventory = inventoryButton || document.createElement("button");
     inventory.type = "button";
     inventory.textContent = "Image Inventory";
-    inventory.hidden = typeof onInventory !== "function";
+    inventory.hidden = !inventoryButton && typeof onInventory !== "function";
+    for (const [control, action] of [[paste, "paste"], [choose, "choose"], [inventory, "inventory"]]) {
+      window.ZetImageCardUI.decorate(control, action);
+    }
     const status = document.createElement("span");
     status.className = "image-input-status";
     status.setAttribute("role", "status");

@@ -831,7 +831,7 @@ const fullscreenZoomIn = document.createElement("button");
 fullscreenZoomIn.type = "button";
 fullscreenZoomIn.textContent = "Zoom in";
 fullscreenZoomIn.setAttribute("aria-label", "Zoom in");
-fullscreenImageTools.append(fullscreenZoomOut, fullscreenZoomReset, fullscreenZoomIn);
+fullscreenImageTools.append(fullscreenZoomIn, fullscreenZoomOut, fullscreenZoomReset);
 const fullscreenCandidateLink = document.createElement("a");
 fullscreenCandidateLink.className = "candidate-pending-overlay fullscreen-candidate-pending";
 fullscreenCandidateLink.textContent = "Candidate Image Pending";
@@ -1216,7 +1216,7 @@ async function modifyEntityLibraryImageWithGenerator() {
   const asset = entityLibrarySelectedAsset;
   if (!asset || asset.origin === "pipeline" || asset.status === "archived") return;
   try {
-    const {createAsset, readImage} = await import("/static/image_generation.js?v=20261122-reconstruction-view");
+    const {createAsset, readImage} = await import("/static/image_generation.js?v=20261127-shared-image-controls");
     const response = await fetch(fileUrl(asset.image_path, asset.checksum));
     if (!response.ok) throw new Error("Unable to read the Inventory image.");
     const image = await readImage(await response.blob());
@@ -3804,7 +3804,7 @@ if (page === "onboarding") void window.ZetCharacterHub?.activate({fetchJson, cha
     await loadAiControls();
   } else window.ZetAIQueue?.stop();
   if (page === "image-generation") {
-    const controller = await import("/static/image_generation.js?v=20261122-reconstruction-view");
+    const controller = await import("/static/image_generation.js?v=20261127-shared-image-controls");
     window.ZetImageGeneration ||= controller.setup({
       fetchJson, universe:() => state.universeId,
       style:variant => state.universes.find(item => (item.id || item.universe_id) === state.universeId)?.[
@@ -3864,7 +3864,7 @@ if (page === "onboarding") void window.ZetCharacterHub?.activate({fetchJson, cha
         history.replaceState({}, '', '/?'+params);
       } catch (error) { window.ZetTaskCapture.notice(error.message); }
     }
-    const {mountNarrative} = await import('/static/narrative.js?v=20261126-image-card-viewer');
+    const {mountNarrative} = await import('/static/narrative.js?v=20261127-shared-image-controls');
     if (!pageLoadIsCurrent(pageLoad)) return false;
     const pending = mountNarrative(document.querySelector('#narrative-page'), state.universeId, async next=>{
       const requested = location.search;

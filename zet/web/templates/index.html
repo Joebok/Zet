@@ -9,7 +9,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css?v=20261126-compact-minor-actions">
+  <link rel="stylesheet" href="/static/zet.css?v=20261127-shared-image-controls">
   <link rel="stylesheet" href="/static/task_capture.css?v=20261020-template-publication">
   <link rel="stylesheet" href="/static/narrative.css?v=20261126-image-card-viewer">
   <link rel="stylesheet" href="/static/candidate_board.css?v=20261122-image-generation-ui">
@@ -1920,7 +1920,7 @@
           <details data-ig-authoring><summary>Source and intent</summary>
             <div class="button-row"><button type="button" data-ig-pick aria-label="Choose reconstruction source from Inventory">Choose Inventory source</button>
               <label>Upload source <input type="file" accept="image/*" data-ig-upload></label>
-              <button type="button" data-ig-paste>Paste source</button></div>
+              <div data-ig-paste aria-label="Reconstruction source image"></div></div>
             <p data-ig-source role="status"></p><label>Analysis model <select data-ig-model></select></label>
             <label>Artistic direction <textarea data-ig-notes rows="2"></textarea></label>
             <label>Preserve <textarea data-ig-preserve rows="2"></textarea></label>
@@ -2351,11 +2351,11 @@ Add prompt language here.
   </main>
 
 
-  <script src="/static/review_image_zoom.js?v=20261125-standalone-viewer"></script>
-  <script src="/static/image_card_ui.js?v=20261111-generation-controls"></script>
+  <script src="/static/review_image_zoom.js?v=20261127-shared-image-controls"></script>
+  <script src="/static/image_card_ui.js?v=20261127-shared-image-controls"></script>
   <script src="/static/image_inventory_picker.js?v=20261124-unified-image-input"></script>
   <script src="/static/operation_status.js?v=20261124-operation-status"></script>
-  <script src="/static/image_input.js?v=20261019"></script>
+  <script src="/static/image_input.js?v=20261127-shared-image-controls"></script>
   <script src="/static/task_capture.js?v=20261125-screenshot-zoom"></script>
   <script src="/static/task_attention.js?v=20261020-template-publication"></script>
   <script src="/static/render_slots.js?v=20261020-image-cards"></script>
@@ -2367,8 +2367,8 @@ Add prompt language here.
   <script src="/static/character_hub.js?v=20261123-fullscreen-views"></script>
   <script src="/static/species_settings.js?v=1"></script>
   <script src="/static/character_wizard.js?v=20261115-unique-review-controls"></script>
-  <script src="/static/zet.js?v=20261125-pipeline-diagnostics-zoom"></script>
-  <script type="module" src="/static/minor_characters.js?v=20261126-image-card-viewer"></script>
+  <script src="/static/zet.js?v=20261127-shared-image-controls"></script>
+  <script type="module" src="/static/minor_characters.js?v=20261127-shared-image-controls"></script>
   <script src="/static/local_template_improvement.js?v=20261115-unique-review-controls"></script>
   <script src="/static/local_asset_pipeline.js?v=20261125-review-zoom"></script>
   <script type="module" src="/static/character_asset_container.js?v=20261125-inventory-source"></script>

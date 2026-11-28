@@ -1252,7 +1252,7 @@ async function editElement(id) {
   const referencePreview = dialog.querySelector('#element-reference-preview');
   const referenceStatus = dialog.querySelector('#element-reference-import-status');
   let previewUrl = '';
-  window.ZetImageInput?.attach(referenceZone, referenceFile);
+  window.ZetImageInput?.attach(referenceZone, referenceFile, {inventoryButton:dialog.querySelector('#choose-reference')});
   referenceFile.addEventListener('change', () => {
     const file = referenceFile.files?.[0];
     if (previewUrl) URL.revokeObjectURL(previewUrl);

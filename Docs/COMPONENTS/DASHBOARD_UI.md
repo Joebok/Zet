@@ -295,6 +295,9 @@ Candidate Board specification defines the common comparison and zoom behavior.
 
 The shared full-screen image viewer also uses this helper for mouse-wheel zoom
 from fit to 4x. Zoom resets when the image changes or the viewer closes.
+`review_image_zoom.js` styles the Zoom In, Zoom Out and Reset Zoom buttons as
+labeled text controls in Candidate Board review, dashboard fullscreen and
+standalone viewers. These controls opt out of automatic image-icon inference.
 Character Overview supplies the available locked images in each base-image or
 costume group, preserving view order. Left/right buttons and arrow keys move
 within that group and stop at the first and last available views.
@@ -412,6 +415,15 @@ file-input change handler. It does not upload independently, parse clipboard HTM
 fetch copied URLs, or change save timing. Keyboard paste/drop handlers remain in
 their original modules. Choose image does not force camera capture.
 
+The helper explicitly assigns the shared `paste`, `choose` and `inventory` SVG
+actions, so acquisition controls have the same icons and sizing in every host.
+An `onInventory` adapter uses the shared Inventory picker; `inventoryButton`
+moves an existing workflow picker button into the toolbar, preserving its ID,
+explicit accessible label and handlers. Narrative retains its current-costume reference
+picker, and Minor Character sources retain their existing binding behavior.
+Reconstruction uses the same toolbar. Inventory ingestion and task evidence
+offer only Paste and Choose.
+
 Adapters cover Head source input, Image Generation references/reconstruction,
 Inventory import/add/replacement, Minor Character references, costume references,
 and task screenshots. Both dashboard templates hosting task capture load the
@@ -419,6 +431,10 @@ helper before consumers. Page/universe/character/phase changes during a pending
 read discard its result. Disabled inputs/targets disable both buttons. Unsupported,
 denied, or non-image reads offer a file-picker alternative. Existing server
 type/size validation remains authoritative.
+
+Image Generation's `image_generation.js:renderReferences` restores thumbnail
+sources and labels from the asset's ordered reference inputs on entry and tab
+return. Reference previews do not require another paste after reloading.
 
 Reads require a secure context and can show native Paste approval UI. Actual
 behavior depends on the browser and copied representation; see

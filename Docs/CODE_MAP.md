@@ -47,6 +47,9 @@ Reconstruction sources, Character Wizard references, Costume Wizard references,
 and Narrative scene-element references have migrated. Narrative image imports
 are committed to an element only on Save element. Minor Character source acquisition uses the same
 Browse/Paste controls and an explicit entity-library import before source bind.
+`image_input.js` explicitly decorates Paste/Choose/Inventory and can move an
+existing `inventoryButton` into its toolbar. Narrative, Minor Character sources
+and Image Generation reconstruction use that adapter to retain their pickers.
 Cross-phase Character FRONT references also use Browse/Paste/Image Inventory.
 Task-capture evidence, Character refinement comparisons, post-render galleries,
 and Pipeline Inspection image previews open in a full-screen zoom viewer.
@@ -54,7 +57,8 @@ Inventory ingestion and task evidence retain their purpose-specific actions.
 Costume Wizard trial images open through `ZetOpenFullscreenImage` and the shared zoom controls.
 `review_image_zoom.js` supplies wheel and button zoom plus pointer pan/pinch to
 Candidate Board, the shared full-screen image viewer and standalone auxiliary
-image pages. Physical touch-device gestures have not been verified.
+image pages. It also owns their common labeled zoom-button treatment, exempt
+from icon inference. Physical touch-device gestures have not been verified.
 Head Container settings in `index.html` and `character_asset_container.js` own
 FRONT upload/paste, Phase Change source selection, render-mode captions, and
 per-view Head reference choice. `CharacterAssetContainerService` resolves the

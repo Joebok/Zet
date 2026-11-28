@@ -144,8 +144,9 @@ The names below describe shapes, not Unicode characters to paste into buttons.
 | Close / Cancel | `close`: X | Secondary; discards nothing silently |
 | Details / Information | `details`: circled i | Secondary; supporting information |
 | Create task | `task`: clipboard | Secondary; captures a task |
-| Choose image / Upload | **target***: arrow up into tray | Secondary; opens file selection |
-| Paste image | **target***: clipboard with image | Secondary; reads clipboard with file-picker fallback |
+| Choose image / Upload | `choose`: arrow up from tray | Secondary; opens file selection |
+| Paste image | `paste`: clipboard | Secondary; reads clipboard with file-picker fallback |
+| Zoom In / Zoom Out / Reset Zoom | Shared labeled text controls | Secondary; Candidate Board review and fullscreen viewers use the same labels |
 | Settings | **target***: sliders | Secondary; opens settings |
 | More actions | **target***: horizontal ellipsis | Secondary; opens a labeled menu |
 | Pass / Fail / Undecided | Labeled radio group; optional check / X / dash | Human assessment, separate from Select |

@@ -570,6 +570,8 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
       if (ref.image) {
         preview = document.createElement("img");
         preview.className = "image-generation-reference-thumb";
+        preview.src = ref.image;
+        preview.alt = ref.label || "Reference " + (index + 1);
         card.append(preview);
       }
       const label = document.createElement("input");
@@ -696,8 +698,7 @@ export function setup({fetchJson, universe, style, confirmProtectedEffects, open
     el("upload").value = "";
     if (file) void run(() => setUploadedSource(file));
   };
-  window.ZetImageCardUI.decorate(el("pick"), "inventory");
-  window.ZetImageCardUI.decorate(el("paste"), "paste");
+  window.ZetImageInput.attach(el("paste"), el("upload"), {inventoryButton:el("pick")});
   el("paste").onpaste = event => {
     const file = [...event.clipboardData.files].find(file => file.type.startsWith("image/"));
     if (file) { event.preventDefault(); void run(() => setUploadedSource(file)); }

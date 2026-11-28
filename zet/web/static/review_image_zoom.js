@@ -1,8 +1,20 @@
 /* Shared, transient zoom for images inside candidate review dialogs. */
 (function () {
   const states = new WeakMap();
+  function styleControls(root) {
+    const labels = {"zoom in":"Zoom In", "zoom out":"Zoom Out", "reset zoom":"Reset Zoom"};
+    for (const control of root.querySelectorAll("button")) {
+      const label = labels[(control.getAttribute("aria-label") || control.textContent.trim()).toLowerCase()];
+      if (!label) continue;
+      control.classList.add("review-zoom-control", "image-card-text-control");
+      control.textContent = label;
+      control.setAttribute("aria-label", label);
+      control.title = label;
+    }
+  }
   function attach(dialog, getImages) {
     if (!dialog) return;
+    styleControls(dialog);
     const state = {scale: 1, x: .5, y: .5, panX: 0, panY: 0, key: "", pointers: new Map(), gesture: null};
     const events = new AbortController();
     states.set(dialog, state);
@@ -119,15 +131,16 @@
       const button = (action, label, text, callback) => {
         const control = document.createElement("button"); control.type = "button"; control.textContent = text;
         control.setAttribute("aria-label", label); control.title = label;
-        window.ZetImageCardUI?.decorate(control, action, label);
+        if (action) window.ZetImageCardUI?.decorate(control, action, label);
         control.addEventListener("click", callback); tools.append(control); return control;
       };
-      button("down", "Zoom out", "−", () => zoom.step(-1));
-      button("details", "Reset zoom", "Reset", () => zoom.reset());
-      button("up", "Zoom in", "+", () => zoom.step(1));
+      button(null, "Zoom in", "+", () => zoom.step(1));
+      button(null, "Zoom out", "−", () => zoom.step(-1));
+      button(null, "Reset zoom", "Reset", () => zoom.reset());
       const close = button("close", "Close image", "Close", () => dialog.close());
       close.classList.add("fullscreen-image-close");
       dialog.append(tools, image, empty); document.body.append(dialog);
+      styleControls(dialog);
       dialog.addEventListener("click", event => { if (event.target === dialog) dialog.close(); });
       image.addEventListener("load", () => {
         empty.hidden = true; image.hidden = false;

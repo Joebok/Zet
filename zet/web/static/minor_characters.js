@@ -592,7 +592,7 @@ const sourceImportPreview = $("mc-source-import-preview");
 const sourceImportButton = $("mc-source-import-use");
 const sourceImportStatus = $("mc-source-import-status");
 let sourceImportFile, sourceImportUrl;
-window.ZetImageInput?.attach(sourceImportZone, sourceImportInput);
+window.ZetImageInput?.attach(sourceImportZone, sourceImportInput, {inventoryButton:$("mc-add-reference")});
 sourceImportInput.addEventListener("change", () => {
   sourceImportFile = sourceImportInput.files?.[0] || null;
   if (sourceImportUrl) URL.revokeObjectURL(sourceImportUrl);
